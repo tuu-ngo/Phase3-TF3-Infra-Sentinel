@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Blocks a commit if it introduces secrets (AWS keys, private keys, tokens,
+# bearer headers, kubeconfig certs, ...). Runs on staged changes only.
+#
+# Installed via: git config core.hooksPath .githooks   (see scripts/setup-hooks.sh)
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+CONFIG=".gitleaks.toml"
+
+run_gitleaks() {
+  if command -v gitleaks >/dev/null 2>&1; then
+    gitleaks protect --staged --redact --config "$CONFIG"
+    return $?
+  fi
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    docker run --rm -v "$(pwd)":/repo -w /repo zricethezav/gitleaks:latest \
+      protect --staged --redact --config "$CONFIG"
+    return $?
+  fi
+  return 2
+}
+
+set +e
+run_gitleaks
+status=$?
+set -e
+
+if [ "$status" -eq 0 ]; then
+  exit 0
+fi
+
+if [ "$status" -eq 2 ]; then
+  echo ""
+  echo "!! gitleaks not found locally (no binary, no running docker) - commit allowed,"
+  echo "   but NOT scanned for secrets. Install gitleaks so this actually protects you:"
+  echo "   https://github.com/gitleaks/gitleaks#installing"
+  echo "   CI will still scan this push/PR and can fail the build after the fact."
+  exit 0
+fi
+
+echo ""
+echo "COMMIT BLOCKED: gitleaks found a likely secret in your staged changes."
+echo "Fix it (remove the secret, use a placeholder / --set at deploy time), then re-stage."
+echo "If this is a confirmed false positive, add an allowlist entry in .gitleaks.toml"
+echo "with a comment explaining why, instead of bypassing this hook."
+exit 1

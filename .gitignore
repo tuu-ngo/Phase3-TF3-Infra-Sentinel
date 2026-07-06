@@ -1,0 +1,23 @@
+# --- Secrets / credentials: never commit real values ---
+# Fill tokens/keys via --set on the helm command line or a local untracked
+# file instead of editing the tracked template in place.
+*.local.yaml
+*.secret.yaml
+values-flagd-sync.local.yaml
+kubeconfig*
+*.kubeconfig
+.aws/
+.env.local
+.env.*.local
+*.pem
+*.key
+*id_rsa*
+*.pfx
+*.p12
+llm-api-key*
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
