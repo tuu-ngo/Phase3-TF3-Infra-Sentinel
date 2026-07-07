@@ -77,5 +77,12 @@ jobs:
       - name: Build & push all app images
         run: |
           set -a; . ./.env.override; set +a
+          # opensearch has a `build:` stanza but no `image:` tag (it's pulled from the
+          # public registry per GETTING_STARTED.md, not pushed to the TF's ECR) - bake
+          # would fail on it with "tag is needed when pushing to registry", so it's
+          # excluded from the target list below.
           docker buildx bake -f docker-compose.yml --push \
-            --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}"
+            --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
+            accounting ad cart checkout currency email fraud-detection frontend \
+            frontend-proxy image-provider kafka llm load-generator payment \
+            product-catalog product-reviews quote recommendation shipping flagd-ui
