@@ -1,0 +1,81 @@
+name: Build & Push TechX Corp images to ECR
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Override tag (default: git short SHA)"
+        required: false
+        default: ""
+      platforms:
+        description: "Build platforms"
+        required: false
+        default: "linux/amd64,linux/arm64"
+
+  push:
+    branches: [main]
+    paths:
+      - "phase3 - information/techx-corp-platform/**"
+
+permissions:
+  id-token: write # required for OIDC -> assume AWS role
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REGISTRY: 012619468490.dkr.ecr.ap-southeast-1.amazonaws.com
+  ECR_REPOSITORY: techx-corp
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: "phase3 - information/techx-corp-platform"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve image tag
+        id: vars
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Point registry at TF3 ECR repo (runtime-only, not committed)
+        run: |
+          cat > .env.override <<EOF
+          IMAGE_NAME=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
+          IMAGE_VERSION=${{ steps.vars.outputs.tag }}
+          DEMO_VERSION=${{ steps.vars.outputs.tag }}
+          EOF
+
+      - name: Smoke build checkout (fail fast, single-arch, no push)
+        run: docker compose build checkout
+
+      - name: Create multiplatform builder
+        run: make create-multiplatform-builder || true
+
+      - name: Build & push all app images
+        run: |
+          set -a; . ./.env.override; set +a
+          docker buildx bake -f docker-compose.yml --push \
+            --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}"
