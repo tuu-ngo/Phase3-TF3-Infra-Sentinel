@@ -43,8 +43,17 @@ tuần nào ở mục Trạng thái bên dưới.
 
 > Cập nhật mục này mỗi tuần (gợi ý: người cầm Auditability tuần đó chịu trách nhiệm cập nhật).
 
-- **Baseline deploy**: *(chưa deploy / đã deploy — cập nhật ngày thực tế khi xong)*
+- **Baseline deploy**: ✅ Đã deploy 07/07 — VPC + EKS (`techx-corp-tf3`, `ap-southeast-1`) dựng bằng
+  Terraform (`infra/`), image build/push bởi CDO01 lên ECR `techx-corp` (tag `d2bc367`), Helm
+  release `techx-corp` trong namespace `techx-tf3`. 28/28 pod Running, storefront + AI review
+  verify OK, flagd sync token đã kết nối nguồn trung tâm BTC.
+  - Lưu ý triển khai: **không dùng** `values-observability.yaml` + `values-app-stamp.yaml` cùng lúc
+    (2 file này dành cho 2 lần deploy tách namespace riêng — dùng chung sẽ tắt hết pod). Deploy
+    baseline chỉ cần chart mặc định (đã tự bật cả app + observability) + `values-flagd-sync.yaml`.
 - **Backlog ưu tiên**: *(chưa dựng / link file khi có)*
+- **Hạ tầng**: Terraform state ở S3 `techx-corp-tf3-terraform-state` (lock: DynamoDB
+  `techx-corp-tf3-terraform-lock`). `infra/terraform.tfvars` (gitignored, không commit) cần điền
+  IP + IAM ARN của từng thành viên TF3 muốn `kubectl` — hiện chỉ có của arthur (CDO02).
 - **CI/CD**: secret-scanning đã bật (gitleaks pre-commit hook + GitHub Actions gate trên
   `push`/`PR` vào `main`) — xem [README.md](README.md). Branch protection cho `main`
   (require PR + status check `gitleaks`) **đã đề xuất, cần bật thủ công trên GitHub**.
