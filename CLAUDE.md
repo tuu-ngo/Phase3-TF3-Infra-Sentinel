@@ -33,8 +33,8 @@ Chi tiết đầy đủ: [`phase3 - information/RULES.md`](phase3%20-%20informat
 | Nhóm | Vai trò | Trụ (cập nhật sau khi draft chính thức chốt) |
 |---|---|---|
 | AIO02 | Tầng AI: AIOps (vận hành bằng AI) + AIE (AI trong sản phẩm) | ngoài 4 trụ core |
-| CDO01 | Platform/hạ tầng | *(điền sau khi confirm)* |
-| CDO02 | Platform/hạ tầng | Reliability + Performance Efficiency *(dự định, cần xác nhận với CDO01 trong buổi draft)* |
+| CDO01 | Platform/hạ tầng | Performance Efficiency + Security |
+| CDO02 | Platform/hạ tầng | **Reliability + Cost Optimization** (chốt chính thức 08/07) |
 
 Auditability là trụ chung, luân phiên theo tuần giữa CDO01/CDO02 — cập nhật ai cầm chính
 tuần nào ở mục Trạng thái bên dưới.
@@ -50,7 +50,11 @@ tuần nào ở mục Trạng thái bên dưới.
   - Lưu ý triển khai: **không dùng** `values-observability.yaml` + `values-app-stamp.yaml` cùng lúc
     (2 file này dành cho 2 lần deploy tách namespace riêng — dùng chung sẽ tắt hết pod). Deploy
     baseline chỉ cần chart mặc định (đã tự bật cả app + observability) + `values-flagd-sync.yaml`.
-- **Backlog ưu tiên**: *(chưa dựng / link file khi có)*
+- **Backlog ưu tiên (CDO02)**: ✅ Đã dựng — xem
+  [`docs/backlog/cdo02-reliability-cost-backlog.md`](docs/backlog/cdo02-reliability-cost-backlog.md).
+  Top ưu tiên: sửa health check giả + thêm probe (vá INC-3), tăng replicas nhóm checkout (vá INC-2),
+  connection pool product-catalog/product-reviews (vá INC-1), rollback logic checkout, CPU
+  requests/limits toàn hệ thống, cluster-autoscaler thật, sửa lại ECR lifecycle policy đúng cách.
 - **Hạ tầng**: Terraform state ở S3 `techx-corp-tf3-terraform-state` (lock: DynamoDB
   `techx-corp-tf3-terraform-lock`). `infra/terraform.tfvars` (gitignored, không commit) cần điền
   IP + IAM ARN của từng thành viên TF3 muốn `kubectl` — hiện chỉ có của arthur (CDO02).
@@ -68,8 +72,12 @@ service dưới `techx-corp-platform/src/`, dùng làm bằng chứng cho backlo
   mọi service là SPOF ở tầng pod, không riêng `cart` (khớp INC-2 trong lịch sử sự cố).
 - **Không có `readinessProbe`/`livenessProbe` nào được cấu hình** cho bất kỳ component nào
   trong chart (khớp INC-3).
-- **Không có `requests` (chỉ có `limits`, chỉ memory, không CPU)**; một số memory limit rất
-  thấp (`checkout`, `product-catalog`, `currency`, `shipping`: 20Mi).
+- **Đính chính (08/07, xác minh trên pod thật):** Helm chart tự mirror `requests = limits` cho
+  memory (mọi pod QoS `Guaranteed` cho memory) — nhận định "không có requests" ban đầu chỉ đúng
+  một phần. Cái thật sự thiếu là **CPU**: 28/32 container hoàn toàn không có `requests`/`limits`
+  CPU nào (xác minh qua `kubectl get pods -o json`). Một số memory limit rất thấp (`checkout`,
+  `product-catalog`, `currency`, `shipping`: 20Mi) — `accounting` (120Mi) đã thật sự OOMKilled
+  44 lần/19h do quá thấp, xem `docs/postmortem/0001-...md`.
 - **Health check giả trên toàn hệ thống**: `checkout`, `product-catalog`, `recommendation`,
   `currency`, `product-reviews`, `ad`, `payment` đều trả "SERVING" cố định, không kiểm tra
   dependency (DB/Kafka/Redis) thật. Thêm probe vô nghĩa cho tới khi sửa các hàm `Check()` này.
