@@ -556,6 +556,8 @@ services:
         condition: service_started
       otel-collector:
         condition: service_started
+    env_file:
+      - .env.override
     logging: *logging
 
   # Quote service
@@ -763,13 +765,15 @@ services:
     deploy:
       resources:
         limits:
-          memory: 50M
+          memory: 250M
     restart: unless-stopped
     environment:
       - FLAGD_HOST
       - FLAGD_PORT
     ports:
       - "${LLM_PORT}"
+    env_file:
+      - .env.override
     depends_on:
       flagd:
         condition: service_started
