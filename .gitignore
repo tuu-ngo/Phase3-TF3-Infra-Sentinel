@@ -37,3 +37,17 @@ infra/terraform.tfvars
 Thumbs.db
 .idea/
 .vscode/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
