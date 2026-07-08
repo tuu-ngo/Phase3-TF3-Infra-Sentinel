@@ -180,3 +180,18 @@ def request_confirmation(
         confirmation_token=None,
         action_data=action_params,
     )
+
+
+# ── Alias cho cart_tool.py (compat với interface cũ của đồng đội) ──
+# cart_tool.py gọi: is_confirmed = trigger_confirmation_gate(user_id, action_text)
+# Hàm này wrap request_confirmation và trả bool:
+#   True  = APPROVED (được phép thực thi ngay — chỉ với read actions)
+#   False = PENDING/DENIED (cần dừng lại, tool trả thông báo cho agent)
+def trigger_confirmation_gate(user_id: str, action_text: str) -> bool:
+    """
+    Compatibility alias dùng bởi cart_tool.py.
+    Luôn trả False vì 'AddItem' thuộc CONFIRM_REQUIRED_ACTIONS.
+    Agent sẽ nhận thông báo pending và tạo HMAC token riêng qua react_loop.
+    """
+    result = request_confirmation(user_id, "AddItem", {"action_text": action_text})
+    return result.status == "APPROVED"

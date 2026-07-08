@@ -1,0 +1,23 @@
+# Shopping Copilot — Python dependencies
+# AIO02 TF3 | Phase 3
+
+# ── LLM / Agent ──
+langchain-core>=0.3
+langchain-groq>=0.1
+
+# ── gRPC (để giao tiếp với các microservice TechX Corp) ──
+grpcio>=1.82.1
+grpcio-tools>=1.82.1   # Chỉ cần khi compile proto
+
+# ── API Server ──
+fastapi>=0.110
+uvicorn>=0.27
+pydantic>=2.0
+
+# ── Utilities ──
+python-dotenv>=1.0
+
+# ── OpenTelemetry (optional, bật khi deploy lên EKS) ──
+# opentelemetry-api>=1.20
+# opentelemetry-sdk>=1.20
+# opentelemetry-instrumentation-fastapi>=0.41b0
