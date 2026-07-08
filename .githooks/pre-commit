@@ -14,7 +14,12 @@ run_gitleaks() {
     return $?
   fi
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    docker run --rm -v "$(pwd)":/repo -w /repo zricethezav/gitleaks:latest \
+    # MSYS_NO_PATHCONV + pwd -W: on Git Bash for Windows, `/repo` below would
+    # otherwise get silently mangled into a Windows path by MSYS's auto path
+    # conversion before docker ever sees it, and $(pwd) is a POSIX path Docker
+    # Desktop can't mount - this made every commit falsely "find a secret"
+    # when it was actually just docker failing to start.
+    MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W 2>/dev/null || pwd)":/repo -w /repo zricethezav/gitleaks:latest \
       protect --staged --redact --config "$CONFIG"
     return $?
   fi
