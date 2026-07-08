@@ -62,6 +62,22 @@ tuần nào ở mục Trạng thái bên dưới.
   `push`/`PR` vào `main`) — xem [README.md](README.md). Branch protection cho `main`
   (require PR + status check `gitleaks`) **đã đề xuất, cần bật thủ công trên GitHub**.
 - **Mandates đang mở**: xem [`phase3 - information/mandates/`](phase3%20-%20information/mandates/) — trống lúc đầu, BTC thả vào khi có hiệu lực.
+- **Truy cập cluster**: mặc định dùng `kubectl port-forward svc/frontend-proxy 8080:8080` (namespace
+  `techx-tf3`), **không** để public 24/7 (Grafana anonymous-admin mặc định trong chart — public =
+  ai cũng vào Grafana admin được). Chỉ patch `Service` sang `LoadBalancer` tạm thời khi cần demo
+  cho người ngoài, nhớ patch lại `ClusterIP` ngay sau đó.
+- **EKS API giới hạn theo CIDR** (`infra/terraform.tfvars`, gitignored — không sync qua git).
+  ⚠️ Rủi ro đã xảy ra thật: 1 thành viên khác tự `terraform apply` bằng `tfvars` local của họ đã
+  **ghi đè mất** toàn bộ CIDR đã tích luỹ (chỉ còn IP của họ). Trước khi `apply`, luôn kiểm tra
+  `aws eks describe-cluster ... publicAccessCidrs` khớp với `tfvars` local trước khi tin tưởng nó.
+  Giải pháp bền vững (bastion + SSM port-forward, loại bỏ hẳn nhu cầu allowlist IP cá nhân) đã đề
+  xuất nhưng **chưa dựng** — cân nhắc làm nếu tình trạng lệch IP tái diễn nhiều.
+- **⚠️ Rủi ro chưa xử lý**: cả 4 IAM user (`arthur`, `CDO01`, `CDO02`, `AIO02`) + user `mentor` mới
+  tạo đều có `AdministratorAccess` (toàn quyền account) — trái ngược hoàn toàn với thiết kế
+  least-privilege ở phần còn lại (IRSA, ECR CI role...). Chưa thu hẹp vì ưu tiên tốc độ lúc gấp
+  deadline; nên xử lý trước khi hội đồng hỏi tới ở trụ Security (CDO01).
+- **ECR lifecycle policy**: đã xoá do gây sự cố (xem postmortem 0001) — **hiện KHÔNG có cơ chế dọn
+  image cũ nào**, cần viết lại đúng (scoped theo từng service qua `tagPrefixList`) trước khi bật lại.
 
 ## Phát hiện kỹ thuật đã xác nhận qua đọc code (không phải suy đoán)
 
@@ -100,8 +116,10 @@ service dưới `techx-corp-platform/src/`, dùng làm bằng chứng cho backlo
 
 - Không push thẳng `main` — làm nhánh + PR (`gitleaks` status check phải xanh).
 - Cài hook secret-scanning sau khi clone: `bash scripts/setup-hooks.sh`.
-- ADR cho mọi quyết định hạ tầng lớn, postmortem ký tên sau mỗi sự cố — thư mục lưu:
-  *(chưa tạo `docs/adr/` và `docs/postmortem/` — tạo khi bắt đầu có quyết định thật)*.
+- ADR cho mọi quyết định hạ tầng lớn, postmortem ký tên sau mỗi sự cố. Đã có sẵn:
+  [`docs/postmortem/`](docs/postmortem/) (sự cố `accounting` OOMKilled + ECR lifecycle),
+  [`docs/backlog/`](docs/backlog/) (backlog ưu tiên CDO02). Chưa có `docs/adr/` — tạo khi có
+  quyết định kiến trúc lớn đầu tiên cần ghi lại.
 
 ## Hướng dẫn cho Claude Code ở các phiên sau
 
