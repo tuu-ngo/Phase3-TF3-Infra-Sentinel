@@ -66,12 +66,15 @@ tuần nào ở mục Trạng thái bên dưới.
   `techx-tf3`), **không** để public 24/7 (Grafana anonymous-admin mặc định trong chart — public =
   ai cũng vào Grafana admin được). Chỉ patch `Service` sang `LoadBalancer` tạm thời khi cần demo
   cho người ngoài, nhớ patch lại `ClusterIP` ngay sau đó.
-- **EKS API giới hạn theo CIDR** (`infra/terraform.tfvars`, gitignored — không sync qua git).
-  ⚠️ Rủi ro đã xảy ra thật: 1 thành viên khác tự `terraform apply` bằng `tfvars` local của họ đã
-  **ghi đè mất** toàn bộ CIDR đã tích luỹ (chỉ còn IP của họ). Trước khi `apply`, luôn kiểm tra
-  `aws eks describe-cluster ... publicAccessCidrs` khớp với `tfvars` local trước khi tin tưởng nó.
-  Giải pháp bền vững (bastion + SSM port-forward, loại bỏ hẳn nhu cầu allowlist IP cá nhân) đã đề
-  xuất nhưng **chưa dựng** — cân nhắc làm nếu tình trạng lệch IP tái diễn nhiều.
+- **✅ ĐÃ SỬA (09/07) — EKS API giờ private-only, không còn CIDR allowlist nữa.** Sau khi bị đè
+  mất IP allowlist **2 lần** (CloudTrail xác nhận phần lớn lệnh `UpdateClusterConfig` gây ra đến
+  từ IAM user `CDO02`, không phải `arthur` — nghi có người khác trong nhóm CDO02 tự cầm key đó
+  song song, chưa xác minh danh tính), đã tắt hẳn `cluster_endpoint_public_access` và dựng
+  **SSM bastion** (`infra/bastion.tf`) làm đường vào duy nhất. Không ai cần allowlist IP nữa —
+  xác thực hoàn toàn bằng IAM, không phải theo địa chỉ mạng. Cách dùng: xem
+  [`infra/README.md`](infra/README.md#2-sau-khi-apply-xong--truy-cập-cluster-qua-ssm-bastion-bắt-buộc-từ-0907).
+  Biến `allowed_admin_cidrs` trong `terraform.tfvars` giờ **không còn tác dụng gì** (đã đánh dấu
+  deprecated trong `variables.tf`) — không cần thêm IP vào đó nữa dù nó vẫn còn trong file.
 - **⚠️ Rủi ro chưa xử lý**: cả 4 IAM user (`arthur`, `CDO01`, `CDO02`, `AIO02`) + user `mentor` mới
   tạo đều có `AdministratorAccess` (toàn quyền account) — trái ngược hoàn toàn với thiết kế
   least-privilege ở phần còn lại (IRSA, ECR CI role...). Chưa thu hẹp vì ưu tiên tốc độ lúc gấp

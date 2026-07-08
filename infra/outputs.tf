@@ -34,3 +34,13 @@ output "configure_kubectl" {
   description = "Run this after apply to point kubectl/helm at the new cluster"
   value       = "aws eks update-kubeconfig --name ${module.eks.cluster_name} --region ${var.region}"
 }
+
+output "bastion_instance_id" {
+  description = "Target for `aws ssm start-session` - EKS API is private-only now"
+  value       = aws_instance.bastion.id
+}
+
+output "ssm_tunnel_command" {
+  description = "Run this, then point kubeconfig at https://localhost:8443 in another terminal"
+  value       = "aws ssm start-session --target ${aws_instance.bastion.id} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters host=\"${replace(module.eks.cluster_endpoint, "https://", "")}\",portNumber=\"443\",localPortNumber=\"8443\" --region ${var.region}"
+}

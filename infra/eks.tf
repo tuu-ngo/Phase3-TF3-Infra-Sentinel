@@ -20,14 +20,16 @@ module "eks" {
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
 
-  vpc_id = module.vpc.vpc_id
-  # Control plane ENIs can land in either; include public subnets too since
-  # the public API endpoint is enabled.
-  subnet_ids = concat(module.vpc.private_subnets, module.vpc.public_subnets)
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
 
-  cluster_endpoint_public_access       = true
-  cluster_endpoint_public_access_cidrs = var.allowed_admin_cidrs
-  cluster_endpoint_private_access      = true
+  # Private-only API access as of 09/07 - team members reach it through the
+  # SSM bastion (bastion.tf) instead of an IP allowlist. This is what fixes
+  # the repeated "someone's terraform apply overwrote the CIDR list and
+  # locked everyone out" incidents documented in CLAUDE.md - there's no CIDR
+  # list to drift anymore.
+  cluster_endpoint_public_access  = false
+  cluster_endpoint_private_access = true
 
   create_kms_key = false
   cluster_encryption_config = {

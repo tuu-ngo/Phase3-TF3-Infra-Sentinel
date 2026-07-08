@@ -42,8 +42,9 @@ variable "public_subnet_cidrs" {
 
 variable "allowed_admin_cidrs" {
   description = <<-EOT
-    CIDR blocks allowed to reach the EKS public API endpoint.
-    Do NOT default this to 0.0.0.0/0 - fill in real team IPs in terraform.tfvars.
+    DEPRECATED as of 09/07 - the EKS API is private-only now (see bastion.tf).
+    No longer referenced by eks.tf; kept only so old tfvars entries don't
+    error on `terraform plan`. Safe to delete from terraform.tfvars.
   EOT
   type        = list(string)
   default     = []

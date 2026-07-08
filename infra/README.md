@@ -40,12 +40,38 @@ terraform apply tfplan
 
 `apply` mất khoảng 15-20 phút (EKS control plane + node group).
 
-## 2. Sau khi apply xong
+## 2. Sau khi apply xong — truy cập cluster qua SSM bastion (bắt buộc từ 09/07)
+
+EKS API **đã chuyển private-only** (`cluster_endpoint_public_access = false`) — không còn IP
+allowlist nào để quản lý nữa (lý do: nhiều lần bị đè mất CIDR do nhiều người tự `apply`, xem
+`docs/postmortem/`). Muốn `kubectl`/`helm`, mọi người đi qua bastion (`bastion.tf`) bằng SSM,
+không cần IP tĩnh, không cần thêm gì vào `terraform.tfvars` nữa:
 
 ```sh
+# Bước 1: mở tunnel (giữ terminal này chạy)
+aws ssm start-session --target <bastion_instance_id, xem terraform output bastion_instance_id> \
+  --document-name AWS-StartPortForwardingSessionToRemoteHost \
+  --parameters host="<cluster_endpoint không có https://, xem terraform output cluster_endpoint>",portNumber="443",localPortNumber="8443" \
+  --region ap-southeast-1
+
+# Bước 2 (terminal khác): trỏ kubectl vào tunnel
 aws eks update-kubeconfig --name techx-corp-tf3 --region ap-southeast-1
-kubectl get nodes
+kubectl config set-cluster arn:aws:eks:ap-southeast-1:012619468490:cluster/techx-corp-tf3 \
+  --server=https://localhost:8443 --insecure-skip-tls-verify=true
+
+kubectl get nodes   # phải thấy 3 node Ready
 ```
+
+`--insecure-skip-tls-verify` cần thiết vì chứng chỉ TLS của cluster cấp cho hostname thật, không
+phải `localhost` — chấp nhận được vì traffic đã đi trong tunnel mã hoá của SSM.
+
+Lệnh đầy đủ (đã điền sẵn ID) có thể lấy lại bất cứ lúc nào bằng:
+```sh
+terraform output ssm_tunnel_command
+```
+
+**Yêu cầu để dùng được**: IAM user cần quyền gọi SSM (`ssm:StartSession` trên bastion) — tất cả
+user hiện có (`arthur`/`CDO01`/`CDO02`/`AIO02`, đều `AdministratorAccess`) đã đủ quyền sẵn.
 
 Từ đây tiếp tục theo [`GETTING_STARTED.md`](../phase3%20-%20information/GETTING_STARTED.md)
 mục 2-5 (helm repo add, dependency build, `helm upgrade --install`).
