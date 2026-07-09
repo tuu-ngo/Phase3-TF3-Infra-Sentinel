@@ -76,11 +76,11 @@ Lúc đọc code tĩnh (`techx-corp-chart/values.yaml`), tôi từng kết luậ
 **Đề xuất:** Đổi `RequiredAcks` sang `WaitForAll` (hoặc `WaitForLocal`) ở `checkout`; đổi `accounting` sang manual commit **sau khi** `SaveChanges()` thành công, thêm dead-letter topic hoặc retry có giới hạn cho message lỗi thay vì drop âm thầm.
 **Chi phí:** Thấp — chỉ đổi cấu hình + logic commit, không cần thêm hạ tầng.
 
-### R10 — `valkey-cart` không có bất kỳ cấu hình persistence nào
-**Rủi ro:** Trung bình — xác nhận qua `values.yaml` (block `valkey-cart`): không RDB, không AOF, không PVC. Restart pod (deploy, node drain, OOM...) = mất sạch giỏ hàng đang hoạt động của mọi khách cùng lúc.
-**Tác động business:** Trung bình-cao — không mất doanh thu trực tiếp (khách thêm lại giỏ được) nhưng ảnh hưởng trải nghiệm ngay lúc pod restart, và **cộng dồn với R1** (`valkey-cart` cũng chỉ có 1 replica) làm rủi ro này dễ xảy ra hơn mỗi lần deploy.
-**Đề xuất:** Bật ít nhất AOF (`appendonly yes`) hoặc RDB snapshot định kỳ + PVC cho `valkey-cart`; cân nhắc cùng lúc với R1 khi tăng replicas (Valkey cluster/replica thật là bước xa hơn, có thể để sau).
-**Chi phí:** Thấp (bật persistence) đến trung bình (nếu làm luôn replica Valkey).
+### R10 — Thiếu persistence: `valkey-cart` không cấu hình gì, Postgres/Kafka cũng không có PVC
+**Rủi ro:** Trung bình (`valkey-cart`) đến Rất cao (Postgres/Kafka) — xác nhận qua `values.yaml` (`valkey-cart` không RDB/AOF/PVC) **và** qua runtime (`kubectl get pv,pvc -A` → không có PV/PVC nào trong toàn cluster). Restart pod (deploy, node drain, OOM...) = mất sạch giỏ hàng đang hoạt động (Valkey), hoặc tệ hơn — mất dữ liệu sản phẩm/review/đơn hàng đã ghi (`accounting`) hoặc dữ liệu đang trong hàng đợi nếu là Postgres/Kafka.
+**Tác động business:** Trung bình-cao cho Valkey (khách thêm lại giỏ được, không mất doanh thu trực tiếp, nhưng cộng dồn với R1 vì `valkey-cart` cũng chỉ 1 replica). **Rất cao nếu xảy ra ở Postgres/Kafka** (mất dữ liệu vĩnh viễn) — nhưng đây có thể là phạm vi của mandate migrate-sang-managed-DB sắp tới từ BTC, trùng với R8.
+**Đề xuất:** Làm `valkey-cart` trước (bật AOF/RDB + PVC, chi phí thấp, ít rủi ro, cân nhắc cùng lúc R1). Với Postgres/Kafka — **ghi rõ đây là accepted risk có ý thức** trong ADR, không tự ý thêm PVC lớn ngay nếu nghi sắp có mandate managed-DB (tránh làm 2 lần, phí công nếu mandate đến ngay sau).
+**Chi phí:** Thấp cho Valkey; trung bình-cao cho Postgres/Kafka nếu tự làm PVC.
 
 ### R11 — `currency`: mã tiền tệ không hợp lệ → chia cho 0 → NaN/Inf âm thầm, không có validate input
 **Rủi ro:** Thấp khả năng (cần truyền currency code sai/lạ mới trigger) nhưng nghiêm trọng nếu xảy ra: `unordered_map::operator[]` trong `server.cpp` trả về `0.0` mặc định cho code không tồn tại thay vì lỗi, khiến phép chia tạo ra `NaN`/`Inf` thay vì trả lỗi rõ ràng.
@@ -107,18 +107,25 @@ Kiểm tra trực tiếp trên pod live: `payment-8447bf7668-zx4dj` → `readine
 Ngược lại, `grafana-7779557549-c7tvr` container `grafana` **có readinessProbe thật** (`httpGet /api/health`, `failureThreshold:3`) — đây là probe mặc định từ **subchart Bitnami**, hoàn toàn độc lập với `default.replicas`/template app chính mà R3 đang nói tới. 2 kết luận không hề mâu thuẫn — chỉ là 2 tầng khác nhau (app tự viết vs. subchart quan sát bên thứ 3). **R3 giữ nguyên, không cần sửa.**
 **Phát hiện quan trọng hơn từ lần verify này:** Grafana đang **restart thật, ngay lúc kiểm tra** (`BackOff restarting failed container`, `Readiness probe failed: connection refused` — cách đây 4 phút) — R13 không phải chuyện đã qua, đang **active ngay bây giờ**. Nên xử lý R13 sớm hơn dự kiến, có thể ngay trước Pitch nếu muốn demo Grafana ổn định cho hội đồng xem.
 
-### R13 — Grafana OOMKilled thật (restart=2, không phải giả định)
-**Bằng chứng:** pod `grafana-7779557549-c7tvr`, `Restart Count: 2`, `Last State: OOMKilled`, `Exit Code: 137`, `memory limit: 300Mi` / `request: 250Mi`, cộng thêm 3 sidecar (256Mi mỗi cái) chạy cùng pod.
-**Rủi ro:** Cao — Grafana là công cụ quan sát chính; nếu nó chết đúng lúc có incident, team mất khả năng nhìn hệ thống ngay lúc cần nhất.
+### R13 — 🔴 Grafana OOMKilled — ĐANG ACTIVE, dashboard chính hiện không dùng được (không phải giả định)
+**Bằng chứng (mới nhất, verify ~14:50 ICT 09/07):** pod `grafana-7779557549-c7tvr` hiện `CrashLoopBackOff`, `Restart Count: 9` (tăng liên tục trong ngày: 2 → 4 → 9), container chính `Ready: False`. `memory limit: 300Mi` / `request: 250Mi`, cộng thêm 3 sidecar (256Mi mỗi cái) chạy cùng pod. Chu kỳ sống giữa các lần crash đang **ngắn dần** (~3 phút ở lần gần nhất).
+**Rủi ro:** Cao, **đang xảy ra thật** — Grafana là công cụ quan sát chính; team hiện không có dashboard dùng được nếu có incident khác xảy ra cùng lúc.
 **Tác động business:** Gián tiếp nhưng nghiêm trọng — ảnh hưởng tốc độ phát hiện/phản ứng sự cố ở mọi luồng khác, không riêng 1 service.
-**Đề xuất:** Tăng memory limit Grafana lên tối thiểu 512Mi request / 1Gi limit trong Helm values (không patch tay runtime), rà lại số sidecar/dashboard đang bật, thêm alert riêng cho OOM/restart của chính Grafana.
+**Đề xuất:** Tăng memory limit Grafana lên tối thiểu 512Mi request / 1Gi limit trong Helm values (không patch tay runtime, và nhớ tăng **cả limits lẫn requests** — Kubernetes bắt buộc `requests ≤ limits`), rà lại số sidecar/dashboard đang bật, thêm alert riêng cho OOM/restart của chính Grafana.
 **Chi phí:** Rất thấp (chỉ đổi số trong values, thêm ~700Mi memory cho 1 pod).
 
-**Cập nhật (09/07, tối) — CDO02 verify độc lập, phát hiện thêm Jaeger cùng bị, cùng thời điểm:**
-Kiểm tra runtime riêng (chỉ `get`/`describe`, không đổi gì) xác nhận lại đúng số liệu Grafana ở trên (`Restart Count: 4` tại thời điểm check này, tăng thêm so với lần phucdo ghi — nghĩa là **đang lặp lại**, không phải 1 lần rồi thôi), và phát hiện thêm:
-- `jaeger-bbc8c79f5-6dl2v`: `Restart Count: 2`, `Last State: OOMKilled`, `Exit Code: 137`, `memory limit: 600Mi`, OOM lúc `07:17:58Z` — **cách thời điểm Grafana OOM (`07:17:04Z`) đúng 1 phút**. Trùng hợp thời gian gần như tuyệt đối giữa 2 service quan sát (Grafana + Jaeger) gợi ý **1 nguyên nhân chung** (spike tải/trace volume) chứ không phải 2 sự cố độc lập ngẫu nhiên.
-- Nghi vấn nguyên nhân: trùng ngày hệ thống được đưa ra public qua CloudFront (xem `infra/cloudfront.tf`) — có thể traffic/bot từ ngoài tạo thêm tải trace/dashboard mà limit cũ (đặt lúc chỉ có traffic nội bộ từ load-generator) chưa tính tới. Cần xác nhận bằng cách xem `otel-collector`/Jaeger span ingestion rate quanh khung giờ đó trước khi kết luận chắc chắn.
-**Đề xuất bổ sung:** đưa `jaeger.resources.limits.memory` (hiện 600Mi) vào cùng đợt review với Grafana ở R13, đo lại dựa trên traffic public thật thay vì giữ nguyên số đặt từ lúc còn nội bộ.
+**Cập nhật (09/07, verify lần 3 lúc ~14:50 ICT) — Grafana đang DOWN THẬT ngay lúc kiểm tra, không phải chuyện đã qua:**
+```
+grafana-7779557549-c7tvr   3/4   CrashLoopBackOff   9 (4m37s ago)   4h8m
+```
+`Restart Count` đã tăng liên tục qua 3 lần verify trong ngày: 2 → 4 → **9**. Container `grafana` hiện **Ready: False**, state `Waiting: CrashLoopBackOff` — nghĩa là dashboard **không dùng được ngay lúc này**, không phải "đã restart rồi ổn lại". Chu kỳ crash đang ngắn dần (lần gần nhất: start `14:46:24` → OOM `14:49:03`, chỉ sống được **~3 phút**).
+
+**Tương quan với Jaeger — đã xác nhận lặp lại lần 2, không còn là trùng hợp đơn lẻ:**
+- Lần 1 (trưa 09/07): Jaeger OOM `14:17:58 ICT` — Grafana OOM cùng khung giờ ~`14:17` — cách nhau ~1 phút.
+- Lần 2 (verify lúc 14:50 ICT, vừa kiểm tra): Jaeger crash lần 3 (`Restart Count: 3`, kết thúc chu kỳ trước lúc `14:48:44`) — Grafana OOM lần 9 kết thúc lúc `14:49:03` — **cách nhau chỉ 19 giây**.
+- 2 lần trùng khớp thời gian gần-tuyệt-đối giữa 2 service quan sát độc lập (Grafana, Jaeger — khác code, khác limit, khác pod) trong cùng 1 buổi là **bằng chứng đáng cân nhắc cho 1 nguyên nhân chung** (spike tải/trace volume dội vào cả 2 cùng lúc), dù chưa đủ để khẳng định chắc chắn nếu chưa đối chiếu trực tiếp với ingestion rate của `otel-collector`.
+- Nghi vấn nguyên nhân (chưa xác nhận): hệ thống đã public qua CloudFront (`infra/cloudfront.tf`, domain thật đã deploy: `cloudfront_domain_name` có giá trị) — có thể traffic/bot từ ngoài tạo thêm tải trace/dashboard mà limit cũ (đặt lúc chỉ có traffic nội bộ từ load-generator) chưa tính tới. **Cần xem `otel-collector`/Jaeger span ingestion rate quanh 2 khung giờ trên trước khi kết luận chắc chắn** — chưa làm được trong lần verify này.
+**Đề xuất bổ sung:** đưa `jaeger.resources.limits.memory` (hiện 600Mi) vào cùng đợt review với Grafana ở R13, đo lại dựa trên traffic public thật thay vì giữ nguyên số đặt từ lúc còn nội bộ. Vì Grafana đang down thật — **đây là ví dụ sống chứng minh R15 (thiếu alerting) đang gây hại thật**: không ai biết dashboard chính đang chết nếu không tự tay `kubectl get pods` kiểm tra.
 
 ### R14 — `product-catalog` có crash history thật (restart=3, `Error`, không phải suy đoán)
 **Bằng chứng:** pod `product-catalog-d769b79c4-j7wp7`, `Restart Count: 3`, `Last Reason: Error`, `Exit Code: 1`, `memory limit: 20Mi`, `GOMEMLIMIT: 16MiB`.
@@ -126,12 +133,6 @@ Kiểm tra runtime riêng (chỉ `get`/`describe`, không đổi gì) xác nhậ
 **Tác động business:** Cao — cùng service với R5 (thiếu connection pool Postgres); crash lặp lại làm tăng khả năng mất availability đúng lúc tải cao.
 **Đề xuất:** Lấy log `--previous` ngay lần crash tiếp theo để xác định nguyên nhân chính xác (nhiều khả năng liên quan memory 20Mi quá thấp, cộng hưởng với R5); tăng memory limit hợp lý dựa trên số liệu thay vì đoán; ưu tiên làm cùng đợt với R6/R7.
 **Chi phí:** Rất thấp (đổi số memory limit) + thời gian điều tra log.
-
-### R10 (mở rộng) — Thiếu persistence không chỉ ở `valkey-cart`, mà cả Postgres và Kafka
-**Bằng chứng mới:** `kubectl get pv,pvc -A` → **không có PV/PVC nào trong toàn cluster**. Nghĩa là ngoài `valkey-cart` (đã ghi ở R10 gốc), **Postgres và Kafka cũng hoàn toàn không có persistent storage** — restart pod của 1 trong 2 datastore này có thể mất toàn bộ dữ liệu sản phẩm/review/đơn hàng đã ghi (`accounting`) hoặc dữ liệu đang trong hàng đợi Kafka.
-**Tác động business:** Rất cao nếu xảy ra ở Postgres/Kafka (mất dữ liệu vĩnh viễn, không chỉ tạm thời như giỏ hàng Valkey) — nhưng đúng như R8 đã ghi, đây có thể là phạm vi của mandate migrate-sang-managed-DB sắp tới từ BTC.
-**Đề xuất:** Làm `valkey-cart` trước (chi phí thấp, ít rủi ro). Với Postgres/Kafka — **ghi rõ đây là accepted risk có ý thức** trong ADR, không tự ý thêm PVC lớn ngay nếu nghi sắp có mandate managed-DB (tránh làm 2 lần).
-**Chi phí:** Thấp cho Valkey; trung bình-cao cho Postgres/Kafka nếu tự làm PVC (và có thể phí công nếu mandate managed-DB đến ngay sau).
 
 ### R15 — Không có alerting cho restart/OOM/readiness fail (gap Observability/Operational Excellence)
 **Bằng chứng:** Toàn bộ 3 phát hiện trên (Grafana OOM, product-catalog crash, readiness fail) đều bị phát hiện **thủ công** qua `describe`/`events`, không qua alert nào. `kubectl get pdb -A` chỉ thấy PDB cho `coredns` và `opensearch-pdb` — không có PDB nào bảo vệ checkout path.
