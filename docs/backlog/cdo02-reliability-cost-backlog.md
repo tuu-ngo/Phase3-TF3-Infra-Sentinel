@@ -98,6 +98,45 @@ Lúc đọc code tĩnh (`techx-corp-chart/values.yaml`), tôi từng kết luậ
 
 ---
 
+## Bổ sung (09/07, chiều) — đối chiếu evidence runtime từ phucdo (đọc read-only qua SSM bastion, ~12:10-12:20 ICT)
+
+Đợt kiểm tra runtime độc lập (không `apply`/`patch`/`scale`, chỉ `get`/`describe`/`events`) xác nhận lại nhiều mục sẵn có (R1, R7/C2/C4) và phát hiện thêm các điểm mới dưới đây. Nguồn: `backlog-runtime-2026-07-09.md` + chứng thực lần 2 cùng ngày.
+
+### ⚠️ CẦN VERIFY GẤP TRƯỚC PITCH — mâu thuẫn giữa R3 và evidence runtime
+R3 (ở trên) kết luận "không có readinessProbe/livenessProbe nào được cấu hình cho bất kỳ component nào", dựa trên đọc tĩnh `values.yaml`. Nhưng evidence runtime mới thấy **warning event thật**: `payment Readiness probe failed: timeout connect service 8080` và `grafana Readiness probe failed: connect refused`. Về logic, **không thể có warning "Readiness probe failed" nếu thực sự không có probe nào được cấu hình** — 2 kết luận không thể cùng đúng.
+**Việc cần làm ngay (trước khi đưa R3 lên Pitch):** chạy `kubectl -n techx-tf3 get pod <payment-pod> -o yaml | grep -A6 readinessProbe` (và tương tự cho vài service khác) để xác nhận thực tế — có thể R3 chỉ đúng cho một phần service (Grafana là subchart Bitnami có probe riêng, độc lập với `default.replicas` app components), cần làm rõ trước khi trình bày kẻo bị hội đồng (vai SRE) bắt bẻ vì đưa kết luận sai.
+
+### R13 — Grafana OOMKilled thật (restart=2, không phải giả định)
+**Bằng chứng:** pod `grafana-7779557549-c7tvr`, `Restart Count: 2`, `Last State: OOMKilled`, `Exit Code: 137`, `memory limit: 300Mi` / `request: 250Mi`, cộng thêm 3 sidecar (256Mi mỗi cái) chạy cùng pod.
+**Rủi ro:** Cao — Grafana là công cụ quan sát chính; nếu nó chết đúng lúc có incident, team mất khả năng nhìn hệ thống ngay lúc cần nhất.
+**Tác động business:** Gián tiếp nhưng nghiêm trọng — ảnh hưởng tốc độ phát hiện/phản ứng sự cố ở mọi luồng khác, không riêng 1 service.
+**Đề xuất:** Tăng memory limit Grafana lên tối thiểu 512Mi request / 1Gi limit trong Helm values (không patch tay runtime), rà lại số sidecar/dashboard đang bật, thêm alert riêng cho OOM/restart của chính Grafana.
+**Chi phí:** Rất thấp (chỉ đổi số trong values, thêm ~700Mi memory cho 1 pod).
+
+### R14 — `product-catalog` có crash history thật (restart=3, `Error`, không phải suy đoán)
+**Bằng chứng:** pod `product-catalog-d769b79c4-j7wp7`, `Restart Count: 3`, `Last Reason: Error`, `Exit Code: 1`, `memory limit: 20Mi`, `GOMEMLIMIT: 16MiB`.
+**Rủi ro:** Cao — đây là service nằm thẳng trên đường business chính (danh mục sản phẩm), memory limit 20Mi rất thấp, khớp với nhóm service đã cảnh báo ở R6 nhưng giờ có bằng chứng crash thật, không còn là suy đoán.
+**Tác động business:** Cao — cùng service với R5 (thiếu connection pool Postgres); crash lặp lại làm tăng khả năng mất availability đúng lúc tải cao.
+**Đề xuất:** Lấy log `--previous` ngay lần crash tiếp theo để xác định nguyên nhân chính xác (nhiều khả năng liên quan memory 20Mi quá thấp, cộng hưởng với R5); tăng memory limit hợp lý dựa trên số liệu thay vì đoán; ưu tiên làm cùng đợt với R6/R7.
+**Chi phí:** Rất thấp (đổi số memory limit) + thời gian điều tra log.
+
+### R10 (mở rộng) — Thiếu persistence không chỉ ở `valkey-cart`, mà cả Postgres và Kafka
+**Bằng chứng mới:** `kubectl get pv,pvc -A` → **không có PV/PVC nào trong toàn cluster**. Nghĩa là ngoài `valkey-cart` (đã ghi ở R10 gốc), **Postgres và Kafka cũng hoàn toàn không có persistent storage** — restart pod của 1 trong 2 datastore này có thể mất toàn bộ dữ liệu sản phẩm/review/đơn hàng đã ghi (`accounting`) hoặc dữ liệu đang trong hàng đợi Kafka.
+**Tác động business:** Rất cao nếu xảy ra ở Postgres/Kafka (mất dữ liệu vĩnh viễn, không chỉ tạm thời như giỏ hàng Valkey) — nhưng đúng như R8 đã ghi, đây có thể là phạm vi của mandate migrate-sang-managed-DB sắp tới từ BTC.
+**Đề xuất:** Làm `valkey-cart` trước (chi phí thấp, ít rủi ro). Với Postgres/Kafka — **ghi rõ đây là accepted risk có ý thức** trong ADR, không tự ý thêm PVC lớn ngay nếu nghi sắp có mandate managed-DB (tránh làm 2 lần).
+**Chi phí:** Thấp cho Valkey; trung bình-cao cho Postgres/Kafka nếu tự làm PVC (và có thể phí công nếu mandate managed-DB đến ngay sau).
+
+### R15 — Không có alerting cho restart/OOM/readiness fail (gap Observability/Operational Excellence)
+**Bằng chứng:** Toàn bộ 3 phát hiện trên (Grafana OOM, product-catalog crash, readiness fail) đều bị phát hiện **thủ công** qua `describe`/`events`, không qua alert nào. `kubectl get pdb -A` chỉ thấy PDB cho `coredns` và `opensearch-pdb` — không có PDB nào bảo vệ checkout path.
+**Rủi ro:** Cao — team chỉ biết sự cố khi soi tay hoặc khi khách hàng/UI đã lỗi rõ, không có cảnh báo sớm.
+**Tác động business:** Cao — ảnh hưởng trực tiếp tốc độ MTTR (mean time to recovery) cho mọi sự cố khác, kể cả sự cố BTC bơm vào qua flagd.
+**Đề xuất:** Thêm Grafana alert rule cho: restart count tăng, OOMKilled, readiness probe fail liên tục >N phút, service checkout path unavailable. Có thể tận dụng `grafana/provisioning/alerting/` đã có sẵn structure cho `cart-service-alerting.yml` làm mẫu, nhân rộng ra service khác.
+**Chi phí:** Thấp — chỉ cấu hình alert rule trong Grafana, không cần thêm hạ tầng mới.
+
+**Cross-check với công việc hôm nay:** phucdo xác nhận độc lập việc `metrics-server` đang **không** tồn tại trong cluster (`kubectl top nodes` → `Metrics API not available`) — khớp với việc chính CDO02 đã tự cài thử rồi gỡ trong phiên làm việc sáng nay. Không phải phát hiện mới, chỉ là xác nhận chéo trạng thái hiện tại.
+
+---
+
 ## COST OPTIMIZATION
 
 ### C1 — Không còn cơ chế dọn image cũ trên ECR (lifecycle policy đã bị xoá do sự cố)
@@ -140,17 +179,21 @@ Quyết định kiến trúc ban đầu đã chọn 1 NAT Gateway thay vì 3, ti
 
 ## Thứ tự đề xuất thực thi (không làm hết được, phải chọn)
 
+0. **⚠️ Verify mâu thuẫn R3 vs. evidence runtime** (readiness probe warning event tồn tại dù R3 nói "không có probe nào") — làm **trước tiên**, trước cả khi lên Pitch, vì ảnh hưởng tính chính xác của R2/R3 lúc trình bày.
 1. **R2 + R3** (sửa health check thật + thêm probe) — nền tảng, chi phí thấp, vá đúng INC-3.
-2. **R1** (tăng replicas + PDB nhóm checkout) — tác động business cao nhất, chi phí thấp.
+2. **R1** (tăng replicas + PDB nhóm checkout) — tác động business cao nhất, chi phí thấp. Làm cùng lúc: thêm PDB thật (hiện chỉ có PDB cho `coredns`/`opensearch`, chưa có cho checkout path — evidence runtime xác nhận).
 3. **R9** (Kafka ack + accounting manual commit) — rủi ro **mất đơn hàng âm thầm hoàn toàn**, nặng hơn R4 về hậu quả, chi phí thấp, xếp ngang hàng R5.
-4. **R5** (connection pool) — vá đúng INC-1, chi phí thấp.
-5. **R4** (rollback checkout) — rủi ro tài chính trực tiếp, chi phí thấp.
-6. **R7** (CPU requests/limits) — nền tảng bắt buộc cho C2/C4.
-7. **C1** (sửa lại lifecycle policy đúng cách) — dọn nợ tự gây ra.
-8. **C2** (Cluster Autoscaler thật) — tiết kiệm chi phí đo được ngay.
-9. **C6** (áp ResourceQuota) — làm sau R1+R7.
-10. **C3** (Spot) — chỉ sau khi R1 xong.
-11. **R10** (Valkey persistence) — làm cùng đợt với R1 (đụng cùng service `valkey-cart`).
-12. **R6, C4, C5, R11, R12** — làm khi còn thời gian, giá trị/mức nghiêm trọng thấp hơn nhóm trên (R11/R12 chỉ vài dòng code, có thể tranh thủ chèn vào bất kỳ ngày nào rảnh tay).
+4. **R14** (product-catalog crash history — restart=3 thật) — ưu tiên cao vì đã có bằng chứng crash thật, không còn là suy đoán như R6; làm cùng đợt với R5/R7 vì cùng service.
+5. **R5** (connection pool) — vá đúng INC-1, chi phí thấp.
+6. **R13** (Grafana OOMKilled thật, restart=2) — chi phí rất thấp (chỉ đổi số memory), ảnh hưởng tới khả năng quan sát mọi sự cố khác nên nên làm sớm.
+7. **R4** (rollback checkout) — rủi ro tài chính trực tiếp, chi phí thấp.
+8. **R7** (CPU requests/limits) — nền tảng bắt buộc cho C2/C4.
+9. **C1** (sửa lại lifecycle policy đúng cách) — dọn nợ tự gây ra.
+10. **C2** (Cluster Autoscaler thật) — tiết kiệm chi phí đo được ngay.
+11. **R15** (alerting restart/OOM/readiness) — chi phí thấp, tận dụng structure alerting có sẵn (`cart-service-alerting.yml` làm mẫu); nên làm sau khi R1/R13/R14 ổn định để alert có ý nghĩa (tránh alert nhiễu lúc hệ thống chưa vá).
+12. **C6** (áp ResourceQuota) — làm sau R1+R7.
+13. **C3** (Spot) — chỉ sau khi R1 xong.
+14. **R10** (Valkey persistence — đã mở rộng phạm vi, xem bản cập nhật 09/07) — làm cùng đợt với R1. Phần Postgres/Kafka trong R10 mở rộng: **ghi accepted risk**, không tự làm PVC lớn nếu nghi sắp có mandate managed-DB.
+15. **R6, C4, C5, R11, R12** — làm khi còn thời gian, giá trị/mức nghiêm trọng thấp hơn nhóm trên (R11/R12 chỉ vài dòng code, có thể tranh thủ chèn vào bất kỳ ngày nào rảnh tay).
 
-**Cố ý bỏ ở Tuần 1:** R8 (migrate datastore) — chờ xem có thành mandate BTC không trước khi tự đầu tư công sức lớn.
+**Cố ý bỏ ở Tuần 1:** R8 (migrate datastore, kể cả phần Postgres/Kafka mở rộng trong R10) — chờ xem có thành mandate BTC không trước khi tự đầu tư công sức lớn.
