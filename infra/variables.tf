@@ -11,9 +11,15 @@ variable "cluster_name" {
 }
 
 variable "cluster_version" {
-  description = "Kubernetes version for the EKS control plane"
+  description = <<-EOT
+    Kubernetes version for the EKS control plane. Live cluster is on 1.32 -
+    someone upgraded it directly (console/eksctl) outside Terraform on or
+    before 09/07. Set to match reality so `terraform plan` doesn't propose
+    downgrading it (EKS doesn't support version downgrades - that apply
+    would likely fail or, worse, get stuck mid-upgrade).
+  EOT
   type        = string
-  default     = "1.31"
+  default     = "1.32"
 }
 
 variable "vpc_cidr" {
@@ -75,4 +81,16 @@ variable "eks_admin_principal_arns" {
   description = "IAM user/role ARNs (TF3 members) that should get EKS cluster-admin access entries"
   type        = list(string)
   default     = []
+}
+
+variable "frontend_alb_dns_name" {
+  description = <<-EOT
+    DNS name of the ALB created by the AWS Load Balancer Controller for the
+    frontend-proxy Ingress (`kubectl get ingress -n techx-tf3`). Not
+    Terraform-managed (the Ingress controller creates/owns the ALB), so this
+    is passed in manually. Only changes if the Ingress resource is deleted
+    and recreated (rare - a `helm upgrade` alone does not recreate it).
+  EOT
+  type        = string
+  default     = "k8s-techxtf3-frontend-3153771b08-570141225.ap-southeast-1.elb.amazonaws.com"
 }

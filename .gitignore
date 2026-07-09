@@ -37,3 +37,5 @@ infra/terraform.tfvars
 Thumbs.db
 .idea/
 .vscode/
+
+infra/tfplan-*
