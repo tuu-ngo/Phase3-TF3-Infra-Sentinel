@@ -4,7 +4,8 @@ from langchain_core.tools import tool
 import protos.demo_pb2 as demo_pb2
 import protos.demo_pb2_grpc as demo_pb2_grpc
 
-RECO_ADDR = "localhost:8080"
+import os
+RECO_ADDR = os.getenv("RECO_ADDR", "recommendation:8080")
 
 @tool
 def get_recommendations_tool(product_id: str, user_id: str = "default_user") -> str:

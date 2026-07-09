@@ -5,7 +5,8 @@ import protos.demo_pb2 as demo_pb2
 import protos.demo_pb2_grpc as demo_pb2_grpc
 
 # Ánh xạ theo cổng port-forward 9090 bạn đã thiết lập cho productreviews trên EKS Cluster
-REVIEWS_ADDR = "localhost:3551"
+import os
+REVIEWS_ADDR = os.getenv("REVIEWS_ADDR", "product-reviews:9090")
 
 @tool
 def get_product_reviews_tool(product_id: str) -> str:

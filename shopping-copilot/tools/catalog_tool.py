@@ -6,7 +6,8 @@ import protos.demo_pb2_grpc as demo_pb2_grpc
 
 # Địa chỉ mặc định hướng về port-forward local ở tuần 1
 # Khi lên cluster ở tuần 2, CDO sẽ đổi thành: "product-catalog.techx-tf3.svc.cluster.local:3550"
-CATALOG_ADDR = "localhost:3550"
+import os
+CATALOG_ADDR = os.getenv("CATALOG_ADDR", "product-catalog:3550")
 
 @tool
 def search_products_tool(query: str) -> str:

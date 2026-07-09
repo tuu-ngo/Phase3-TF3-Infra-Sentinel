@@ -13,7 +13,8 @@ except ImportError:
     # Nếu file confirmation.py trống hoặc thiếu hàm -> Chế độ Testing
     HAS_CONFIRMATION_SYSTEM = False
 
-CART_ADDR = "localhost:7070"
+import os
+CART_ADDR = os.getenv("CART_ADDR", "cart:7070")
 
 @tool
 def add_to_cart_tool(user_id: str, product_id: str, quantity: int) -> str:

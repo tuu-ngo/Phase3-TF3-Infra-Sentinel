@@ -3,7 +3,8 @@ import requests
 from langchain_core.tools import tool
 
 # Endpoint for the REST service, mapped via port-forward 50051:50051
-SHIPPING_REST_ADDR = "http://localhost:50051"
+import os
+SHIPPING_REST_ADDR = os.getenv("SHIPPING_ADDR", "http://shipping:50051")
 
 @tool
 def get_shipping_quote_tool(street: str, city: str, country: str, zip_code: str, state: str = "") -> str:

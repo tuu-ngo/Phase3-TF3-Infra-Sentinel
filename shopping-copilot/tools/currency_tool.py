@@ -5,7 +5,8 @@ import protos.demo_pb2 as demo_pb2
 import protos.demo_pb2_grpc as demo_pb2_grpc
 
 # Cổng port-forward 7001 bạn đã thiết lập cho dịch vụ currency trên EKS Cluster
-CURRENCY_ADDR = "localhost:7001"
+import os
+CURRENCY_ADDR = os.getenv("CURRENCY_ADDR", "currency:7001")
 
 @tool
 def convert_currency_tool(from_currency: str, to_currency: str, amount_units: int) -> str:
