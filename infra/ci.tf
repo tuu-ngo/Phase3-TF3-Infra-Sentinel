@@ -92,8 +92,17 @@ resource "aws_iam_role" "terraform_apply" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
+        # A job that sets `environment: production` gets a sub claim of
+        # repo:OWNER/REPO:environment:production - NOT ref:refs/heads/main,
+        # even though the workflow only triggers on push to main. Both forms
+        # are listed so this still only fires for the apply workflow (which
+        # requires the "production" environment approval) or a direct push
+        # to main for any job that doesn't use an environment.
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:${local.github_repo}:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub" = [
+            "repo:${local.github_repo}:ref:refs/heads/main",
+            "repo:${local.github_repo}:environment:production",
+          ]
         }
       }
     }]
