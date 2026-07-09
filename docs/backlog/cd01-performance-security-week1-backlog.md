@@ -464,7 +464,7 @@ App images:
 
 External images:
 postgres:17.6
-valkey/valkey:9.0.1-alpine3.23
+valkey/valkey, tag 9.0.1-alpine3.23
 docker.io/grafana/grafana:13.0.1
 jaegertracing/jaeger:2.17.0
 quay.io/prometheus/prometheus:v3.11.3
