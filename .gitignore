@@ -3,6 +3,7 @@
 # file instead of editing the tracked template in place.
 *.local.yaml
 *.secret.yaml
+*.local.md
 values-flagd-sync.local.yaml
 kubeconfig*
 *.kubeconfig
