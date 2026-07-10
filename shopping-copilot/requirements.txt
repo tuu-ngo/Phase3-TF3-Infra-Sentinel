@@ -12,6 +12,16 @@ langchain-core>=0.3.0
 # Groq provider — LLM inference nhanh, dùng trong Agent
 langchain-groq>=0.1.0
 
+# Groq API client
+groq>=0.9.0
+
+# ══════════════════════════════════════
+# Search & Matching
+# ══════════════════════════════════════
+
+# Fuzzy string matching (query autocorrect, typo tolerance)
+rapidfuzz>=3.0.0
+
 # ══════════════════════════════════════
 # gRPC — Kết nối microservices TechX Corp (ProductCatalog, Cart)
 # ══════════════════════════════════════

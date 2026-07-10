@@ -257,6 +257,52 @@ class CacheStore:
             "stats": self.stats(),
         }
 
+    def get_raw(self, cache_key: str) -> Optional[Any]:
+        """
+        Get raw cached value by cache key (raw string key, not tool_name/params).
+        Used for generic caching (e.g., LLM parse results).
+        """
+        entry = self._store.get(cache_key)
+        if entry is None:
+            return None
+        
+        # Check TTL
+        if _now_ts() > entry.get("expires_at_ts", 0):
+            del self._store[cache_key]
+            return None
+        
+        # LRU: move to end
+        self._store.move_to_end(cache_key)
+        entry["hit_count"] = entry.get("hit_count", 0) + 1
+        return entry.get("value")
+
+    def set_raw(self, cache_key: str, value: Any, ttl: int = 300) -> None:
+        """
+        Set raw cached value by cache key with TTL.
+        Used for generic caching (e.g., LLM parse results).
+        
+        Args:
+            cache_key: Arbitrary cache key string
+            value: Value to cache (typically dict or str)
+            ttl: Time-to-live in seconds (default 300s = 5 min)
+        """
+        expires_ts = _now_ts() + ttl
+        self._store[cache_key] = {
+            "cache_key": cache_key,
+            "value": value,
+            "cached_at": _now_iso(),
+            "expires_at_ts": expires_ts,
+            "expires_at": datetime.fromtimestamp(expires_ts, timezone.utc).isoformat(),
+            "hit_count": 0,
+            "ttl_seconds": ttl,
+        }
+        self._store.move_to_end(cache_key)
+        
+        # LRU eviction
+        while len(self._store) > _CACHE_MAX_ENTRIES:
+            evicted_key, _ = self._store.popitem(last=False)
+            logger.debug("[CACHE] LRU evict raw | key=%s", evicted_key)
+
     # ── Private ──
 
     @staticmethod
