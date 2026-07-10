@@ -58,6 +58,24 @@ CDO02 vừa dựng xong CloudFront (`infra/cloudfront.tf`) trước ALB — như
 
 ---
 
+## SLO hiện tại — đo trực tiếp qua Prometheus (10/07, ~09:28 ICT)
+
+Đo đúng công thức trong `SLO.md` (cửa sổ rolling 24h), query trực tiếp `traces_span_metrics_calls_total`/`traces_span_metrics_duration_milliseconds_bucket` qua Prometheus port-forward — không phải ước tính.
+
+| Luồng | SLO yêu cầu | Đo được (rolling 24h) | Kết quả |
+|---|---|---|---|
+| Duyệt sản phẩm (non-5xx) | ≥ 99.5% | **99.74%** | ✅ Đạt |
+| Duyệt sản phẩm (p95 latency) | < 1000ms | **58.8ms** | ✅ Đạt rất thoải mái |
+| Giỏ hàng | ≥ 99.5% | **~100%** (0 lỗi / 298.339 request) | ✅ Đạt |
+| **Checkout** | **≥ 99.0%** | **98.96%** (143.247 OK + 1.501 lỗi / 144.748 tổng) | 🔴 **VI PHẠM SLO** |
+
+**🔴 Checkout vi phạm SLO — đã điều tra ra nguyên nhân gốc, đã tự phục hồi:**
+Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn vào đúng khung `02:28-06:28 UTC` ngày 09/07** — trước và sau khung đó là **0 lỗi hoàn toàn** (đã sạch liên tục ~20 giờ tính đến lúc đo). Đối chiếu thời gian: khung lỗi này **trùng khớp chính xác** với đợt rolling-replace 3 node do `terraform apply` (PR #17 merge) gây ra lúc `03:43-03:54 UTC` — hệ quả phụ của việc đồng bộ K8s version node group 1.31→1.32 để khớp control plane.
+
+**Ý nghĩa cho Pitch:** đây là **bằng chứng định lượng đầu tiên, thực đo, không phải suy luận**, chứng minh trực tiếp REL-01/P03 (thiếu replicas + PDB) — 1.511 request checkout của khách hàng thật đã lỗi vì không có bản dự phòng đúng lúc node bị thay. Vì cửa sổ đo rolling 24h, số 98.96% sẽ tự "sạch" dần về ~100% trong vài giờ tới khi khung lỗi trôi khỏi cửa sổ — **dùng ngay số liệu này trong Pitch trước khi nó tự trôi qua**, đừng chờ tới lúc SLO đã "xanh" trở lại rồi mới trình bày.
+
+---
+
 ## RELIABILITY
 
 ## REL-01 — Tăng replicas ≥2 cho nhóm checkout + thêm PodDisruptionBudget
@@ -65,12 +83,13 @@ CDO02 vừa dựng xong CloudFront (`infra/cloudfront.tf`) trước ALB — như
 
 - *Evidence:*
   `techx-corp-chart/values.yaml`: `default.replicas: 1` áp dụng toàn bộ ~18 app component, không override cho `cart`/`checkout`/`payment`/`currency`/`product-catalog`/`shipping`. Xác nhận lại trên runtime (evidence chéo từ phucdo, 09/07): `kubectl -n techx-tf3 get deploy` — toàn bộ deployment app đang `DESIRED=1`/`AVAILABLE=1`. `kubectl get pdb -A` chỉ thấy PDB cho `coredns` và `opensearch-pdb` — **không có PDB nào bảo vệ checkout path**.
+  **Bằng chứng định lượng mới (10/07, đo qua Prometheus):** checkout success rate rolling-24h đo được **98.96%** (144.748 request, 1.501 lỗi) — **vi phạm SLO ≥99.0%**. Bẻ nhỏ theo khung 2h xác nhận toàn bộ 1.511 lỗi dồn vào đúng khung `02:28-06:28 UTC` 09/07, trùng khớp chính xác với đợt rolling-replace 3 node do `terraform apply` gây ra (`03:43-03:54 UTC`, PR #17). Trước/sau khung đó: 0 lỗi. Đây là bằng chứng thực đo đầu tiên, không phải suy luận từ INC-2 nữa.
 - *Ảnh hưởng khách hàng:*
-  1 pod chết (crash, node drain, OOM) = mất hoàn toàn 1 chặng trong luồng mua hàng trong lúc pod restart (vài giây tới vài chục giây tùy readiness). Khách đang ở giữa flow checkout gặp lỗi 5xx hoặc timeout.
+  1 pod chết (crash, node drain, OOM) = mất hoàn toàn 1 chặng trong luồng mua hàng trong lúc pod restart (vài giây tới vài chục giây tùy readiness). Khách đang ở giữa flow checkout gặp lỗi 5xx hoặc timeout. **Đã xảy ra thật 09/07: 1.511 request checkout lỗi trong ~4 giờ.**
 - *Rủi ro (khả năng × mức nghiêm trọng):*
-  Khả năng cao (đã từng xảy ra thật ở INC-2) × nghiêm trọng cao (đụng thẳng luồng ra tiền) = **P0**.
+  Khả năng cao (đã từng xảy ra thật ở INC-2, **và lần 2 vừa đo được 09/07**) × nghiêm trọng cao (đụng thẳng luồng ra tiền) = **P0**.
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
-  Checkout SLO ≥99% (`SLO.md`) — mất 1 pod trong nhóm checkout trực tiếp đe dọa ngưỡng này. INC-2 đã xảy ra thật vì đúng nguyên nhân này (xem `INCIDENT_HISTORY.md`).
+  Checkout SLO ≥99% (`SLO.md`) — **đã thực sự bị vi phạm** (98.96% đo được 10/07 sáng, cửa sổ rolling 24h sẽ tự sạch lại trong vài giờ tới nhưng sự việc đã xảy ra thật). INC-2 đã xảy ra thật vì đúng nguyên nhân này trước đó (xem `INCIDENT_HISTORY.md`) — sự kiện 09/07 là lần lặp lại thứ 2, lần này do chính hạ tầng CDO02 vận hành (node version sync) kích hoạt, không phải lỗi ứng dụng.
 - *Giải pháp đề xuất:*
   Set `replicas: 2` cho `cart`, `checkout`, `payment`, `currency`, `product-catalog`, `shipping` trong values override; thêm `PodDisruptionBudget` (`minAvailable: 1`) cho từng service này; cân nhắc `topologySpreadConstraints` để tránh 2 pod cùng node.
 - *Chi phí / effort:*
@@ -372,6 +391,26 @@ CDO02 vừa dựng xong CloudFront (`infra/cloudfront.tf`) trước ALB — như
 - *Rollback / nếu làm sai:*
   Tắt/xóa alert rule qua Grafana provisioning nếu gây nhiễu (false positive quá nhiều) — phát hiện ngay lập tức qua số lượng alert bất thường.
 
+## REL-16 — 🔴 Kafka OOMKilled thật (10/07 sáng) — near-miss thật cho REL-09/REL-10, không còn là rủi ro lý thuyết
+*Trụ:* Reliability · *Ưu tiên đề xuất:* P0 · *Owner:* Chưa gán
+
+- *Evidence:*
+  Verify trực tiếp sáng 10/07 (~08:36 ICT): pod `kafka-776b98df67-sv54c` — `Last State: OOMKilled`, `Exit Code: 137`, `memory limit: 700Mi` / `request: 700Mi` (QoS Guaranteed). Chạy ổn định **~21.5 giờ liên tục** (`Started: Thu 09 Jul 10:48:24` → `Finished: Fri 10 Jul 08:16:20`) trước khi OOM — không phải crash ngay lúc khởi động như REL-14, mà là **memory tăng dần theo thời gian rồi tràn** (pattern khác hẳn, gợi ý leak hoặc thiếu cấu hình retention/cleanup cho broker). Restart lúc `08:16:21`, quan sát lúc `08:36` đã lên lại `Running` bình thường, `Restart Count: 1`.
+- *Ảnh hưởng khách hàng:*
+  Nếu đúng lúc OOM có đơn hàng đang nằm trong topic `orders` chưa được `accounting`/`fraud-detection` consume kịp — **đơn đó mất vĩnh viễn, không có cách nào truy lại**, trong khi khách đã có thể bị charge tiền (qua `payment`) trước đó trong luồng `checkout`.
+- *Rủi ro (khả năng × mức nghiêm trọng):*
+  Khả năng đã xảy ra thật (không phải giả định) × nghiêm trọng rất cao (đúng kịch bản tệ nhất mà REL-09 mô tả, cộng thêm mất dữ liệu vĩnh viễn vì REL-10) = **P0**.
+- *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
+  Đây là **bằng chứng sống (near-miss)** biến 2 rủi ro lý thuyết đã ghi (REL-09: fire-and-forget ack + auto-commit sớm; REL-10: Kafka không có PVC) thành 1 sự cố suýt xảy ra thật trong ngày — nâng độ khẩn cấp của cả 2 mục đó lên đáng kể, không chỉ của riêng REL-16.
+- *Giải pháp đề xuất:*
+  Ngắn hạn: tăng `kafka.resources.limits.memory` (hiện 700Mi) có kiểm soát, đo theo pattern tăng dần trong ~21h qua Grafana (nếu có số liệu Prometheus lưu lại) thay vì đoán số mới. Trung hạn: kiểm tra cấu hình retention/log segment cleanup của KRaft broker (`log.retention.*`, `log.segment.bytes`) — nghi đây là nguyên nhân memory tăng dần chứ không phải traffic đột biến. Phụ thuộc REL-09 (đổi ack + manual commit) để giảm thiệt hại nếu OOM tái diễn trước khi vá được nguyên nhân gốc.
+- *Chi phí / effort:*
+  Thấp cho việc tăng memory tạm thời (~15 phút). Trung bình cho điều tra cấu hình retention (~1-2 giờ, cần đọc kỹ Kafka broker config trong `values.yaml`).
+- *Acceptance criteria:*
+  Kafka chạy ổn định ≥48 giờ không OOM sau khi điều chỉnh; nếu vẫn OOM, có số liệu Prometheus xác nhận pattern tăng dần để loại trừ nguyên nhân traffic đột biến.
+- *Rollback / nếu làm sai:*
+  `helm upgrade` trả memory limit về 700Mi. Phát hiện qua `kubectl get pods` restart count tăng — vài phút. **Lưu ý:** mỗi lần Kafka pod restart (kể cả do rollback) vẫn mất toàn bộ message đang lưu (chưa vá REL-10) — cân nhắc thời điểm ít traffic nếu phải restart thủ công.
+
 ---
 
 ## COST OPTIMIZATION
@@ -456,23 +495,23 @@ CDO02 vừa dựng xong CloudFront (`infra/cloudfront.tf`) trước ALB — như
 - *Rollback / nếu làm sai:*
   `terraform apply` với `node_instance_type` cũ nếu instance mới không đủ tải — cần ADR trước khi đổi vì đây là thay đổi tốn tiền theo `BUDGET.md`.
 
-## COST-05 — Giảm memory limit `load-generator` nếu không cần thiết
-*Trụ:* Cost Optimization · *Ưu tiên đề xuất:* P2 · *Owner:* Chưa gán
+## COST-05 — ⚠️ Đính chính: `load-generator` đã OOMKilled thật ở 1500Mi — KHÔNG giảm, cần điều tra trước
+*Trụ:* Cost Optimization / Reliability · *Ưu tiên đề xuất:* P2 (giữ nguyên mức, nhưng đổi hướng giải pháp) · *Owner:* Chưa gán
 
 - *Evidence:*
-  `load-generator` được cấp 1500Mi memory — cao bất thường, chiếm ~17% tổng memory limit cộng dồn toàn hệ thống.
+  `load-generator` được cấp 1500Mi memory — ban đầu đánh giá là "cao bất thường" (~17% tổng memory limit cộng dồn). **Cập nhật 10/07 (đo qua Prometheus/kubectl):** pod đã **OOMKilled thật** (`Exit Code 137`, restart cách đây 16h tính tới lúc kiểm tra) — nghĩa là 1500Mi **không hề dư, thậm chí có thể không đủ** dưới tải nhất định. Kết luận ban đầu (COST-05 gốc) **sai hướng**.
 - *Ảnh hưởng khách hàng:*
-  Không ảnh hưởng — đây là bot giả lập traffic, không phục vụ khách thật.
+  Không ảnh hưởng trực tiếp (bot giả lập traffic, không phục vụ khách thật) — nhưng nếu `load-generator` chết giữa lúc đang tạo tải cho 1 bài test/demo (VD lúc Pitch), kết quả benchmark sẽ sai lệch.
 - *Rủi ro (khả năng × mức nghiêm trọng):*
-  Khả năng thấp-trung bình × nghiêm trọng thấp = **P2**.
+  Khả năng đã xảy ra thật (không còn giả định) × nghiêm trọng thấp (không đụng khách hàng) = **P2**, nhưng **đổi hẳn hướng giải pháp** — không được tự ý giảm limit nữa.
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
-  Nhỏ nhưng dễ sửa — giải phóng memory budget cho các mục khác cần hơn (VD REL-13 Grafana).
+  Thấp trực tiếp, nhưng rủi ro làm sai số liệu P08 (baseline load test CDO01 đang chuẩn bị làm) nếu load-generator tự chết giữa chừng không ai để ý.
 - *Giải pháp đề xuất:*
-  Thử giảm memory limit và quan sát — có thể đây chỉ là giá trị mặc định từ chart gốc chưa tối ưu cho quy mô TF3.
+  **KHÔNG giảm memory limit như đề xuất ban đầu.** Trước tiên điều tra nguyên nhân OOM thật (có thể liên quan `LOCUST_USERS` đặt quá cao, hoặc leak tương tự Kafka ở REL-16) qua log `--previous`; chỉ xem xét tăng/giảm sau khi có dữ liệu, không đoán theo tỉ lệ % memory cộng dồn như cách đánh giá cũ.
 - *Chi phí / effort:*
-  Rất thấp — chỉ cần thử giảm và quan sát, ~30 phút.
+  Thấp — điều tra log trước (~30-45 phút), chưa nên đổi config vội.
 - *Acceptance criteria:*
-  `load-generator` chạy ổn định ở memory limit mới thấp hơn, không bị OOMKilled trong ≥1 giờ theo dõi.
+  Xác định được nguyên nhân OOM cụ thể (config `LOCUST_USERS` hay leak); `load-generator` chạy ổn định ≥24h không OOM sau khi áp fix đúng nguyên nhân (không phải chỉ đổi số ngẫu nhiên).
 - *Rollback / nếu làm sai:*
   `helm upgrade` trả memory limit về 1500Mi nếu `load-generator` bị OOMKilled — phát hiện ngay qua `kubectl get pods`.
 
@@ -522,9 +561,10 @@ CDO02 vừa dựng xong CloudFront (`infra/cloudfront.tf`) trước ALB — như
 
 **Đã đổi sang bám sát đúng mục 4 của Meeting note liên team (09/06)** — thứ tự này là thứ tự chung cả 3 team thống nhất, không phải chỉ riêng CDO02 tự xếp nữa. Ghi theo mã P chung, kèm mã CDO02 và owner để biết phần nào CDO02 trực tiếp làm.
 
+0. **(Mới, 10/07 sáng, sau meeting — chưa có mã P chung, đề xuất P26 tạm)** **REL-16** — Kafka OOMKilled thật, near-miss cho P05/P06 (xem chi tiết REL-16 ở trên). *CDO02 chủ trì, cần báo ngay cho CDO01/AI Ops vì đây là bằng chứng sống làm tăng độ khẩn cấp của P05/P06 — nên xin gắn mã P chung trong meeting tiếp theo thay vì để CDO02 tự đặt số.*
 1. **P01 + P02** (REL-02 + REL-03) — sửa health check thật + thêm probe. *CDO02 chủ trì P01, phối hợp CDO01 ở P02.*
 2. **P03** (REL-01) — tăng replicas checkout path. *CDO02 phối hợp CDO01.*
-3. **P04 + P05 + P06** (REL-04 + REL-09) — rollback checkout, sửa accounting/Kafka mất đơn âm thầm. *CDO02 chủ trì cả 3, không cần CDO01.*
+3. **P04 + P05 + P06** (REL-04 + REL-09) — rollback checkout, sửa accounting/Kafka mất đơn âm thầm. *CDO02 chủ trì cả 3, không cần CDO01. **Cập nhật 10/07:** REL-16 (Kafka OOM thật) vừa chứng minh rủi ro P05/P06 xảy ra thật trong ngày, không còn lý thuyết — nên nêu bằng chứng này khi bảo vệ độ ưu tiên.*
 4. **P07 + P08** (metrics-server, baseline load test/RED) — *CDO01 chủ trì, CDO02 không cần tự làm (đã bàn giao qua meeting).*
 5. **P09 + P10** (REL-13 + REL-15) — sửa Grafana/Jaeger OOM + thêm alert. *CDO02 phối hợp CDO01, P09 đang active ngay lúc này (xem REL-13).*
 6. **P15 + P16** (NetworkPolicy + ingress boundary) — *CDO01 chủ trì. CDO02 cần theo sát P16 vì đụng trực tiếp `infra/cloudfront.tf` mình vừa dựng.*
