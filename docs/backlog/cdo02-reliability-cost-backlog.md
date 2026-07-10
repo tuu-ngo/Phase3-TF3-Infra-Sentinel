@@ -14,7 +14,7 @@ Lúc đọc code tĩnh (`techx-corp-chart/values.yaml`), từng kết luận "kh
 
 ---
 
-## Đối chiếu với Meeting note liên team (09/06, AI + CDO01 + CDO02)
+## Đối chiếu với Meeting note liên team (09/07, AI + CDO01 + CDO02)
 
 Cuộc họp chốt backlog chung cho cả 3 team (`P01`-`P25`), phân công owner rõ ràng theo từng mục. Bảng dưới map mã nội bộ CDO02 (`REL-XX`/`COST-XX`) sang mã chung (`P-XX`) và **cập nhật lại Owner** theo đúng phân công đã chốt — thay cho "Chưa gán" ở từng mục bên dưới.
 
@@ -559,7 +559,7 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 
 ## Thứ tự đề xuất thực thi
 
-**Đã đổi sang bám sát đúng mục 4 của Meeting note liên team (09/06)** — thứ tự này là thứ tự chung cả 3 team thống nhất, không phải chỉ riêng CDO02 tự xếp nữa. Ghi theo mã P chung, kèm mã CDO02 và owner để biết phần nào CDO02 trực tiếp làm.
+**Đã đổi sang bám sát đúng mục 4 của Meeting note liên team (09/07)** — thứ tự này là thứ tự chung cả 3 team thống nhất, không phải chỉ riêng CDO02 tự xếp nữa. Ghi theo mã P chung, kèm mã CDO02 và owner để biết phần nào CDO02 trực tiếp làm.
 
 0. **(Mới, 10/07 sáng, sau meeting — chưa có mã P chung, đề xuất P26 tạm)** **REL-16** — Kafka OOMKilled thật, near-miss cho P05/P06 (xem chi tiết REL-16 ở trên). *CDO02 chủ trì, cần báo ngay cho CDO01/AI Ops vì đây là bằng chứng sống làm tăng độ khẩn cấp của P05/P06 — nên xin gắn mã P chung trong meeting tiếp theo thay vì để CDO02 tự đặt số.*
 1. **P01 + P02** (REL-02 + REL-03) — sửa health check thật + thêm probe. *CDO02 chủ trì P01, phối hợp CDO01 ở P02.*
