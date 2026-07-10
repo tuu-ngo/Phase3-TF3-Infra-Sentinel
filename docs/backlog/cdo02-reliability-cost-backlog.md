@@ -93,9 +93,11 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 - *Giải pháp đề xuất:*
   Set `replicas: 2` cho `cart`, `checkout`, `payment`, `currency`, `product-catalog`, `shipping` trong values override; thêm `PodDisruptionBudget` (`minAvailable: 1`) cho từng service này; cân nhắc `topologySpreadConstraints` để tránh 2 pod cùng node.
 - *Chi phí / effort:*
-  ~2-3 giờ-người (sửa values + test). Chi phí hạ tầng: nhân đôi ~6 pod nhỏ, tổng thêm vài trăm Mi memory — không đáng kể so với trần $300/tuần.
+  ~2-3 giờ-người (sửa values + test). **Chi phí hạ tầng = $0 (đã kiểm chứng, không phải ước lượng):** 6 service này limit nhỏ (20–160Mi), nhân đôi chỉ thêm ~0.5–1Gi RAM tổng. Node hiện dùng 27–41% memory / 12–64% CPU requests (`kubectl describe node`) → thừa headroom, **không cần thêm node → không phát sinh chi phí**. Multi-AZ spread cũng $0 vì đã sẵn 3 node/3 AZ, chỉ thêm `topologySpreadConstraints` (config). Đối chiếu `BUDGET.md`: run-rate hiện ~$95/tuần (~1/3 trần $300), 3 node t3.large là line lớn nhất (~$53/tuần). *(Multi-AZ tốn tiền thật = managed DB Multi-AZ ~gấp đôi — đó là REL-08, cố ý hoãn.)*
+- *ROI:*
+  Chi phí $0, tác động = bảo vệ trực tiếp checkout SLO đã **đo được vi phạm thật** hôm qua (98.96%, ~1.500 đơn fail). Reliability win rẻ nhất có thể có — đây là lý do xếp P0, không phải vì tốn kém mới quan trọng.
 - *Acceptance criteria:*
-  `kubectl get deploy` cho 6 service trên hiển thị `AVAILABLE=2`; PDB tồn tại và `ALLOWED DISRUPTIONS ≥1`; kill thủ công 1 pod trong nhóm, xác nhận request checkout vẫn thành công (không có lỗi 5xx quan sát được trong lúc pod đang restart).
+  `kubectl get deploy` cho 6 service trên hiển thị `AVAILABLE=2`; PDB tồn tại và `ALLOWED DISRUPTIONS ≥1`; **bài failover test bắt buộc:** kill thủ công 1 pod trong nhóm (`kubectl delete pod`) VÀ drain thử 1 node (`kubectl drain --ignore-daemonsets`), xác nhận checkout success-rate không tụt dưới SLO trong suốt quá trình (đo qua Prometheus, không chỉ quan sát mắt). Đây chính là bài test mà đợt rolling-replace hôm qua đã cho thấy trạng thái hiện tại **trượt**.
 - *Rollback / nếu làm sai:*
   `helm upgrade --install techx-corp ... --set <service>.replicas=1` để trả lại giá trị cũ (kèm lại `-f values-flagd-sync.yaml`, bắt buộc theo GETTING_STARTED.md). Nếu replicas mới gây thiếu tài nguyên node (Pending), phát hiện ngay qua `kubectl get pods` (vài phút) do pod không schedule được.
 
@@ -131,13 +133,17 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
   Nguyên nhân gốc xác nhận của INC-3, **vẫn chưa được vá tới giờ**. Mỗi lần deploy/rollout trong 3 tuần còn lại có nguy cơ tái diễn.
 - *Giải pháp đề xuất:*
-  Thêm `readinessProbe`/`livenessProbe` (gRPC health check hoặc HTTP `/healthz` tùy service) vào template pod cho toàn bộ component, ưu tiên nhóm checkout trước. **Phụ thuộc REL-02** — probe vô nghĩa nếu health check backend vẫn giả.
+  Thêm `readinessProbe`/`livenessProbe` (gRPC health check hoặc HTTP `/healthz` tùy service) cho toàn bộ component, ưu tiên nhóm checkout. **Phụ thuộc REL-02** — probe vô nghĩa nếu health check backend vẫn giả.
+  **Threshold đề xuất cụ thể (không đặt chung chung, sẵn sàng bảo vệ trước SRE):**
+  - *readinessProbe* (chỉ gỡ pod khỏi Service endpoint — an toàn, được phép nhạy hơn): `periodSeconds: 5`, `timeoutSeconds: 2`, `failureThreshold: 3`, `successThreshold: 1` (→ ~15s lỗi mới gỡ khỏi rotation). `initialDelaySeconds` tách theo tốc độ khởi động: Go/Rust/C++ (`checkout`/`currency`/`product-catalog`/`shipping`) ~5s; .NET/Java/Ruby (`accounting`/`ad`/`email`) ~15–20s.
+  - *livenessProbe* (giết + restart pod — nguy hiểm, **cố ý nới lỏng hơn readiness**): `periodSeconds: 10`, `timeoutSeconds: 3`, `failureThreshold: 5` (→ ~50s lỗi liên tục mới kill, tránh giết pod vì blip tạm thời).
+  - **Nguyên tắc bắt buộc:** readiness check dependency thật (từ REL-02); liveness **chỉ** check process còn phản hồi, **KHÔNG** check dependency — nếu không, lúc Postgres/Kafka sập, liveness fail đồng loạt → K8s restart mọi pod cùng lúc → cascading failure, tệ hơn tình trạng ban đầu.
 - *Chi phí / effort:*
-  Thấp — chủ yếu cấu hình YAML, ~2-3 giờ-người cho toàn bộ chart.
+  Thấp — chủ yếu cấu hình YAML, ~2-3 giờ-người cho toàn bộ chart. Chi phí hạ tầng $0.
 - *Acceptance criteria:*
-  `kubectl rollout restart deploy/checkout` (và tương tự cho nhóm checkout) không gây lỗi 5xx quan sát được phía client trong suốt quá trình rollout (test bằng cách gọi liên tục vào storefront lúc rollout).
+  `kubectl rollout restart deploy/checkout` (và nhóm checkout) không làm checkout success-rate tụt dưới SLO trong suốt rollout (đo qua Prometheus, gọi liên tục vào storefront). Test cả trường hợp probe hoạt động đúng: tắt tạm dependency của 1 service → pod đó phải bị gỡ khỏi rotation (readiness fail) nhưng **không** bị restart hàng loạt (liveness không được fail theo).
 - *Rollback / nếu làm sai:*
-  `helm rollback techx-corp <revision trước>`. Nếu probe threshold sai làm pod bị đánh rớt liên tục dù healthy thật (false CrashLoopBackOff), phát hiện trong vài phút qua `kubectl get pods` (READY giảm bất thường).
+  `helm rollback techx-corp <revision trước>`. Rủi ro chính khi làm sai: (a) readiness quá gắt → pod flap khỏi rotation, giảm capacity ảo — thấy qua ready/restart metric; (b) liveness quá gắt → crashloop dây chuyền dưới tải (tệ nhất). Giảm thiểu: liveness luôn lỏng hơn readiness (đã thiết kế ở trên), roll out nhóm ngoài-checkout trước + theo dõi restart count 1–2h, phát hiện qua `kubectl get pods` (READY/RESTARTS bất thường).
 
 ## REL-04 — Thêm logic rollback/refund cho `checkout.PlaceOrder` khi ship lỗi sau khi đã charge
 *Trụ:* Reliability · *Ưu tiên đề xuất:* P0 · *Owner:* Chưa gán
