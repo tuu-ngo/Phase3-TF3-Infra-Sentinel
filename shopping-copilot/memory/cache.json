@@ -1,0 +1,21 @@
+{
+  "entries": {
+    "get_product_reviews_tool:536612732663fc8f": {
+      "tool_name": "get_product_reviews_tool",
+      "params": {
+        "product_id": "OLJCESPC7Z"
+      },
+      "params_hash": "536612732663fc8f8345b736a33a4314c1f6c5749174251684e3acd7126e866b",
+      "result": "great product!",
+      "cached_at": "2026-07-10T08:19:52.439100+00:00",
+      "expires_at_ts": 1783671892.4391005,
+      "expires_at": "2026-07-10T08:24:52.439101+00:00",
+      "hit_count": 0,
+      "source": "grpc"
+    }
+  },
+  "stats": {
+    "hits": 0,
+    "misses": 0
+  }
+}

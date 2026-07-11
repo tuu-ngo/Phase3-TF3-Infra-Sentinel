@@ -16,7 +16,7 @@ logger = logging.getLogger("guardrails.fallback")
 
 # ── Config: Giới hạn vòng lặp tool-calling ──
 # Export biến này để agent module (Thành viên 2) dùng khi cấu hình LangChain agent
-MAX_TOOL_ITERATIONS = 3
+MAX_TOOL_ITERATIONS = 7
 
 
 class MaxIterationsExceeded(Exception):

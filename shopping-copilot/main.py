@@ -19,8 +19,9 @@ import uuid
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel, Field
+from typing import Any, List
 
 # ── Logging setup (JSON-friendly format) ──
 logging.basicConfig(
@@ -65,11 +66,18 @@ class ChatRequest(BaseModel):
                             description="ID phiên chat (tạo mới nếu không có)")
     user_id: str = Field(default="anonymous", description="ID người dùng")
 
+class StepInfo(BaseModel):
+    action: str
+    status: str
+    detail: str
+    duration_ms: int
+
 class ChatResponse(BaseModel):
     status: str
     reply: str
-    token: str | None = None
     session_id: str
+    token: str | None = None
+    steps: List[StepInfo] = []
 
 class ConfirmRequest(BaseModel):
     session_id: str = Field(..., description="ID phiên chat")
@@ -96,13 +104,24 @@ def index():
         "version": "1.0.0",
         "team": "AIO02 — TF3",
         "docs": "/docs",
-        "tools_available": 3,
+        "chatbot": "/chatbot",
         "endpoints": {
             "chat": "POST /api/chat",
             "confirm": "POST /api/confirm",
             "health": "GET /health",
         },
     }
+
+
+@app.get("/chatbot", response_class=HTMLResponse)
+def chatbot():
+    """Giao diện chatbot HTML với IO trace log."""
+    import os
+    html_path = os.path.join(os.path.dirname(__file__), "static", "chatbot.html")
+    if os.path.exists(html_path):
+        with open(html_path, encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>chatbot.html not found</h1>", status_code=404)
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -131,11 +150,15 @@ def api_chat(req: ChatRequest):
         req.session_id, result.get("status")
     )
 
+    steps_data = result.get("steps", [])
+    steps = [StepInfo(**s) for s in steps_data] if steps_data else []
+
     return ChatResponse(
         status=result.get("status", "error"),
         reply=result.get("reply", "Có lỗi xảy ra."),
         token=result.get("token"),
         session_id=req.session_id,
+        steps=steps,
     )
 
 
@@ -154,6 +177,54 @@ def api_confirm(req: ConfirmRequest):
         status=result.get("status", "error"),
         reply=result.get("reply", "Có lỗi xảy ra."),
     )
+
+
+# ── Debug endpoints (memory inspection) ──
+
+@app.get("/debug/session/{session_id}")
+def debug_session(session_id: str):
+    """Tra cứu session memory."""
+    agent = _get_agent()
+    data = agent.sessions.dump(session_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Session không tồn tại")
+    return data
+
+
+@app.get("/debug/sessions")
+def debug_sessions():
+    """Danh sách tất cả session đang active."""
+    agent = _get_agent()
+    return agent.sessions.dump_all()
+
+
+@app.get("/debug/cache")
+def debug_cache():
+    """Cache store stats và entries."""
+    agent = _get_agent()
+    return agent.cache_store.dump()
+
+
+@app.get("/debug/ratelimit")
+def debug_ratelimit():
+    """Rate limiter state."""
+    from guardrails.rate_limiter import rate_limiter as rl
+    with rl._lock:
+        return {
+            "config": {
+                "max_per_minute": rl.max_per_minute,
+                "max_per_day": rl.max_per_day,
+                "max_tokens_per_day": rl.max_tokens_per_day,
+            },
+            "active_users": len(rl._requests),
+            "users": {
+                uid: {
+                    "requests_last_24h": len(ts_list),
+                    "tokens_today": rl._daily_tokens.get(uid, 0),
+                }
+                for uid, ts_list in rl._requests.items()
+            },
+        }
 
 
 # ── Entry point ──

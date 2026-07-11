@@ -1,0 +1,40 @@
+2026-07-10 14:22:55 | INFO  | Cart [add] — success: user adds 2x OLJCESPC7Z to cart
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestCartTool::test_add_to_cart_success (450ms)
+2026-07-10 14:22:55 | INFO  | Cart [add] — edge: negative quantity should be rejected
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestCartTool::test_add_to_cart_negative_quantity (1ms)
+2026-07-10 14:22:55 | INFO  | Cart [get] — empty cart returns 'trống' message
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestCartTool::test_get_cart_empty (1ms)
+2026-07-10 14:22:55 | INFO  | Cart [get] — cart with 2 items returns formatted list
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestCartTool::test_get_cart_with_items (1ms)
+2026-07-10 14:22:55 | INFO  | Cart [add] — error: gRPC unavailable returns error message
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestCartTool::test_add_to_cart_grpc_error (1ms)
+2026-07-10 14:22:55 | INFO  | Review [get] — success: returns formatted reviews for product
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestReviewTool::test_get_reviews_success (2ms)
+2026-07-10 14:22:55 | INFO  | Review [get] — empty: no reviews for product returns message
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestReviewTool::test_get_reviews_empty (3ms)
+2026-07-10 14:22:55 | INFO  | Review [get] — edge: empty fields fall back to defaults
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestReviewTool::test_get_reviews_anonymous (1ms)
+2026-07-10 14:22:55 | INFO  | Review [get] — error: gRPC down returns error message
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestReviewTool::test_get_reviews_grpc_error (1ms)
+2026-07-10 14:22:55 | INFO  | Recommendation [get] — success: returns related product IDs
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestRecommendationTool::test_get_recommendations_success (1ms)
+2026-07-10 14:22:55 | INFO  | Recommendation [get] — empty: no recommendations for unknown product
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestRecommendationTool::test_get_recommendations_empty (1ms)
+2026-07-10 14:22:55 | INFO  | Recommendation [get] — error: gRPC timeout returns error message
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestRecommendationTool::test_get_recommendations_grpc_error (3ms)
+2026-07-10 14:22:55 | INFO  | Currency [convert] — success: USD→VND returns converted amount
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestCurrencyTool::test_convert_currency_success (1ms)
+2026-07-10 14:22:55 | INFO  | Currency [convert] — error: gRPC unavailable returns error message
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestCurrencyTool::test_convert_currency_grpc_error (1ms)
+2026-07-10 14:22:55 | INFO  | Shipping [quote] — success: Vietnam address returns cost quote
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestShippingTool::test_get_shipping_quote_vietnam (1ms)
+2026-07-10 14:22:55 | INFO  | Shipping [quote] — guardrail: non-Vietnam country is rejected
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestShippingTool::test_get_shipping_quote_international (0ms)
+2026-07-10 14:22:55 | INFO  | Shipping [quote] — error: HTTP connection refused returns error
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestShippingTool::test_get_shipping_quote_http_error (1ms)
+2026-07-10 14:22:55 | INFO  | Shipping [quote] — error: invalid JSON response returns error
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestShippingTool::test_get_shipping_quote_invalid_json (1ms)
+2026-07-10 14:22:55 | INFO  | Registration — verify all 6 tools are exported from tools/__init__.py
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestToolRegistration::test_all_shopping_tools_listed (0ms)
+2026-07-10 14:22:55 | INFO  | Registration — verify every tool has a non-empty description
+2026-07-10 14:22:55 | INFO  | ✅ PASS | tests/test_tools.py::TestToolRegistration::test_each_tool_has_description (0ms)
