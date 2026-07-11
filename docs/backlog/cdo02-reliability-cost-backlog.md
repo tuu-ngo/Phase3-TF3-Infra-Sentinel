@@ -505,7 +505,7 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 *Trụ:* Cost Optimization / Reliability · *Ưu tiên đề xuất:* P2 (giữ nguyên mức, nhưng đổi hướng giải pháp) · *Owner:* Chưa gán
 
 - *Evidence:*
-  `load-generator` được cấp 1500Mi memory — ban đầu đánh giá là "cao bất thường" (~17% tổng memory limit cộng dồn). **Cập nhật 10/07 (đo qua Prometheus/kubectl):** pod đã **OOMKilled thật** (`Exit Code 137`, restart cách đây 16h tính tới lúc kiểm tra) — nghĩa là 1500Mi **không hề dư, thậm chí có thể không đủ** dưới tải nhất định. Kết luận ban đầu (COST-05 gốc) **sai hướng**.
+  `load-generator` được cấp 1500Mi memory — ban đầu đánh giá là "cao bất thường" (~17% tổng memory limit cộng dồn). **Cập nhật 10/07 tối (verify lại qua `kubectl describe`):** pod đã **OOMKilled thật** (`Exit Code 137`, `Restart Count: 2`, lần gần nhất cách đây ~11 giờ tính tới lúc kiểm tra, chạy được ~18 giờ trước khi OOM) — nghĩa là 1500Mi **không hề dư, thậm chí có thể không đủ** dưới tải nhất định. Kết luận ban đầu (COST-05 gốc) **sai hướng**.
 - *Ảnh hưởng khách hàng:*
   Không ảnh hưởng trực tiếp (bot giả lập traffic, không phục vụ khách thật) — nhưng nếu `load-generator` chết giữa lúc đang tạo tải cho 1 bài test/demo (VD lúc Pitch), kết quả benchmark sẽ sai lệch.
 - *Rủi ro (khả năng × mức nghiêm trọng):*
@@ -583,3 +583,38 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 **Theo dõi, không chủ động làm:** REL-08 (và phần Postgres/Kafka trong REL-10) — chờ mandate BTC. Không có mã P tương ứng trong meeting, đúng như đánh giá ban đầu — không ai trong 3 team yêu cầu làm sớm.
 
 **Đã hoàn thành, nêu để ghi công:** COST-07 (NAT Gateway đơn).
+
+---
+
+## OPERATIONAL EXCELLENCE — Việc đã hoàn thành tuần 1 (07/07 - 10/07)
+
+Ghi lại theo đúng tinh thần RULES.md mục 4 ("Operational Excellence — xương sống Phase 3, vận hành hướng tới kết quả kinh doanh") và dùng cho Ops Review hằng tuần. Đây là **việc đã làm xong**, không phải backlog còn mở — mỗi mục kèm commit thật để truy vết (đúng nguyên tắc Auditability: mọi quyết định phải truy được về người).
+
+### 1. Hạ tầng nền + CI/CD (tự động hóa, giảm thao tác tay)
+
+- **Dựng baseline VPC + EKS bằng Terraform** từ đầu — 1 VPC/3AZ, 1 NAT Gateway (cost-conscious ngay từ đầu, xem COST-07), EKS managed node group. (`2474d2e infra: add Terraform for VPC + EKS baseline`, `d7a4f76 chore: commit terraform lockfile`)
+- **Chuyển EKS API sang private-only + dựng SSM bastion** làm đường vào duy nhất — xử lý dứt điểm sự cố bị đè mất IP allowlist 2 lần trước đó, viết hướng dẫn truy cập đầy đủ cho cả team. (`4db2961 infra: SSM bastion, EKS API now private-only`, `44c64d5 docs: full SSM bastion access guide for the team`)
+- **Dựng CloudFront trước `frontend-proxy` + CI/CD Terraform tự động** (`terraform-plan.yml` chạy trên mọi PR, `terraform-apply.yml` gate bằng `production` environment cần approve tay) — không còn ai `terraform apply` tay từ máy cá nhân nữa. (`17e99f6 infra: CloudFront in front of frontend-proxy + Terraform plan/apply CI`)
+- **Vá lỗi CI OIDC trust condition** — role apply không nhận đúng `sub` claim khi job dùng GitHub Environment, chặn hẳn pipeline apply cho tới khi sửa. (`6e61f98 fix(ci): terraform-apply OIDC role trust condition didn't match the "production" environment sub claim`)
+- **Secret-scanning (gitleaks)**: dựng pre-commit hook + GitHub Actions gate trên mọi PR/push vào `main`, sửa 2 lỗi cấu hình (RE2 regex không hợp lệ, thiếu `GITHUB_TOKEN` cho action), xử lý đúng quy trình 2 lần false-positive (không phải secret thật, verify qua log CI trước khi allowlist — không đoán). (`e53c38a`, `15a93fe`, `dbb36a8`, `0ba5f72`)
+
+### 2. Sự cố đã xử lý (Incident response)
+
+- **`accounting` OOMKilled 44 lần/19h** — xác định nguyên nhân (memory limit 120Mi quá thấp), vá lên 350Mi, verify ổn định (0 restart sau vá), viết postmortem đầy đủ và đóng chính thức. (`ca0039e docs: postmortem - accounting OOMKilled + ECR lifecycle self-incident`, `a44e527 docs: mark postmortem 0001 as closed - verified fix`)
+- Trong cùng postmortem: ghi nhận + xử lý sự cố ECR lifecycle policy tự gây ra (đã xóa sai, đang chờ viết lại đúng cách — COST-01).
+
+### 3. Backlog ưu tiên CDO02 — dựng, đào sâu, và verify liên tục (không chỉ viết 1 lần)
+
+- **Dựng backlog CDO02 ban đầu** (17 mục Reliability/Cost đầu tiên, xếp hạng theo công thức Rủi ro × Tác động business). (`a4008bf docs: CDO02 backlog - Reliability + Cost Optimization`)
+- **Đọc sâu code toàn bộ ~18 service** (không dừng ở đọc `values.yaml`), phát hiện thêm 4 lỗ hổng chưa từng thấy: Kafka fire-and-forget + accounting auto-commit sớm (mất đơn hàng âm thầm), Valkey không persistence, currency chia-cho-0 âm thầm, quote nuốt exception. (`49a1ff3 docs: deep code-read findings R9-R12`)
+- **Verify runtime độc lập nhiều lần trong 2 ngày** (không chỉ tin vào báo cáo người khác) — đối chiếu evidence của phucdo, tự kiểm tra lại bằng `kubectl describe`/CloudWatch audit log, phát hiện Grafana/Jaeger OOM đang **active thật** (không phải lịch sử), sau đó phát hiện thêm Kafka OOM (REL-16, near-miss thật cho rủi ro mất đơn hàng). (`03a1525`, `0f7c632`, `f8f4a90`, `6903758`)
+- **Xác nhận ai chạy lệnh gây lỗi** qua CloudTrail/EKS audit log khi cần (không phỏng đoán) — tra được chính xác user, thời điểm, lý do fail của 1 lần `helm upgrade` thử vá Grafana không thành công.
+- **Rewrite toàn bộ backlog sang format RCA chuẩn** (Evidence / Ảnh hưởng khách hàng / Rủi ro / Tác động business / Giải pháp / Chi phí / Acceptance criteria / Rollback cho từng mục) và **đối chiếu với backlog chung `P01-P25`** chốt trong meeting liên team AI + CDO01 + CDO02 — rõ mục nào CDO02 chủ trì, mục nào đã bàn giao CDO01. (`4986c68 docs: rewrite backlog to full RCA format + reconcile with joint AI/CDO01/CDO02 meeting`)
+- **Hardening backlog trước Pitch** — thay số liệu định tính bằng bằng chứng đo được thật (SLO checkout breach truy được về nguyên nhân cụ thể: node rolling-replace K8s 1.31→1.32), sửa lại 1 chỗ gán nhầm incident (INC-2 thực ra map với REL-10 - mất giỏ hàng, không phải REL-01), đồng bộ lại COST-02/COST-05 sau khi có bằng chứng mới, sửa nhầm ngày họp. (`3da92f5`, `76ddf07`, `6688923`, `cf417f5`, `982c1dd`)
+
+### 4. Duy trì continuity — để không ai phải giải thích lại từ đầu
+
+- **`CLAUDE.md`** — tạo và cập nhật liên tục trong tuần để bất kỳ phiên làm việc mới nào (kể cả người khác, kể cả AI) đọc là hiểu ngay trạng thái thật, không cần hỏi lại. (`191d5c1`, `a01bad4`, `bd91582`)
+- **Kịch bản Pitch riêng** (`PITCH-CDO02.local.md`, không commit vào repo chung — đúng quy tắc file cá nhân/team-private) kèm rule `.gitignore` cho `*.local.md` để tránh rò rỉ note nội bộ chưa sẵn sàng chia sẻ. (`5aa5164 chore: gitignore *.local.md`)
+
+**Điểm nhấn khi báo cáo Ops Review:** tuần này không chỉ "tìm ra vấn đề" mà còn **tự động hóa được phần lớn thao tác tay dễ gây lỗi nhất** (Terraform apply, image build/push, secret scanning) — trực tiếp giảm rủi ro loại lỗi đã từng xảy ra thật (allowlist bị đè, helm upgrade gõ sai tay). Backlog Reliability/Cost cố ý **chưa code** theo đúng tinh thần "tuần 1 là tuần find + note", nhưng hạ tầng vận hành (Operational Excellence) thì đã có kết quả cụ thể, đo được.
