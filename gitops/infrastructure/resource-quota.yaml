@@ -5,8 +5,6 @@ metadata:
   namespace: techx-tf3
 spec:
   hard:
-    requests.cpu: "5"
     requests.memory: 16Gi
-    limits.cpu: "10"
     limits.memory: 20Gi
     pods: "50"
