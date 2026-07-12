@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: 'https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git'
-    targetRevision: feature/gitops-migration # Currently target our feature branch
+    targetRevision: main # Target main branch in production
     path: gitops/apps
   destination:
     server: 'https://kubernetes.default.svc'
