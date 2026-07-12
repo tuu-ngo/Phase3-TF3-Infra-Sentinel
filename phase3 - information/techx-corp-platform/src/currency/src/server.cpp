@@ -192,11 +192,26 @@ class CurrencyService final : public oteldemo::CurrencyService::Service
       // Do the conversion work
       Money from = request->from();
       string from_code = from.currency_code();
-      double rate = currency_conversion[from_code];
-      double one_euro = getDouble(from) / rate ;
-
       string to_code = request->to_code();
-      double to_rate = currency_conversion[to_code];
+
+      // REL-11: validate currency codes before use. unordered_map::operator[]
+      // default-constructs a 0.0 rate for an unknown code, which then silently
+      // produces inf/NaN (divide-by-zero) instead of a clear error.
+      auto from_it = currency_conversion.find(from_code);
+      auto to_it = currency_conversion.find(to_code);
+      if (from_it == currency_conversion.end() || to_it == currency_conversion.end()) {
+        span->AddEvent("Unsupported currency code");
+        span->SetStatus(StatusCode::kError);
+        logger->Error(std::string(__func__) + " unsupported currency code");
+        span->End();
+        return Status(grpc::StatusCode::INVALID_ARGUMENT,
+                      "unsupported currency code: from=" + from_code + " to=" + to_code);
+      }
+
+      double rate = from_it->second;
+      double one_euro = getDouble(from) / rate;
+
+      double to_rate = to_it->second;
 
       double final = one_euro * to_rate;
       getUnitsAndNanos(*response, final);
