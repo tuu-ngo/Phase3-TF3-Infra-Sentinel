@@ -1,0 +1,76 @@
+# REL-01 (ADR 0001 — pre-work nâng cấp EKS 1.32→1.34): PodDisruptionBudget nhóm checkout.
+# Đặt ở gitops/infrastructure/ để techx-infrastructure-app (ArgoCD, auto-sync) quản lý —
+# cùng chỗ với network-policy-postgres.yaml và resource-quota.yaml.
+#
+# minAvailable: 1 → khi node drain lúc upgrade, giữ ít nhất 1 pod mỗi service sống trong
+# lúc pod kia reschedule. BẮT BUỘC đi kèm replicas ≥2 (values-prod.yaml) — nếu còn
+# replicas:1 thì PDB minAvailable:1 sẽ CHẶN drain hoàn toàn (deadlock, node không drain nổi).
+#
+# Selector dùng `opentelemetry.io/name` — selector label thật của chart techx-corp
+# (templates/_helpers.tpl → techx-corp.selectorLabels), khớp chính xác pod từng service.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cart-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: cart
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: checkout-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: checkout
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: payment
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: currency-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: currency
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: product-catalog-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: product-catalog
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: shipping-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: shipping
