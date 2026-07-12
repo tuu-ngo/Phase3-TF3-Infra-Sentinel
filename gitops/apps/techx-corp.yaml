@@ -17,4 +17,7 @@ spec:
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: techx-tf3
-  syncPolicy: {} # Manual Sync initially to avoid downtime during validation
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
