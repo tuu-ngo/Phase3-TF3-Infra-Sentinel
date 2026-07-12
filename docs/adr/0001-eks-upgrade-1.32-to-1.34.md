@@ -43,6 +43,21 @@ CI pipeline hiện có, **sau khi hoàn tất pre-work bắt buộc** (đặc bi
 - **1.33 bị loại** vì standard support sắp hết (29/07/2026) — lên 1.33 rồi sẽ phải nâng
   lại gần như ngay, không đáng.
 
+## Phát hiện lúc thực thi (10/07) — cluster đã do ArgoCD quản, không còn Helm tay
+
+Khi chuẩn bị apply REL-01, `helm upgrade --dry-run` fail vì ownership conflict. Điều tra
+runtime cho thấy **ArgoCD đã chạy live trên cluster** (namespace `argocd`, 7/7 pod, quản
+88 resource trong `techx-tf3` qua 3 Application) — dù nhánh `feature/gitops-migration`
+chưa merge vào `main`. "Chưa merge git" ≠ "chưa live"; runtime mới là cái quyết định.
+
+Hệ quả cho ADR này:
+- **Mọi thay đổi app (gồm REL-01) đi qua git/ArgoCD, không helm tay** — helm tay giờ fail
+  và sẽ tạo split-brain.
+- Cú nâng version EKS (control plane + node group) vẫn qua **Terraform** (không phải app
+  workload nên không đụng ArgoCD), gate `production` approval như cũ.
+- Cần 1 quyết định riêng của cả team: chính thức hoá mô hình GitOps (hiện đang live mà
+  chưa có ADR) — ngoài phạm vi ADR này, nhưng phải chốt trước khi nâng cấp.
+
 ## Điều kiện tiên quyết bắt buộc (pre-work) — chặn cứng, không bỏ qua
 
 1. **REL-01 (replicas ≥2 + PDB nhóm checkout) PHẢI xong trước hop đầu tiên.** Bằng chứng
@@ -50,6 +65,9 @@ CI pipeline hiện có, **sau khi hoàn tất pre-work bắt buộc** (đặc bi
    rolling-replace với `replicas: 1`. Nâng 2 hop = 2 vòng cycle node; không có PDB +
    replica thì gần như chắc chắn vỡ SLO checkout (≥99%) mỗi hop. Managed node group tôn
    trọng PDB khi drain — đây là cơ chế bảo vệ chính.
+   **Thực thi qua ArgoCD/git** (không helm tay — xem phát hiện ở trên): replicas thêm vào
+   `deploy/values-prod.yaml`, PDB vào `gitops/infrastructure/pdb-checkout.yaml`, merge qua
+   PR vào `feature/gitops-migration` (CDO01 duyệt, merge = auto-sync lên prod).
 2. **REL-10 (datastore không PVC): giảm thiểu trước khi cycle node.** Postgres/Kafka/Valkey
    hiện 0 PVC — node cycle có thể mất dữ liệu. Tối thiểu: `pg_dump` logical backup Postgres
    trước mỗi hop + ghi nhận đây là accepted risk trong ADR này.
@@ -94,7 +112,7 @@ BTC — không được để rớt (vi phạm = disqualify).
 
 ## Trạng thái thực thi
 
-- [ ] Pre-work 1 — REL-01 (replicas + PDB)
+- [ ] Pre-work 1 — REL-01 (replicas + PDB) — **qua ArgoCD, PR #34 vào `feature/gitops-migration`**
 - [ ] Pre-work 2 — REL-10 mitigation (pg_dump + accepted risk)
 - [ ] Pre-work 3 — deprecated API scan
 - [ ] Pre-work 4 — addon compatibility matrix (đồng bộ CDO01)
