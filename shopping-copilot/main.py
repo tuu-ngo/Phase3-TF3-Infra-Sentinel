@@ -125,7 +125,7 @@ def chatbot():
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-def api_chat(req: ChatRequest):
+async def api_chat(req: ChatRequest):
     """
     Gửi tin nhắn đến Shopping Copilot và nhận câu trả lời.
 
@@ -139,7 +139,7 @@ def api_chat(req: ChatRequest):
     )
 
     agent = _get_agent()
-    result = agent.chat(
+    result = await agent.chat(
         session_id=req.session_id,
         user_id=req.user_id,
         user_message=req.message,
@@ -163,7 +163,7 @@ def api_chat(req: ChatRequest):
 
 
 @app.post("/api/confirm", response_model=ConfirmResponse)
-def api_confirm(req: ConfirmRequest):
+async def api_confirm(req: ConfirmRequest):
     """
     Xác nhận hành động ghi đang chờ (user bấm nút Xác nhận).
     Cần truyền token nhận được từ /api/chat khi status=pending.
@@ -171,7 +171,7 @@ def api_confirm(req: ConfirmRequest):
     logger.info("[API] /api/confirm | session=%s", req.session_id)
 
     agent = _get_agent()
-    result = agent.confirm(session_id=req.session_id, token=req.token)
+    result = await agent.confirm(session_id=req.session_id, token=req.token)
 
     return ConfirmResponse(
         status=result.get("status", "error"),

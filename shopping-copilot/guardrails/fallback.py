@@ -189,19 +189,23 @@ def handle_exception(e: Exception) -> Dict[str, Any]:
 def with_fallback(fn: Callable) -> Callable:
     """
     Decorator bọc quanh hàm xử lý request chính của Agent.
-
-    Mọi exception xảy ra bên trong đều bị bắt và chuyển thành
-    response lỗi thân thiện — KHÔNG BAO GIỜ để lỗi thoát ra ngoài.
-
-    Cách dùng (Thành viên 2 sẽ gắn vào agent):
-        @with_fallback
-        def process_chat_request(user_message, session_id):
-            ...  # logic gọi LLM + tool
+    Hỗ trợ cả sync và async functions.
     """
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:
-            return handle_exception(e)
-    return wrapper
+    import inspect
+
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def async_wrapper(*args, **kwargs):
+            try:
+                return await fn(*args, **kwargs)
+            except Exception as e:
+                return handle_exception(e)
+        return async_wrapper
+    else:
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as e:
+                return handle_exception(e)
+        return wrapper

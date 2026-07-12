@@ -10,6 +10,7 @@ import os
 import json
 import uuid
 import time
+import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 
@@ -98,7 +99,7 @@ class CopilotAgent:
     # ── public API ──
 
     @with_fallback  # L6
-    def chat(self, session_id: str, user_id: str, user_message: str) -> Dict[str, Any]:
+    async def chat(self, session_id: str, user_id: str, user_message: str) -> Dict[str, Any]:
         self._steps = []
 
         # L1: Rate Limiter
@@ -141,7 +142,7 @@ class CopilotAgent:
         while iterations < MAX_TOOL_ITERATIONS:
             s_llm, a_llm = self._time("LLMInvoke")
             try:
-                response = self.llm.invoke(messages)
+                response = await self.llm.ainvoke(messages)
                 self._end(s_llm, a_llm, "OK", f"iter={iterations + 1}")
             except RateLimitError as e:
                 detail = f"Rate limited: {str(e)[:100]}"
@@ -203,7 +204,7 @@ class CopilotAgent:
                     # Step 2: Tool Execution (gRPC call + result)
                     s_ex, a_ex = self._time(f"Exec: {tc_name}")
                     try:
-                        result = tool_fn.invoke(tc_args)
+                        result = await tool_fn.ainvoke(tc_args)
                     except Exception as e:
                         detail = f"Exception: {str(e)[:200]} | args={args_preview}"
                         self._end(s_ex, a_ex, "ERROR", detail)
@@ -254,6 +255,19 @@ class CopilotAgent:
                 redacted_count = len(output.redacted_items) if hasattr(output, "redacted_items") else 0
                 self._end(s5, a5, "PASS", f"Redacted {redacted_count} items" if redacted_count else "Không có PII")
 
+                # Response Formatter: restructure thành markdown, bỏ icon
+                sf, af = self._time("ResponseFormatter")
+                try:
+                    from agent.response_formatter import format_response
+                    formatted = format_response(final)
+                    if formatted:
+                        final = formatted
+                        self._end(sf, af, "OK", f"Restructured to markdown ({len(final)} chars)")
+                    else:
+                        self._end(sf, af, "SKIP", "Giữ nguyên bản gốc")
+                except Exception as e:
+                    self._end(sf, af, "ERROR", str(e)[:100])
+
                 self._sessions.append_message(session_id, "assistant", final)
                 self._sessions.touch(session_id)
 
@@ -271,7 +285,7 @@ class CopilotAgent:
 
         raise MaxIterationsExceeded()
 
-    def confirm(self, session_id: str, token: str) -> Dict[str, Any]:
+    async def confirm(self, session_id: str, token: str) -> Dict[str, Any]:
         is_valid, action_data = verify_confirmation_token(token)
         if not is_valid:
             return {"status": "error", "reply": "Token không hợp lệ hoặc đã hết hạn."}
