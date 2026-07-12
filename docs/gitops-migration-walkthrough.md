@@ -59,6 +59,27 @@ checkout-f4c86f8fb-rd49k           1/1     Running   0          2d19h
     ```
     *(Mở trình duyệt truy cập `https://localhost:8082`)*
 
+### 4. Điều chỉnh Resource Quota & Bật Auto-Sync
+*   **Bật Auto-Sync & Self-Heal:** Chúng ta đã chuyển đổi `syncPolicy` của ứng dụng chính `techx-corp` từ `manual` sang `automated: prune: true, selfHeal: true`. Từ giờ, ArgoCD sẽ tự động đồng bộ mọi thay đổi cấu hình từ Git xuống cluster.
+*   **Điều chỉnh Resource Quota (Tối ưu cho việc scale):** 
+    *   *Sự cố phát hiện:* Khi áp đặt giới hạn CPU (`requests.cpu` và `limits.cpu`) trong ResourceQuota, Kubernetes bắt buộc toàn bộ pod trong namespace phải khai báo CPU requests/limits. Do 28/32 containers trong chart gốc không có CPU requests/limits, việc này gây nghẽn toàn bộ quá trình cập nhật Pod mới (`FailedCreate` do vượt quota).
+    *   *Khắc phục:* Đã loại bỏ CPU quota, chỉ giữ lại giới hạn RAM (**`Requests: 16Gi / Limits: 20Gi`**) và Pod limit (**`50`**). Đây là mức tối ưu giúp tận dụng tối đa 24Gi RAM vật lý của cluster, chừa lại 4Gi cho hệ thống K8s/ArgoCD, đồng thời cung cấp đủ không gian (headroom) để scale replicas luồng checkout lên 3-4 bản sao thoải mái.
+
+### 5. Kích hoạt & Xác minh Network Policy (eBPF)
+*   **Vấn đề trước đó:** Do CNI gốc của EKS (`aws-node`) chạy ở chế độ tự quản (self-managed) và tắt tính năng Network Policy, các NetworkPolicy khai báo trên Git không có hiệu lực thực tế.
+*   **Kích hoạt EKS Managed Add-on:** Chúng ta đã import và chuyển đổi VPC CNI sang dạng AWS EKS Managed Add-on và bật tính năng Network Policy thông qua lệnh AWS CLI:
+    ```sh
+    aws eks create-addon \
+      --cluster-name techx-corp-tf3 \
+      --addon-name vpc-cni \
+      --configuration-values '{"enableNetworkPolicy": "true"}' \
+      --region ap-southeast-1
+    ```
+    EKS đã tự động chạy và quản lý `aws-network-policy-controller` trên Control Plane để tạo ra các `PolicyEndpoint` tài nguyên phục vụ việc chặn eBPF dưới node.
+*   **Kết quả xác minh thực tế:**
+    *   **Thử nghiệm 1 (Chặn kết nối trái phép):** Thực thi lệnh kết nối cổng Postgres 5432 từ pod `image-provider` (không có trong whitelist) -> Kết quả: **`Blocked`** (Bị eBPF chặn hoàn toàn và timeout).
+    *   **Thử nghiệm 2 (Cho phép kết nối hợp lệ):** Thực thi socket kết nối từ pod `product-reviews` (nằm trong whitelist NetworkPolicy) -> Kết quả: **`Connected`** (Kết nối thông suốt ngay lập tức).
+
 ---
 
 ## Lưu ý về CI/CD Workflow (`build-push-ecr.yml`)
