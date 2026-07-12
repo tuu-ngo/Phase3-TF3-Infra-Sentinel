@@ -152,6 +152,14 @@ func initDatabase() error {
 		return fmt.Errorf("failed to open database connection: %w", err)
 	}
 
+	// REL-05 (INC-1 root cause): bound the client-side connection pool. Without
+	// this, database/sql defaults to unlimited open connections, so under load
+	// product-catalog can exhaust Postgres max_connections - and Postgres here is
+	// shared with product-reviews + accounting, so leave headroom for them too.
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	reg, err = otelsql.RegisterDBStatsMetrics(db, otelsql.WithAttributes(semconv.DBSystemNamePostgreSQL))
 	if err != nil {
 		return fmt.Errorf("failed to register database metrics: %w", err)
