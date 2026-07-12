@@ -12,7 +12,6 @@ spec:
     helm:
       valueFiles:
         - values.yaml
-        - ../deploy/values-observability.yaml
         - ../deploy/values-flagd-sync.yaml
         - ../deploy/values-prod.yaml
   destination:
