@@ -1,0 +1,30 @@
+# REL-01 (pre-work cho ADR 0001 — nâng cấp EKS): tăng replicas nhóm checkout ≥2
+# để node rolling-replace lúc upgrade không làm đứt luồng checkout.
+#
+# Ghép thêm vào lệnh deploy SAU các values file baseline, ví dụ:
+#   helm upgrade --install techx-corp ./techx-corp-chart -n techx-tf3 \
+#     --set default.image.repository=$REG \
+#     -f deploy/values-flagd-sync.yaml \
+#     -f deploy/values-ha-checkout.yaml
+#
+# PDB đi kèm nằm ở deploy/pdb-checkout.yaml (apply riêng — chart không có template PDB).
+#
+# Lưu ý phối hợp CDO01: ResourceQuota trong nhánh ArgoCD của họ đặt requests.memory 8Gi,
+# trong khi hiện tại đã ~8.6Gi — áp quota đó TRƯỚC khi tăng replicas sẽ chặn chính thay
+# đổi này. Phải áp REL-01 trước, hoặc nâng số quota. Xem góp ý đã gửi CDO01 + COST-06.
+
+components:
+  # 6 service nằm trên đường checkout (ra tiền trực tiếp, SLO checkout ≥99%)
+  cart:
+    replicas: 2
+  checkout:
+    replicas: 2
+  payment:
+    replicas: 2
+  currency:
+    replicas: 2
+  product-catalog:
+    replicas: 2   # traffic cao nhất hệ thống (đo Prometheus ~1.2 req/s); có thể tăng ≥3
+                  # riêng cho hiệu năng sau, nhưng 2 là đủ để sống sót node drain lúc upgrade
+  shipping:
+    replicas: 2
