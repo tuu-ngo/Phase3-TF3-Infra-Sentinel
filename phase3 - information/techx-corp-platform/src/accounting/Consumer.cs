@@ -64,7 +64,21 @@ internal class Consumer : IDisposable
                 {
                     using var activity = MyActivitySource.StartActivity("order-consumed",  ActivityKind.Internal);
                     var consumeResult = _consumer.Consume();
-                    ProcessMessage(consumeResult.Message);
+                    if (ProcessMessage(consumeResult.Message))
+                    {
+                        // REL-09: commit only AFTER the order is safely persisted.
+                        // Previously EnableAutoCommit=true committed the offset before
+                        // the DB write, so a crash or DB failure lost the order silently
+                        // even though the customer had already been charged.
+                        _consumer.Commit(consumeResult);
+                    }
+                    else
+                    {
+                        // Transient failure (e.g. Postgres down). Rewind to this offset
+                        // and back off so the same message is retried, not skipped.
+                        _consumer.Seek(consumeResult.TopicPartitionOffset);
+                        Thread.Sleep(TimeSpan.FromSeconds(2));
+                    }
                 }
                 catch (ConsumeException e)
                 {
@@ -83,18 +97,34 @@ internal class Consumer : IDisposable
         }
     }
 
-    private void ProcessMessage(Message<string, byte[]> message)
+    // Returns true when the offset is safe to commit (persisted, or a poison
+    // message that can never succeed), false on a transient failure that should
+    // be retried without committing.
+    private bool ProcessMessage(Message<string, byte[]> message)
     {
+        OrderResult order;
         try
         {
-            var order = OrderResult.Parser.ParseFrom(message.Value);
-            Log.OrderReceivedMessage(_logger, order);
+            order = OrderResult.Parser.ParseFrom(message.Value);
+        }
+        catch (Exception ex)
+        {
+            // Poison message: parsing will never succeed on retry. Skip it
+            // (commit) so it doesn't block the partition forever. A dead-letter
+            // topic would be the next improvement.
+            _logger.LogError(ex, "Skipping unparseable order message");
+            return true;
+        }
 
-            if (_dbContext == null)
-            {
-                return;
-            }
+        Log.OrderReceivedMessage(_logger, order);
 
+        if (_dbContext == null)
+        {
+            return true;
+        }
+
+        try
+        {
             var orderEntity = new OrderEntity
             {
                 Id = order.OrderId
@@ -130,10 +160,16 @@ internal class Consumer : IDisposable
             };
             _dbContext.Add(shipping);
             _dbContext.SaveChanges();
+            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Order parsing failed:");
+            // Transient persistence failure (e.g. Postgres unavailable). Do NOT
+            // commit; clear the entities queued in this attempt so they don't leak
+            // into the retry, then signal the caller to rewind and retry.
+            _logger.LogError(ex, "Failed to persist order {OrderId}; will retry", order.OrderId);
+            _dbContext.ChangeTracker.Clear();
+            return false;
         }
     }
 
@@ -145,7 +181,9 @@ internal class Consumer : IDisposable
             BootstrapServers = servers,
             // https://github.com/confluentinc/confluent-kafka-dotnet/tree/07de95ed647af80a0db39ce6a8891a630423b952#basic-consumer-example
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = true
+            // REL-09: commit offsets manually (after the order is persisted) so a
+            // crash/DB failure mid-processing does not silently lose the order.
+            EnableAutoCommit = false
         };
 
         return new ConsumerBuilder<string, byte[]>(conf)
