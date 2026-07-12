@@ -36,9 +36,17 @@ func CreateKafkaProducer(brokers []string, logger *slog.Logger) (sarama.AsyncPro
 	saramaConfig.Producer.Return.Successes = true
 	saramaConfig.Producer.Return.Errors = true
 
-	// Sarama has an issue in a single broker kafka if the kafka broker is restarted.
-	// This setting is to prevent that issue from manifesting itself, but may swallow failed messages.
-	saramaConfig.Producer.RequiredAcks = sarama.NoResponse
+	// REL-09: order events are financial data - do NOT fire-and-forget.
+	// The previous RequiredAcks=NoResponse silently swallowed failed messages,
+	// so an order could be charged but never recorded (order lost with no trace).
+	// WaitForAll makes the broker acknowledge before we consider the send done;
+	// Idempotent + MaxOpenRequests=1 lets us retry safely without producing
+	// duplicate order events. Messages that still fail after retries surface on
+	// producer.Errors() (handled below) instead of vanishing.
+	saramaConfig.Producer.RequiredAcks = sarama.WaitForAll
+	saramaConfig.Producer.Retry.Max = 3
+	saramaConfig.Producer.Idempotent = true
+	saramaConfig.Net.MaxOpenRequests = 1
 
 	saramaConfig.Version = ProtocolVersion
 
