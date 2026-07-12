@@ -326,6 +326,19 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 		total = money.Must(money.Sum(total, multPrice))
 	}
 
+	// REL-04: ship BEFORE charging. The payment service exposes no Refund/Void
+	// RPC, so once a card is charged there is no way to compensate a later
+	// failure - the previous charge-then-ship order left customers "charged but
+	// not shipped" when shipOrder failed. Shipping here only allocates a tracking
+	// id (mock fulfilment, no real cost), so doing it first means a shipping
+	// failure aborts the order with the card untouched, and a later charge failure
+	// leaves only a harmless unused tracking id. (A true charge-then-refund flow
+	// would require adding a Refund RPC to the payment service - larger follow-up.)
+	shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "shipping error: %+v", err)
+	}
+
 	txID, err := cs.chargeCard(ctx, total, req.CreditCard)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
@@ -338,11 +351,6 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 		slog.LevelInfo, "payment went through",
 		slog.String("transaction_id", txID),
 	)
-
-	shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "shipping error: %+v", err)
-	}
 	shippingTrackingAttribute := attribute.String("app.shipping.tracking.id", shippingTrackingID)
 	span.AddEvent("shipped", trace.WithAttributes(shippingTrackingAttribute))
 
