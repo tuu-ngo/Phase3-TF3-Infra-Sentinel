@@ -12,6 +12,7 @@ using System.Threading;
 using OpenFeature;
 using OpenFeature.Hooks;
 using OpenFeature.Contrib.Providers.Flagd;
+using cart.cartstore;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -22,22 +23,26 @@ namespace cart.healthcheck
     public class readinessCheck : IHealthCheck
     {
         private readonly IFeatureClient _featureClient;
+        private readonly ICartStore _cartStore;
 
-        public readinessCheck(IFeatureClient featureClient)
+        public readinessCheck(IFeatureClient featureClient, ICartStore cartStore)
         {
             _featureClient = featureClient;
+            _cartStore = cartStore;
         }
         public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
-
             #pragma warning disable CA2016 // OpenFeature does not support CancellationToken
-            // Await the async call instead of blocking
-            bool isSet = await _featureClient.GetBooleanValueAsync("failedReadinessProbe", false); // Replace with actual check
+            bool isSet = await _featureClient.GetBooleanValueAsync("failedReadinessProbe", false);
             #pragma warning restore CA2016
             if (isSet)
             {
-                return HealthCheckResult.Unhealthy("connection failed");
+                return HealthCheckResult.Unhealthy("readiness probe disabled by flag");
+            }
 
+            if (!_cartStore.Ping())
+            {
+                return HealthCheckResult.Unhealthy("valkey connection failed");
             }
 
             return HealthCheckResult.Healthy("healthy");

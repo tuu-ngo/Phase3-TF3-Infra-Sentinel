@@ -107,6 +107,12 @@ class ProductReviewService(demo_pb2_grpc.ProductReviewServiceServicer):
         return ai_assistant_response
 
     def Check(self, request, context):
+        try:
+            fetch_avg_product_review_score_from_db("OLJCESPC7Z")
+        except Exception as exc:
+            logger.warning(f"health: database check failed: {exc}")
+            return health_pb2.HealthCheckResponse(
+                status=health_pb2.HealthCheckResponse.NOT_SERVING)
         return health_pb2.HealthCheckResponse(
             status=health_pb2.HealthCheckResponse.SERVING)
 

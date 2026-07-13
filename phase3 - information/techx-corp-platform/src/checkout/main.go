@@ -150,6 +150,35 @@ type checkout struct {
 	paymentSvcClient        pb.PaymentServiceClient
 }
 
+func (cs *checkout) dependencyHealthStatus(ctx context.Context) healthpb.HealthCheckResponse_ServingStatus {
+	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	deps := []func(context.Context) error{
+		func(ctx context.Context) error {
+			_, err := cs.cartSvcClient.GetCart(ctx, &pb.GetCartRequest{UserId: "healthcheck"})
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := cs.currencySvcClient.GetSupportedCurrencies(ctx, &pb.Empty{})
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := cs.productCatalogSvcClient.ListProducts(ctx, &pb.Empty{})
+			return err
+		},
+	}
+
+	for _, dep := range deps {
+		if err := dep(checkCtx); err != nil {
+			logger.Warn(fmt.Sprintf("health: dependency check failed: %v", err))
+			return healthpb.HealthCheckResponse_NOT_SERVING
+		}
+	}
+
+	return healthpb.HealthCheckResponse_SERVING
+}
+
 func main() {
 	var port string
 	mustMapEnv(&port, "CHECKOUT_PORT")
@@ -252,11 +281,26 @@ func main() {
 	healthcheck := health.NewServer()
 	healthpb.RegisterHealthServer(srv, healthcheck)
 	logger.Info(fmt.Sprintf("starting to listen on tcp: %q", lis.Addr().String()))
-	err = srv.Serve(lis)
-	logger.Error(err.Error())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
 	defer cancel()
+
+	// REL-02: stop reporting a static SERVING status. checkout depends on
+	// cart/currency/product-catalog to even start building an order, so make the
+	// gRPC health endpoint reflect those real upstreams before REL-03 wires
+	// readiness probes to it.
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			healthcheck.SetServingStatus("", cs.dependencyHealthStatus(ctx))
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 
 	go func() {
 		if err := srv.Serve(lis); err != nil {
@@ -279,7 +323,7 @@ func mustMapEnv(target *string, envKey string) {
 }
 
 func (cs *checkout) Check(ctx context.Context, req *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
-	return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+	return &healthpb.HealthCheckResponse{Status: cs.dependencyHealthStatus(ctx)}, nil
 }
 
 func (cs *checkout) Watch(req *healthpb.HealthCheckRequest, ws healthpb.Health_WatchServer) error {
@@ -326,6 +370,18 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 		total = money.Must(money.Sum(total, multPrice))
 	}
 
+	// REL-04: ship BEFORE charging. The payment service exposes no Refund/Void
+	// RPC, so once a card is charged there is no way to compensate a later
+	// failure - the previous charge-then-ship order left customers "charged but
+	// not shipped" when shipOrder failed. Shipping here only allocates a tracking
+	// id (mock fulfilment, no real cost), so doing it first means a shipping
+	// failure aborts the order with the card untouched, and a later charge failure
+	// leaves only a harmless unused tracking id.
+	shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "shipping error: %+v", err)
+	}
+
 	txID, err := cs.chargeCard(ctx, total, req.CreditCard)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
@@ -338,11 +394,6 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 		slog.LevelInfo, "payment went through",
 		slog.String("transaction_id", txID),
 	)
-
-	shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "shipping error: %+v", err)
-	}
 	shippingTrackingAttribute := attribute.String("app.shipping.tracking.id", shippingTrackingID)
 	span.AddEvent("shipped", trace.WithAttributes(shippingTrackingAttribute))
 

@@ -236,6 +236,21 @@
         },
         "additionalVolumes": {
           "type": "array"
+        },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "size": {
+              "type": "string"
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          }
         }
       },
       "required": [
@@ -654,9 +669,6 @@
     "LivenessProbe": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "httpGet"
-      ],
       "properties": {
         "httpGet": {
           "type": "object",
@@ -697,6 +709,36 @@
             }
           }
         },
+        "tcpSocket": {
+          "type": "object",
+          "required": [
+            "port"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            }
+          }
+        },
+        "grpc": {
+          "type": "object",
+          "required": [
+            "port"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer"
+            },
+            "service": {
+              "type": "string"
+            }
+          }
+        },
         "initialDelaySeconds": {
           "type": "integer"
         },
@@ -712,14 +754,28 @@
         "failureThreshold": {
           "type": "integer"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "httpGet"
+          ]
+        },
+        {
+          "required": [
+            "tcpSocket"
+          ]
+        },
+        {
+          "required": [
+            "grpc"
+          ]
+        }
+      ]
     },
     "ReadinessProbe": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "httpGet"
-      ],
       "properties": {
         "httpGet": {
           "type": "object",
@@ -760,6 +816,36 @@
             }
           }
         },
+        "tcpSocket": {
+          "type": "object",
+          "required": [
+            "port"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            }
+          }
+        },
+        "grpc": {
+          "type": "object",
+          "required": [
+            "port"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer"
+            },
+            "service": {
+              "type": "string"
+            }
+          }
+        },
         "initialDelaySeconds": {
           "type": "integer"
         },
@@ -775,7 +861,24 @@
         "failureThreshold": {
           "type": "integer"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "httpGet"
+          ]
+        },
+        {
+          "required": [
+            "tcpSocket"
+          ]
+        },
+        {
+          "required": [
+            "grpc"
+          ]
+        }
+      ]
     },
     "MountedConfigMap": {
       "type": "object",

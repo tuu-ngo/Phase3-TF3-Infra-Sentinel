@@ -1,0 +1,235 @@
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "Keep the 10 newest tagged builds for accounting",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-accounting"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 2,
+      "description": "Keep the 10 newest tagged builds for ad",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-ad"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 3,
+      "description": "Keep the 10 newest tagged builds for cart",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-cart"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 4,
+      "description": "Keep the 10 newest tagged builds for checkout",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-checkout"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 5,
+      "description": "Keep the 10 newest tagged builds for currency",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-currency"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 6,
+      "description": "Keep the 10 newest tagged builds for email",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-email"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 7,
+      "description": "Keep the 10 newest tagged builds for flagd-ui",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-flagd-ui"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 8,
+      "description": "Keep the 10 newest tagged builds for fraud-detection",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-fraud-detection"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 9,
+      "description": "Keep the 10 newest tagged builds for frontend",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-frontend"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 10,
+      "description": "Keep the 10 newest tagged builds for frontend-proxy",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-frontend-proxy"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 11,
+      "description": "Keep the 10 newest tagged builds for image-provider",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-image-provider"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 12,
+      "description": "Keep the 10 newest tagged builds for kafka",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-kafka"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 13,
+      "description": "Keep the 10 newest tagged builds for llm",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-llm"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 14,
+      "description": "Keep the 10 newest tagged builds for load-generator",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-load-generator"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 15,
+      "description": "Keep the 10 newest tagged builds for payment",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-payment"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 16,
+      "description": "Keep the 10 newest tagged builds for product-catalog",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-product-catalog"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 17,
+      "description": "Keep the 10 newest tagged builds for product-reviews",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-product-reviews"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 18,
+      "description": "Keep the 10 newest tagged builds for quote",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-quote"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 19,
+      "description": "Keep the 10 newest tagged builds for recommendation",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-recommendation"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 20,
+      "description": "Keep the 10 newest tagged builds for shipping",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPatternList": ["*-shipping"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 21,
+      "description": "Expire untagged build artifacts older than 7 days",
+      "selection": {
+        "tagStatus": "untagged",
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 7
+      },
+      "action": { "type": "expire" }
+    }
+  ]
+}
