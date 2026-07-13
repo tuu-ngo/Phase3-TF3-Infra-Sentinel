@@ -1,0 +1,42 @@
+# Mandate #2 (Cost): Cluster Autoscaler - thêm node TẠM lúc đỉnh flash sale, trả về
+# ngay sau đỉnh (scale-down aggressive) để không neo cost. IRSA role đã dựng sẵn trong
+# Terraform. ASG node group: min=3 / max=6. techx-corp-bootstrap sync gitops/apps/.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-autoscaler
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes.github.io/autoscaler
+    chart: cluster-autoscaler
+    targetRevision: 9.37.0
+    helm:
+      values: |
+        autoDiscovery:
+          clusterName: techx-corp-tf3
+        awsRegion: ap-southeast-1
+        rbac:
+          serviceAccount:
+            annotations:
+              eks.amazonaws.com/role-arn: arn:aws:iam::197826770971:role/techx-corp-tf3-cluster-autoscaler
+        extraArgs:
+          # Co xuống nhanh sau đỉnh: node rảnh 2 phút là gỡ (không neo tiền ở đỉnh).
+          scale-down-unneeded-time: 2m
+          scale-down-delay-after-add: 3m
+          scale-down-utilization-threshold: "0.5"
+          skip-nodes-with-system-pods: "false"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            memory: 200Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

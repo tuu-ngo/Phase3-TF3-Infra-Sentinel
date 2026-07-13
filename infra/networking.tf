@@ -87,3 +87,35 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 }
+
+# --- SSM interface endpoints: private path for Session Manager (bastion tunnel) ---
+# The bastion is in a private subnet. Reaching SSM purely over NAT->internet proved
+# unreliable for agent registration; these interface endpoints give a direct private
+# route (and are the AWS-recommended setup for SSM in private subnets). Required trio:
+# ssm (agent API), ssmmessages (Session Manager data channel), ec2messages (agent comms).
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.region}.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+}
+
+resource "aws_vpc_endpoint" "ssmmessages" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.region}.ssmmessages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+}
+
+resource "aws_vpc_endpoint" "ec2messages" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.region}.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+}
