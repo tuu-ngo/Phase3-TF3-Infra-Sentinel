@@ -49,3 +49,18 @@ output "cloudfront_domain_name" {
   description = "Public HTTPS address for the storefront."
   value       = module.edge.cloudfront_domain_name
 }
+
+output "cloudfront_distribution_id" {
+  description = "Primary CloudFront distribution ID."
+  value       = module.edge.cloudfront_distribution_id
+}
+
+output "internal_alb_security_group_id" {
+  description = "Terraform-managed security group for the internal frontend ALB."
+  value       = module.edge.internal_alb_security_group_id
+}
+
+output "cloudfront_vpc_origin_id" {
+  description = "CloudFront VPC Origin ID after the internal origin phase begins."
+  value       = module.edge.cloudfront_vpc_origin_id
+}

@@ -4,7 +4,7 @@ locals {
   staging_enabled        = var.edge_phase == "staging"
   primary_uses_private   = var.edge_phase == "private"
 
-  public_origin_id  = "frontend-public-alb"
+  public_origin_id  = "frontend-proxy-alb"
   private_origin_id = "frontend-private-alb"
 
   operations_path_prefixes = [
