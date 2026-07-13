@@ -12,7 +12,19 @@ default:
 grafana:
   resources:
     requests:
+      cpu: 50m
       memory: 250Mi
+    limits:
+      cpu: 200m
+
+opensearch:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 750Mi
+    limits:
+      cpu: 750m
+      memory: 1100Mi
 
 components:
   # imageOverride (per-component) - dùng khi build/deploy lại 1 service riêng lẻ mà
@@ -37,15 +49,19 @@ components:
     resources:
       requests:
         cpu: 100m
+        memory: 200Mi
       limits:
         cpu: 500m
+        memory: 300Mi
   frontend:
     replicas: 2        # web khách thấy, traffic HTTP cao nhất
     resources:
       requests:
         cpu: 100m
+        memory: 100Mi
       limits:
         cpu: 500m
+        memory: 250Mi
   product-catalog:
     replicas: 2        # backend traffic cao nhất + có crash history (REL-14)
     imageOverride: # CDO02 fix main.go - xem comment imageOverride đầu components:
@@ -53,8 +69,10 @@ components:
     resources:
       requests:
         cpu: 100m
+        memory: 16Mi
       limits:
         cpu: 500m
+        memory: 20Mi
     readinessProbe:
       grpc:
         port: 8080
@@ -76,8 +94,10 @@ components:
     resources:
       requests:
         cpu: 100m
+        memory: 64Mi
       limits:
         cpu: 500m
+        memory: 160Mi
   checkout:
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
@@ -85,8 +105,10 @@ components:
     resources:
       requests:
         cpu: 100m
+        memory: 16Mi
       limits:
         cpu: 500m
+        memory: 20Mi
     readinessProbe:
       grpc:
         port: 8080
@@ -103,17 +125,40 @@ components:
       failureThreshold: 3
   payment:
     replicas: 2
+    resources:
+      requests:
+        cpu: 50m
+        memory: 100Mi
+      limits:
+        cpu: 300m
+        memory: 180Mi
   currency:
     replicas: 2
     resources:
       requests:
         cpu: 100m
+        memory: 8Mi
       limits:
         cpu: 300m
+        memory: 20Mi
   shipping:
     replicas: 2
+    resources:
+      requests:
+        cpu: 50m
+        memory: 8Mi
+      limits:
+        cpu: 150m
+        memory: 20Mi
   quote:
     replicas: 2        # shipping phụ thuộc quote
+    resources:
+      requests:
+        cpu: 50m
+        memory: 24Mi
+      limits:
+        cpu: 150m
+        memory: 40Mi
   product-reviews:
     replicas: 2        # đứng sau tính năng AI tóm tắt review
     imageOverride: # CDO02 fix database.py + product_reviews_server.py - xem comment imageOverride đầu components:
@@ -121,8 +166,10 @@ components:
     resources:
       requests:
         cpu: 100m
+        memory: 80Mi
       limits:
         cpu: 500m
+        memory: 150Mi
     readinessProbe:
       grpc:
         port: 3551
@@ -143,8 +190,10 @@ components:
     resources:
       requests:
         cpu: 100m
+        memory: 64Mi
       limits:
         cpu: 500m
+        memory: 500Mi
     readinessProbe:
       grpc:
         port: 8080
@@ -163,9 +212,76 @@ components:
     imageOverride: # CDO02 fix Consumer.cs - xem comment imageOverride đầu components:
       tag: 6a3fe95-accounting
     resources:
+      requests:
+        cpu: 50m
+        memory: 150Mi
       limits:
+        cpu: 200m
         memory: 350Mi
+  email:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 100Mi
+  fraud-detection:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 250Mi
+      limits:
+        cpu: 300m
+        memory: 300Mi
+  image-provider:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 16Mi
+      limits:
+        cpu: 100m
+        memory: 50Mi
+  kafka:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 650Mi
+      limits:
+        cpu: 500m
+        memory: 700Mi
+  llm:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
+  load-generator:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: "1"
+        memory: 1500Mi
+  postgresql:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 300m
+        memory: 100Mi
   valkey-cart:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 8Mi
+      limits:
+        cpu: 200m
+        memory: 20Mi
     command:
       - valkey-server
       - --appendonly
@@ -183,6 +299,13 @@ components:
     persistence:
       enabled: false
   flagd:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 75Mi
     env:
       - name: FLAGD_METRICS_EXPORTER
         value: otel
@@ -212,15 +335,17 @@ components:
     resources:
       requests:
         cpu: 100m
+        memory: 32Mi
       limits:
         cpu: 500m
+        memory: 65Mi
     ingress:
       annotations:
         alb.ingress.kubernetes.io/healthcheck-path: /
         alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
         alb.ingress.kubernetes.io/scheme: internet-facing
         alb.ingress.kubernetes.io/target-type: ip
-      enabled: true
+      enabled: false
       hosts:
         - host: ""
           paths:
