@@ -18,6 +18,18 @@ output "cluster_autoscaler_role_arn" {
   value = module.cluster_autoscaler_irsa.iam_role_arn
 }
 
+output "karpenter_controller_role_arn" {
+  value = aws_iam_role.karpenter_controller.arn
+}
+
+output "karpenter_node_role_name" {
+  value = aws_iam_role.karpenter_node.name
+}
+
+output "karpenter_interruption_queue_name" {
+  value = aws_sqs_queue.karpenter_interruption.name
+}
+
 output "lb_controller_role_arn" {
   value = module.lb_controller_irsa.iam_role_arn
 }

@@ -3,7 +3,7 @@
 **Ngày:** 12/07/2026
 **Người quyết định (ký):** CDO02 (Reliability + Cost Optimization)
 **Directive:** [`mandates/MANDATE-02-scale-under-budget.md`](../../mandates/MANDATE-02-scale-under-budget.md) — hạn **14/07/2026**
-**Trạng thái:** 🟡 Đã thiết kế + chuẩn bị — **chờ AWS mở account để deploy + chạy load test**
+**Trạng thái:** 🟡 Đã triển khai nền Karpenter/Spot — **chờ chạy load test 200 user / 15 phút**
 **Phạm vi ADR này:** **phần CDO02** = Cost Optimization + Reliability + Operational Excellence.
 Tối ưu độ trễ/khử bottleneck tầng perf là **Performance Efficiency → CDO01**.
 
@@ -16,34 +16,32 @@ browse/cart ≥99.5%, storefront p95 <1s) **mà không tăng ngân sách** (~$30
 đơn/request** không được phình. Co lên rồi phải co xuống.
 
 Tải ×nhiều lần thường ngày dồn vào **browse/search + checkout**. Baseline hiện tại: mọi service
-`replicas: 1` (đã vá nhóm checkout lên 2 qua REL-01), **không có HPA, không có Cluster Autoscaler
-đang chạy, không có metrics-server** (bị gỡ trước đó). Nghĩa là hiện hệ thống **không tự co giãn** —
-sẽ bão hòa dưới 200 user.
+`replicas: 1` (đã vá nhóm checkout lên 2 qua REL-01), cần HPA + node autoscaling để không bão hòa
+dưới 200 user và để co xuống sau đỉnh tải.
 
 ## Quyết định (phần CDO02)
 
 Gánh tải bằng **co giãn tạm thời rồi trả về**, không thêm cost cố định:
 
-1. **metrics-server** (nền tảng bắt buộc) — HPA + `kubectl top` cần metric CPU/mem. Cài qua ArgoCD
-   Application (`gitops/apps/metrics-server-app.yaml`).
+1. **metrics-server** (nền tảng bắt buộc) — HPA + `kubectl top` cần metric CPU/mem. Quản lý bằng
+   EKS community add-on trong Terraform.
 2. **HPA cho hot path browse+checkout** (`gitops/infrastructure/hpa-hotpath.yaml`) — `minReplicas: 2`
-   (khớp REL-01), `maxReplicas: 5`, target **CPU 70%**. Pod **co lên** khi tải, **co xuống** sau đỉnh.
-3. **Cluster Autoscaler** (`gitops/apps/cluster-autoscaler-app.yaml`) — IRSA đã sẵn
-   (`arn:aws:iam::012619468490:role/techx-corp-tf3-cluster-autoscaler`). Node group ASG min=3/max=6:
-   thêm node **tạm** lúc đỉnh, cấu hình **scale-down aggressive** (`scale-down-unneeded-time: 2m`) để
-   trả node về 3 ngay sau đỉnh → cost cố định **không neo ở đỉnh**.
+   (khớp REL-01), target **CPU 65%**, trần theo từng service để không scale vô hạn.
+3. **Karpenter Spot** (`gitops/apps/karpenter-app.yaml` + `gitops/karpenter/spot-nodepool.yaml`) —
+   giữ managed node group on-demand hiện tại làm baseline/controller capacity, còn burst node dùng Spot.
+   NodePool giới hạn `cpu: 12`, `memory: 48Gi`, consolidate sau 2 phút để trả capacity sau flash sale.
 4. **Khử bottleneck dữ liệu dưới tải** (tận dụng PR đã có): REL-05 connection pool (PR #43) chống cạn
    Postgres khi 200 user dồn vào; REL-09 Kafka ack (PR #45) chống mất đơn khi queue đầy; REL-01
    replicas + PDB giữ availability.
 
 ## Đánh đổi đã cân (Perf ⇄ Cost — trọng tâm mandate chấm)
 
-- **Node tạm tăng 3→(tối đa)6 trong 15 phút test** → cost **tuyệt đối** tăng nhẹ trong cửa sổ test,
-  nhưng **cost/request KHÔNG phình** (thêm capacity đúng lúc cần, trả lại ngay). Scale-down aggressive
+- **Node tạm dùng Spot trong 15 phút test** → cost **tuyệt đối** tăng nhẹ trong cửa sổ test, nhưng
+  **cost/request KHÔNG phình** (thêm capacity đúng lúc cần, trả lại ngay). Karpenter consolidation
   đảm bảo không neo tiền ở đỉnh. Đây là đánh đổi đúng: gánh tải mà vẫn gọn chi phí.
-- **HPA target 70% CPU** — cân giữa phản ứng kịp (không để bão hòa → vỡ SLO) và không scale thừa
+- **HPA target 65% CPU** — cân giữa phản ứng kịp (không để bão hòa → vỡ SLO) và không scale thừa
   (tốn tiền). Có thể tinh chỉnh sau lần test đầu.
-- **maxReplicas: 5** — trần để không scale vô hạn vượt quota/ngân sách; đủ cho 200 user ở quy mô này.
+- **Spot chỉ cho burst** — baseline on-demand vẫn giữ hệ thống/controller sống nếu Spot bị thu hồi.
 - **Cân nhắc rồi loại:** tăng cứng node/replicas cố định để "chắc chắn gánh nổi" — **loại**, vì đó là
   "quăng thêm tài nguyên" mandate cấm và phình cost 24/7.
 - **Phụ thuộc CPU requests:** HPA tính % trên CPU request. LimitRange (CDO01) đang set default
@@ -65,12 +63,13 @@ Chạy load test ở mục tiêu và nộp:
 4. Cho mentor cách chạy lại (runbook `docs/runbooks/flash-sale-load-test.md`).
 
 ## Rollback plan
-- HPA/autoscaler gây bất ổn → `git revert` các manifest → ArgoCD prune (gỡ HPA/CA) → về baseline replicas cố định. Phát hiện qua Grafana SLO tụt trong test → dừng test, revert.
+- HPA/Karpenter gây bất ổn → `git revert` các manifest → ArgoCD prune (gỡ HPA/Karpenter NodePool) → về baseline replicas cố định. Phát hiện qua Grafana SLO tụt trong test → dừng test, revert.
 - metrics-server độc lập, gỡ không ảnh hưởng workload.
 
 ## Trạng thái thực thi
-- [ ] Deploy metrics-server (ArgoCD app) — chờ account mở
-- [ ] Deploy HPA hot path + Cluster Autoscaler — chờ account mở
+- [x] Deploy nền Terraform cho Karpenter Spot (IAM, node role, SQS interruption queue, discovery tags)
+- [x] Khai báo metrics-server EKS add-on trong Terraform
+- [x] Khai báo HPA hot path + Karpenter Spot NodePool trên branch `deploy/account-migration-gitops`
 - [ ] Chạy load test 200 user/15 phút, đo SLO + cost
 - [ ] Xác nhận co xuống sau đỉnh; nộp evidence
 

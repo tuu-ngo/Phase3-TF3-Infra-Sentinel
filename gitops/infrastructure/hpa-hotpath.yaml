@@ -1,11 +1,12 @@
 # Mandate #2 (Cost + Reliability): HPA cho các service hot path browse+checkout.
 # techx-infrastructure-app (ArgoCD) sync file này.
 #
-# minReplicas: 2 khớp REL-01 (baseline chống SPOF). maxReplicas: 5 = trần để không
-# scale vô hạn vượt quota/ngân sách. Target CPU 70%. scaleDown stabilization 120s để
-# CO XUỐNG nhanh sau đỉnh flash sale (không neo tài nguyên/tiền ở đỉnh).
+# minReplicas: 2 khớp REL-01 (baseline chống SPOF). maxReplicas có trần để không
+# scale vô hạn vượt quota/ngân sách. Target CPU 65% giúp phản ứng sớm trong flash sale.
+# Node burst do Karpenter Spot xử lý khi pod Pending; scaleDown giữ 2 phút để co xuống
+# nhanh sau đỉnh nhưng không flap quá mạnh.
 #
-# Yêu cầu: metrics-server (gitops/apps/metrics-server-app.yaml) + CPU requests
+# Yêu cầu: metrics-server EKS add-on + CPU requests
 # (LimitRange của CDO01 set default 100m). KHÔNG đặt HPA cho datastore (stateful).
 ---
 apiVersion: autoscaling/v2
@@ -16,12 +17,23 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: frontend-proxy }
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 8
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
-    scaleDown: { stabilizationWindowSeconds: 120 }
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -31,12 +43,23 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: frontend }
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 8
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
-    scaleDown: { stabilizationWindowSeconds: 120 }
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -46,12 +69,23 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: product-catalog }
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 8
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
-    scaleDown: { stabilizationWindowSeconds: 120 }
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -61,12 +95,23 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: cart }
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 6
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
-    scaleDown: { stabilizationWindowSeconds: 120 }
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 3
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -76,12 +121,23 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: checkout }
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 8
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
-    scaleDown: { stabilizationWindowSeconds: 120 }
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -91,12 +147,23 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: currency }
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 6
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
-    scaleDown: { stabilizationWindowSeconds: 120 }
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 3
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -109,9 +176,20 @@ spec:
   maxReplicas: 4
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
-    scaleDown: { stabilizationWindowSeconds: 120 }
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -121,12 +199,23 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: product-reviews }
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 6
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
-    scaleDown: { stabilizationWindowSeconds: 120 }
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 3
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -139,6 +228,17 @@ spec:
   maxReplicas: 4
   metrics:
     - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
-    scaleDown: { stabilizationWindowSeconds: 120 }
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
