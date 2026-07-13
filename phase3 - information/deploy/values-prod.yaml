@@ -10,12 +10,31 @@ default:
     tag: 58b13f2
 
 grafana:
+  sidecar:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 96Mi
+      limits:
+        cpu: 150m
+        memory: 256Mi
   resources:
     requests:
       cpu: 50m
       memory: 250Mi
     limits:
       cpu: 200m
+      memory: 500Mi
+
+jaeger:
+  jaeger:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 500Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
 
 opensearch:
   resources:
