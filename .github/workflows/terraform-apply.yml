@@ -126,3 +126,41 @@ jobs:
 
       - name: Apply saved plan
         run: terraform apply -input=false tfplan
+
+      - name: Verify staging edge paths
+        shell: bash
+        run: |
+          if ! grep -Eq '^edge_phase[[:space:]]*=[[:space:]]*"staging"' production.auto.tfvars; then
+            exit 0
+          fi
+
+          test -n "$TF_VAR_cloudfront_staging_selector"
+          base_url="https://d2tn71186d7ilz.cloudfront.net"
+          header="aws-cf-cd-techx-private-origin: $TF_VAR_cloudfront_staging_selector"
+
+          assert_status() {
+            local path="$1"
+            local expected="$2"
+            local actual
+            actual=$(curl --retry 5 --retry-delay 5 --silent --show-error \
+              --output /dev/null --write-out '%{http_code}' --header "$header" "$base_url$path")
+            printf '%s %s\n' "$path" "$actual"
+            test "$actual" = "$expected"
+          }
+
+          assert_not_blocked() {
+            local path="$1"
+            local actual
+            actual=$(curl --retry 5 --retry-delay 5 --silent --show-error \
+              --output /dev/null --write-out '%{http_code}' --header "$header" "$base_url$path")
+            printf '%s %s\n' "$path" "$actual"
+            test "$actual" != "403"
+          }
+
+          assert_status "/" "200"
+          assert_status "/grafana/" "403"
+          assert_status "/jaeger/" "403"
+          assert_status "/loadgen/" "403"
+          assert_status "/feature/" "403"
+          assert_not_blocked "/flagservice/"
+          assert_not_blocked "/otlp-http/"

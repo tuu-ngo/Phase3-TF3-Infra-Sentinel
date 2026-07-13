@@ -134,6 +134,9 @@ Commit, push, chạy saved-plan apply như Phase A. Plan phải:
 - Giữ primary distribution trên public ALB origin.
 - Không destroy public ALB, EKS hoặc primary distribution.
 
+Apply workflow tự dùng repository secret để chạy smoke test header-routed và chỉ ghi HTTP
+status vào log; selector không được echo.
+
 Lấy selector vào shell mà không echo rồi test qua production domain:
 
 ```sh
