@@ -259,6 +259,11 @@ components:
         cpu: 300m
         memory: 256Mi
   load-generator:
+    envOverrides:
+      - name: LOCUST_AUTOSTART
+        value: "false"
+      - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+        value: "false"
     resources:
       requests:
         cpu: 200m
