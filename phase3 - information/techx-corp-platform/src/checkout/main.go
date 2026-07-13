@@ -1,6 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
-// rebuild-sync: touch to build alongside frontend-proxy/accounting/cart/product-catalog/product-reviews/recommendation under one CI tag
+// rebuild-sync (retry - fixed undefined `cs` -> `svc` compile error below): touch to build alongside frontend-proxy/accounting/cart/product-catalog/product-reviews/recommendation under one CI tag
 package main
 
 import (
@@ -294,7 +294,7 @@ func main() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
-			healthcheck.SetServingStatus("", cs.dependencyHealthStatus(ctx))
+			healthcheck.SetServingStatus("", svc.dependencyHealthStatus(ctx))
 			select {
 			case <-ctx.Done():
 				return
