@@ -18,6 +18,11 @@ variable "state_bucket_name" {
   default = "techx-tf3-197826770971-tfstate"
 }
 
+variable "state_key" {
+  type    = string
+  default = "eks-baseline/terraform.tfstate"
+}
+
 variable "lock_table_name" {
   type    = string
   default = "techx-tf3-terraform-lock"

@@ -38,16 +38,18 @@ resource "aws_iam_role_policy" "terraform_plan_state_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
-        Resource = [
-          "arn:aws:s3:::${var.state_bucket_name}",
-          "arn:aws:s3:::${var.state_bucket_name}/*",
-        ]
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = "arn:aws:s3:::${var.state_bucket_name}"
       },
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Action   = ["s3:GetObject"]
+        Resource = "arn:aws:s3:::${var.state_bucket_name}/${var.state_key}"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:DescribeTable", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
         Resource = "arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/${var.lock_table_name}"
       },
     ]
