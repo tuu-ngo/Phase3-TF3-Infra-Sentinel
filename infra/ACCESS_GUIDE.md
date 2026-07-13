@@ -52,9 +52,9 @@ export AWS_PROFILE=techx-corp
 
 ```sh
 aws ssm start-session \
-  --target i-0ed38bc9cd8c4c2b0 \
+  --target i-02a8d3e39b87180ce \
   --document-name AWS-StartPortForwardingSessionToRemoteHost \
-  --parameters host="78F80EEA7B05283C4A1AD20C546A4559.gr7.ap-southeast-1.eks.amazonaws.com",portNumber="443",localPortNumber="8443" \
+  --parameters host="ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com",portNumber="443",localPortNumber="8443" \
   --region ap-southeast-1
 ```
 
@@ -90,8 +90,11 @@ phải `localhost` — chấp nhận được vì traffic đã đi trong tunnel 
 kubectl get pods -n techx-tf3
 kubectl get nodes
 helm list -n techx-tf3
-kubectl -n techx-tf3 port-forward svc/frontend-proxy 8080:8080   # để mở storefront/Grafana/Jaeger
+kubectl -n techx-tf3 port-forward svc/frontend-proxy 8080:8080
 ```
+
+Grafana, Jaeger và ArgoCD không còn route qua `frontend-proxy`. Dùng port-forward trực tiếp theo
+[`docs/runbooks/private-access-to-ops-uis.md`](../docs/runbooks/private-access-to-ops-uis.md).
 
 ### Dùng xong
 
@@ -117,8 +120,8 @@ phía client.
 
 | Giá trị | Nội dung |
 |---|---|
-| Bastion instance ID | `i-0ed38bc9cd8c4c2b0` |
-| Cluster endpoint (không có `https://`) | `78F80EEA7B05283C4A1AD20C546A4559.gr7.ap-southeast-1.eks.amazonaws.com` |
+| Bastion instance ID | `i-02a8d3e39b87180ce` |
+| Cluster endpoint (không có `https://`) | `ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com` |
 | Region | `ap-southeast-1` |
 | Cluster name | `techx-corp-tf3` |
 | Namespace ứng dụng | `techx-tf3` |

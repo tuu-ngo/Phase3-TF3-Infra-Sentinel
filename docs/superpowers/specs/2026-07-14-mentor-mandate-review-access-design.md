@@ -8,7 +8,7 @@ Give the TechX mentor temporary, independently usable access to verify Mandate #
 
 1. A bootstrap IAM user named `mentor-mandate-reviewer` receives only `sts:AssumeRole` permission for one role.
 2. The role `techx-tf3-mandate-reviewer` trusts only that IAM user and limits sessions to one hour.
-3. The role can describe the production EKS cluster and start an SSM port-forwarding session to the current production bastion using only `AWS-StartPortForwardingSessionToRemoteHost`.
+3. The role can describe the production EKS cluster and start an SSM port-forwarding session to the current production bastion using only `TechX-Mandate01-EKS-PortForward`.
 4. An EKS `STANDARD` access entry maps the role to the Kubernetes group `techx:mandate-reviewers`.
 5. Namespace RoleBindings grant that group read access plus `create` on `pods/portforward` in `techx-tf3` and `argocd` only.
 
@@ -24,7 +24,7 @@ The bootstrap access key is delivered out of band, never written to a tracked fi
 
 ## Explicit Denials By Absence
 
-The reviewer receives no permission to mutate Deployments, Services, Ingresses, Secrets, Argo CD Applications, IAM, EC2, CloudFront, WAF, or Terraform state. The role cannot start a shell session because its IAM policy permits only the remote-host port-forwarding SSM document.
+The reviewer receives no permission to mutate Deployments, Services, Ingresses, Secrets, Argo CD Applications, IAM, EC2, CloudFront, WAF, or Terraform state. The role cannot start a shell session because its IAM policy permits only a custom SSM document whose destination is fixed to the production EKS API on port 443.
 
 ## Audit And Lifecycle
 
@@ -47,4 +47,4 @@ Test with credentials belonging to the bootstrap user, not the administrator:
 
 ## Rollback
 
-Delete the bootstrap access key first, then the EKS access entry and Kubernetes RoleBindings, followed by IAM inline policies, role, and user. None of these operations changes storefront traffic, workloads, data, flagd, or the protected fault-injection mechanism.
+Delete the bootstrap access key first, then the EKS access entry and Kubernetes RoleBindings, followed by the IAM inline policies, custom SSM document, role, and user. None of these operations changes storefront traffic, workloads, data, flagd, or the protected fault-injection mechanism.
