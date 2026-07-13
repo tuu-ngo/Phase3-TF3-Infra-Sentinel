@@ -32,12 +32,12 @@
 - Consumes: account-new backend and current flat root.
 - Produces: state address list, state serial/lineage, and baseline action summary used by Tasks 2 and 5.
 
-- [ ] Verify AWS identity is account `197826770971` with `aws sts get-caller-identity`.
-- [ ] Initialize `infra/` using `-reconfigure` and the account-new bucket, key, region, lock table, and encryption settings.
-- [ ] Save `terraform state list | sort` to `/tmp/tf3-state-addresses.before.txt`.
-- [ ] Read only `version`, `terraform_version`, `serial`, and `lineage` from the S3 state object into `/tmp/tf3-state-metadata.before.json`.
-- [ ] Run `terraform plan -refresh=false -lock=false -input=false -no-color` and save text output to `/tmp/tf3-flat-plan.before.txt`.
-- [ ] Record the baseline action summary; do not save a binary plan.
+- [x] Verify AWS identity is account `197826770971` with `aws sts get-caller-identity`.
+- [x] Initialize `infra/` using `-reconfigure` and the account-new bucket, key, region, lock table, and encryption settings.
+- [x] Save `terraform state list | sort` to `/tmp/tf3-state-addresses.before.txt`.
+- [x] Read only `version`, `terraform_version`, `serial`, and `lineage` from the S3 state object into `/tmp/tf3-state-metadata.before.json`.
+- [x] Run `terraform plan -refresh=false -lock=false -input=false -no-color` and save text output to `/tmp/tf3-flat-plan.before.txt`.
+- [x] Record the baseline action summary; do not save a binary plan.
 
 ### Task 2: Reconstruct the Account-New Flat Root
 
@@ -53,14 +53,14 @@
 - Consumes: Task 1 state addresses and live/state values.
 - Produces: a flat root whose no-refresh plan has no account-old identity, missing endpoint, EKS downgrade, or stale CloudFront origin action.
 
-- [ ] Add interface endpoints named `ssm`, `ssmmessages`, and `ec2messages` using the existing endpoint subnets, security group, private DNS, region, and tags pattern.
-- [ ] Set `cluster_version = "1.35"` and the CloudFront ALB default to the account-new state value.
-- [ ] Replace account-old EKS principals with `arn:aws:iam::197826770971:user/cdo-2-admin-team`.
-- [ ] Change backend examples and commands to bucket `techx-tf3-197826770971-tfstate` and table `techx-tf3-terraform-lock`.
-- [ ] Remove `infra/ci.tf` from the active production root; preserve its intent for Task 4 bootstrap ownership.
-- [ ] Run `terraform fmt -check -recursive`, `terraform validate`, and a no-refresh/no-lock plan.
-- [ ] Confirm the plan no longer proposes destroying SSM endpoints, removing the account-new EKS access entry, adding account-old principals, or downgrading EKS.
-- [ ] Commit only the reconstructed flat-root files with `refactor: align Terraform with new account state`.
+- [x] Add interface endpoints named `ssm`, `ssmmessages`, and `ec2messages` using the existing endpoint subnets, security group, private DNS, region, and tags pattern.
+- [x] Set `cluster_version = "1.35"` and the CloudFront ALB default to the account-new state value.
+- [x] Replace account-old EKS principals with `arn:aws:iam::197826770971:user/cdo-2-admin-team`.
+- [x] Change backend examples and commands to bucket `techx-tf3-197826770971-tfstate` and table `techx-tf3-terraform-lock`.
+- [x] Remove `infra/ci.tf` from the active production root; preserve its intent for Task 4 bootstrap ownership.
+- [x] Run `terraform fmt -check -recursive`, `terraform validate`, and a no-refresh/no-lock plan.
+- [x] Confirm the plan no longer proposes destroying SSM endpoints, removing the account-new EKS access entry, adding account-old principals, or downgrading EKS.
+- [x] Commit only the reconstructed flat-root files with `refactor: align Terraform with new account state`.
 
 ### Task 3: Extract Production Modules With Declarative Moves
 
@@ -79,16 +79,16 @@
 - `edge` consumes the frontend ALB DNS and produces the CloudFront HTTPS domain.
 - Production root wires modules and preserves existing public outputs.
 
-- [ ] Extract VPC and all endpoint resources into `module.network` without changing arguments.
-- [ ] Extract KMS, EKS, managed node group/add-ons, and controller IRSA modules into `module.eks_platform`.
-- [ ] Extract bastion resources into `module.access`.
-- [ ] Extract CloudFront resources into `module.edge`.
-- [ ] Add whole-module moves for `module.vpc`, `module.eks`, `module.cluster_autoscaler_irsa`, and `module.lb_controller_irsa`.
-- [ ] Add resource moves for every root resource/data source moved into the four modules, including all six VPC endpoints.
-- [ ] Move backend/provider/version/variables/values/outputs into `infra/live/production` and compose the four modules in `main.tf`.
-- [ ] Initialize the new production root against the same backend without migration and run fmt/validate.
-- [ ] Run a no-refresh/no-lock plan and confirm address moves produce no AWS create, update, replace, or destroy actions.
-- [ ] Commit only the module and production-root relocation with `refactor: split Terraform production capabilities`.
+- [x] Extract VPC and all endpoint resources into `module.network` without changing arguments.
+- [x] Extract KMS, EKS, managed node group/add-ons, and controller IRSA modules into `module.eks_platform`.
+- [x] Extract bastion resources into `module.access`.
+- [x] Extract CloudFront resources into `module.edge`.
+- [x] Add whole-module moves for `module.vpc`, `module.eks`, `module.cluster_autoscaler_irsa`, and `module.lb_controller_irsa`.
+- [x] Add resource moves for every root resource/data source moved into the four modules, including all six VPC endpoints.
+- [x] Move backend/provider/version/variables/values/outputs into `infra/live/production` and compose the four modules in `main.tf`.
+- [x] Initialize the new production root against the same backend without migration and run fmt/validate.
+- [x] Run a no-refresh/no-lock plan and confirm address moves produce no AWS create, update, replace, or destroy actions.
+- [x] Commit only the module and production-root relocation with `refactor: split Terraform production capabilities`.
 
 ### Task 4: Separate Bootstrap Ownership and Update Automation
 
@@ -103,13 +103,13 @@
 - Bootstrap roots are independent and are not initialized/applied in this task.
 - Workflows consume only `infra/live/production` and `infra/modules` for production planning.
 
-- [ ] Define backend resources and GitHub OIDC role configuration in independent bootstrap roots while documenting that adoption/provisioning requires separate approval.
-- [ ] Set workflow working directory to `infra/live/production`.
-- [ ] Watch `infra/live/production/**` and `infra/modules/**` paths.
-- [ ] Use the account-new bucket, state key, region, and lock table in workflow init.
-- [ ] Keep current plan/apply behavior otherwise unchanged so saved-plan hardening remains a separate change.
-- [ ] Search active production/workflow paths and confirm account `012619468490` does not appear.
-- [ ] Commit bootstrap/workflow/docs changes with `refactor: separate Terraform bootstrap ownership`.
+- [x] Define backend resources and GitHub OIDC role configuration in independent bootstrap roots while documenting that adoption/provisioning requires separate approval.
+- [x] Set workflow working directory to `infra/live/production`.
+- [x] Watch `infra/live/production/**` and `infra/modules/**` paths.
+- [x] Use the account-new bucket, state key, region, and lock table in workflow init.
+- [x] Keep current plan/apply behavior otherwise unchanged so saved-plan hardening remains a separate change.
+- [x] Search active production/workflow paths and confirm account `012619468490` does not appear.
+- [x] Commit bootstrap/workflow/docs changes with `refactor: separate Terraform bootstrap ownership`.
 
 ### Task 5: Production-Safety Audit
 
@@ -121,14 +121,14 @@
 - Consumes all prior task outputs.
 - Produces evidence that code movement did not mutate or propose mutation of AWS resources.
 
-- [ ] Run `terraform fmt -check -recursive` from `infra/`.
-- [ ] Initialize and validate `infra/live/production` against the account-new backend.
-- [ ] Validate each local module using the production root dependency graph.
-- [ ] Run final `terraform plan -refresh=false -lock=false -input=false -no-color` and save output only under `/tmp`.
-- [ ] Verify the final plan has no resource create, update, replace, or destroy action caused by refactoring.
-- [ ] Run `terraform plan -refresh-only -lock=false -input=false -no-color` and report the known EKS public endpoint drift separately.
-- [ ] Re-read state metadata from S3 and compare serial/lineage with Task 1.
-- [ ] Compare state addresses with `moved.tf` and ensure every changed address is covered.
-- [ ] Search the diff for account-old IDs, credentials, tokens, state files, binary plans, Helm, ArgoCD, Kubernetes, and flagd changes.
-- [ ] Run `git diff --check`, inspect every staged diff, and run a production-focused code/security review.
-- [ ] Commit only final verification documentation if it changed; do not push or create a PR.
+- [x] Run `terraform fmt -check -recursive` from `infra/`.
+- [x] Initialize and validate `infra/live/production` against the account-new backend.
+- [x] Validate each local module using the production root dependency graph.
+- [x] Run final `terraform plan -refresh=false -lock=false -input=false -no-color` and save output only under `/tmp`.
+- [x] Verify the final plan has no resource create, update, replace, or destroy action caused by refactoring.
+- [x] Run `terraform plan -refresh-only -lock=false -input=false -no-color` and report the known EKS public endpoint drift separately.
+- [x] Re-read state metadata from S3 and compare serial/lineage with Task 1.
+- [x] Compare state addresses with `moved.tf` and ensure every changed address is covered.
+- [x] Search the diff for account-old IDs, credentials, tokens, state files, binary plans, Helm, ArgoCD, Kubernetes, and flagd changes.
+- [x] Run `git diff --check`, inspect every staged diff, and run a production-focused code/security review.
+- [x] Commit only final verification documentation if it changed; do not push or create a PR.

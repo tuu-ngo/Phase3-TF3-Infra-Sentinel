@@ -161,4 +161,3 @@ CI hardening change so the structural refactor remains independently reviewable.
 - Changing Helm, ArgoCD applications, Kubernetes workloads, or flagd sync.
 - Updating provider, Terraform, EKS add-on, or AMI versions beyond matching the
   account-new state.
-
