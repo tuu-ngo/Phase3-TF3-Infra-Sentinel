@@ -68,7 +68,7 @@ Waiting for connections...
 
 > Lệnh đầy đủ (tự điền sẵn ID/endpoint hiện tại) luôn lấy lại được bằng:
 > ```sh
-> cd infra && terraform output ssm_tunnel_command
+> cd infra/live/production && terraform output ssm_tunnel_command
 > ```
 
 ### Bước 2 — Terminal MỚI: cấu hình kubectl (chỉ cần làm 1 lần)

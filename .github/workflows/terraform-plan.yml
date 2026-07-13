@@ -1,6 +1,6 @@
-name: Terraform Plan (infra/)
+name: Terraform Plan (production)
 
-# Runs on every PR touching infra/ - posts the plan as a PR comment so the
+# Runs on every PR touching the production root or its modules and posts the
 # whole team sees exactly what's about to change before merge. Read-only
 # role (AWS_TF_PLAN_ROLE_ARN) - this workflow cannot modify AWS resources.
 
@@ -8,7 +8,8 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "infra/**"
+      - "infra/live/production/**"
+      - "infra/modules/**"
 
 permissions:
   id-token: write # OIDC -> assume AWS role
@@ -17,14 +18,14 @@ permissions:
 
 env:
   AWS_REGION: ap-southeast-1
-  TF_VERSION: "1.9.8"
+  TF_VERSION: "1.15.4"
 
 jobs:
   plan:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: infra
+        working-directory: infra/live/production
     steps:
       - uses: actions/checkout@v6
 
@@ -39,15 +40,15 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: terraform fmt -check
-        run: terraform fmt -check -recursive
+        run: terraform fmt -check -recursive ../../
 
       - name: terraform init
         run: |
           terraform init \
-            -backend-config="bucket=techx-corp-tf3-terraform-state" \
+            -backend-config="bucket=techx-tf3-197826770971-tfstate" \
             -backend-config="key=eks-baseline/terraform.tfstate" \
             -backend-config="region=ap-southeast-1" \
-            -backend-config="dynamodb_table=techx-corp-tf3-terraform-lock" \
+            -backend-config="dynamodb_table=techx-tf3-terraform-lock" \
             -backend-config="encrypt=true"
 
       - name: terraform validate
@@ -68,10 +69,10 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('infra/plan_output_trimmed.txt', 'utf8');
+            const plan = fs.readFileSync('infra/live/production/plan_output_trimmed.txt', 'utf8');
             const outcome = "${{ steps.plan.outcome }}";
             const marker = "<!-- terraform-plan-comment -->";
-            const body = `${marker}\n### Terraform Plan (\`infra/\`) - ${outcome === 'success' ? '✅' : '❌ failed'}\n\n<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`;
+            const body = `${marker}\n### Terraform Plan (\`infra/live/production\`) - ${outcome === 'success' ? '✅' : '❌ failed'}\n\n<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
