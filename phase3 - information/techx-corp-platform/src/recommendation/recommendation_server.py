@@ -8,6 +8,7 @@
 import os
 import random
 from concurrent import futures
+import logging
 
 # Pip
 import grpc
@@ -56,6 +57,12 @@ class RecommendationService(demo_pb2_grpc.RecommendationServiceServicer):
         return response
 
     def Check(self, request, context):
+        try:
+            product_catalog_stub.ListProducts(demo_pb2.Empty(), timeout=2)
+        except Exception as exc:
+            logger.warning(f"health: product-catalog check failed: {exc}")
+            return health_pb2.HealthCheckResponse(
+                status=health_pb2.HealthCheckResponse.NOT_SERVING)
         return health_pb2.HealthCheckResponse(
             status=health_pb2.HealthCheckResponse.SERVING)
 
