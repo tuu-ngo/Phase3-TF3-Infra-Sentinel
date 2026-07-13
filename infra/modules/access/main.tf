@@ -2,9 +2,16 @@ data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
 
+  # STANDARD AL2023 only — NOT "minimal". The minimal image ships without
+  # amazon-ssm-agent, so a bastion built from it never registers with SSM and the
+  # private-EKS-API tunnel is dead on arrival. The old glob `al2023-ami-*-x86_64`
+  # also matched `al2023-ami-minimal-*` and most_recent picked minimal — this was
+  # the root cause of the bastion-never-online incident on the new account (13/07,
+  # ~30m lost). `al2023-ami-2023.*` excludes minimal (its name is
+  # `al2023-ami-minimal-2023.*`, which does not match this pattern).
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023.*-x86_64"]
   }
 }
 
