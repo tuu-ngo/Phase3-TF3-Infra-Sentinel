@@ -49,7 +49,6 @@ run "rejects_unknown_phase" {
     frontend_alb_dns_name       = "public.example.elb.amazonaws.com"
     vpc_id                      = "vpc-00000000000000000"
     private_alb_name            = "techx-tf3-frontend-internal"
-    private_subnet_ids          = ["subnet-a", "subnet-b", "subnet-c"]
     edge_phase                  = "invalid"
     cloudfront_staging_selector = "test-only"
   }
@@ -120,7 +119,7 @@ git commit -m "test: define edge migration phase contract"
 - Modify: `infra/modules/edge/tests/phase_contract.tftest.hcl`
 
 **Interfaces:**
-- Consumes: Task 1 phase variables plus `vpc_id`, `private_subnet_ids`, and stable ALB name.
+- Consumes: Task 1 phase variables plus `vpc_id` and stable ALB name.
 - Produces: `internal_alb_security_group_id`, `cloudfront_vpc_origin_id`, `cloudfront_distribution_id`, and phase-aware primary/staging configuration.
 
 - [ ] **Step 1: Add failing resource assertions**
@@ -286,7 +285,6 @@ providers = {
 }
 
 vpc_id                      = module.network.vpc_id
-private_subnet_ids           = module.network.private_subnet_ids
 edge_phase                   = var.edge_phase
 private_alb_name             = var.private_alb_name
 cloudfront_staging_selector  = var.cloudfront_staging_selector

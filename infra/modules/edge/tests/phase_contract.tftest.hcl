@@ -11,7 +11,6 @@ run "rejects_unknown_phase" {
     cluster_name                = "techx-corp-tf3"
     frontend_alb_dns_name       = "public.example.elb.amazonaws.com"
     vpc_id                      = "vpc-00000000000000000"
-    private_subnet_ids          = ["subnet-a", "subnet-b", "subnet-c"]
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "invalid"
     cloudfront_staging_selector = "test-only"
@@ -27,7 +26,6 @@ run "public_phase_preserves_public_origin" {
     cluster_name                = "techx-corp-tf3"
     frontend_alb_dns_name       = "public.example.elb.amazonaws.com"
     vpc_id                      = "vpc-00000000000000000"
-    private_subnet_ids          = ["subnet-a", "subnet-b", "subnet-c"]
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "public"
     cloudfront_staging_selector = ""
@@ -51,7 +49,6 @@ run "waf_phase_adds_guard_without_origin_cutover" {
     cluster_name                = "techx-corp-tf3"
     frontend_alb_dns_name       = "public.example.elb.amazonaws.com"
     vpc_id                      = "vpc-00000000000000000"
-    private_subnet_ids          = ["subnet-a", "subnet-b", "subnet-c"]
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "waf"
     cloudfront_staging_selector = ""
@@ -88,7 +85,6 @@ run "staging_phase_keeps_primary_on_public_origin" {
     cluster_name                = "techx-corp-tf3"
     frontend_alb_dns_name       = "public.example.elb.amazonaws.com"
     vpc_id                      = "vpc-00000000000000000"
-    private_subnet_ids          = ["subnet-a", "subnet-b", "subnet-c"]
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "staging"
     cloudfront_staging_selector = "test-only"
@@ -125,7 +121,6 @@ run "private_phase_cuts_primary_to_vpc_origin" {
     cluster_name                = "techx-corp-tf3"
     frontend_alb_dns_name       = "public.example.elb.amazonaws.com"
     vpc_id                      = "vpc-00000000000000000"
-    private_subnet_ids          = ["subnet-a", "subnet-b", "subnet-c"]
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "private"
     cloudfront_staging_selector = ""
@@ -162,7 +157,6 @@ run "rollback_phase_restores_public_and_retains_vpc_origin" {
     cluster_name                = "techx-corp-tf3"
     frontend_alb_dns_name       = "public.example.elb.amazonaws.com"
     vpc_id                      = "vpc-00000000000000000"
-    private_subnet_ids          = ["subnet-a", "subnet-b", "subnet-c"]
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "rollback"
     cloudfront_staging_selector = ""

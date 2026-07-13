@@ -45,7 +45,6 @@ module "edge" {
   cluster_name                = var.cluster_name
   frontend_alb_dns_name       = var.frontend_alb_dns_name
   vpc_id                      = module.network.vpc_id
-  private_subnet_ids          = module.network.private_subnet_ids
   private_alb_name            = var.private_alb_name
   edge_phase                  = var.edge_phase
   cloudfront_staging_selector = var.cloudfront_staging_selector

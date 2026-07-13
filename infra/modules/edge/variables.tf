@@ -11,11 +11,6 @@ variable "vpc_id" {
   type        = string
 }
 
-variable "private_subnet_ids" {
-  description = "Private subnet IDs available to the CloudFront VPC origin."
-  type        = list(string)
-}
-
 variable "private_alb_name" {
   description = "Stable AWS Load Balancer Controller name for the private frontend ALB."
   type        = string
