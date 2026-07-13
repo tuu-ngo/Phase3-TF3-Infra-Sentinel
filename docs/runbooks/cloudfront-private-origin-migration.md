@@ -168,8 +168,8 @@ edge_phase = "private"
 ```
 
 Commit, push và apply saved plan. Plan phải đổi primary origin sang VPC Origin, gỡ
-continuous deployment policy/staging resources và giữ public Ingress/ALB bên ngoài
-Terraform nguyên vẹn.
+staging traffic bằng cách đặt continuous deployment policy `enabled=false`, giữ staging
+resources cho cleanup riêng, và giữ public Ingress/ALB bên ngoài Terraform nguyên vẹn.
 
 Chờ CloudFront deploy:
 
@@ -209,6 +209,11 @@ Chỉ thực hiện khi cutover ổn định đủ 60 phút và steady-state đ�
 3. Xác minh `frontend-proxy-internal` vẫn được `techx-edge` quản lý và healthy.
 4. Chờ AWS Load Balancer Controller xóa public ALB.
 5. Chạy Terraform plan và ArgoCD diff; không chấp nhận drift ngoài cleanup dự kiến.
+
+Provider AWS 5.100 giữ `continuous_deployment_policy_id` khi giá trị bị bỏ qua, nên không
+xóa staging policy/distribution trong cùng cutover. Cleanup phải detach policy bằng một
+plan/API operation riêng đã review, refresh Terraform state, rồi mới destroy staging
+resources.
 
 Không xóa `techx-edge` Application hoặc internal Ingress trong cleanup.
 

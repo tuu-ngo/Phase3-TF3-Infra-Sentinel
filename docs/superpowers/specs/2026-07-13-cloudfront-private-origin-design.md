@@ -140,17 +140,22 @@ Public ALB van ton tai va la rollback origin trong phase nay.
 ### Phase D - Cutover
 
 1. Sau khi staging dat tat ca quality gate, Terraform doi primary distribution sang
-   VPC Origin va tat continuous deployment policy.
+   VPC Origin va dat continuous deployment policy `enabled=false`.
 2. CloudFront deploy configuration moi; public ALB van duoc giu nguyen lam rollback.
 3. Theo doi production lien tuc 60 phut.
+
+Staging distribution va policy duoc giu lai trong cutover de tranh xoa policy khi van
+attached. Provider AWS 5.100 coi field nay la `optional + computed`, nen detach va cleanup
+phai la mot phase rieng sau observation gate.
 
 ### Phase E - Cleanup
 
 1. Merge cau hinh steady-state vao `main`, chuyen `techx-edge` ve `main` va xac minh
    bootstrap Application quan ly no.
 2. Xoa public Ingress de AWS Load Balancer Controller xoa public ALB.
-3. Xoa staging distribution va continuous deployment policy; giu `techx-edge` de quan
-   ly internal Ingress lau dai.
+3. Detach continuous deployment policy bang mot thay doi rieng da review, refresh state,
+   sau do moi xoa staging distribution/policy; giu `techx-edge` de quan ly internal
+   Ingress lau dai.
 4. Thu hep internal ALB ingress tu prefix list sang CloudFront service-managed security
    group neu resource da duoc tao va xac minh.
 5. Chay Terraform plan va ArgoCD diff lan cuoi; khong duoc con drift ngoai du kien.
@@ -199,7 +204,7 @@ Rollback ngay neu:
 ## 8. Rollback
 
 Truoc Phase E, rollback dat `edge_phase = "rollback"` de dua primary CloudFront ve public
-origin cu, tat continuous deployment policy va van giu VPC Origin. Neu WAF chan nham route runtime, disable rule
+origin cu, disable staging traffic va van giu VPC Origin/staging resources. Neu WAF chan nham route runtime, disable rule
 gay loi; chi disassociate WebACL sau khi continuous deployment policy da tat. Internal
 ALB va VPC Origin duoc giu lai de dieu tra; khong xoa trong cung lenh rollback.
 

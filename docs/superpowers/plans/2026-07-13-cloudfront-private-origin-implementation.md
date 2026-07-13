@@ -192,7 +192,7 @@ Render `vpc_origin_config` only in `private`; otherwise retain the current `cust
 
 - [ ] **Step 6: Implement deterministic staging traffic**
 
-Create a staging distribution only in `staging`, with `staging = true`, the same cache/origin-request policies, the same WAF, and VPC Origin. Add a continuous deployment policy with:
+Create a staging distribution in `staging`, `private`, and `rollback`, with `staging = true`, the same cache/origin-request policies, the same WAF, and VPC Origin. Keep these resources through cutover; set the continuous deployment policy `enabled` only in `staging`.
 
 ```hcl
 traffic_config {

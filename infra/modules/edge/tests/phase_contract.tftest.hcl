@@ -123,12 +123,12 @@ run "private_phase_cuts_primary_to_vpc_origin" {
     vpc_id                      = "vpc-00000000000000000"
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "private"
-    cloudfront_staging_selector = ""
+    cloudfront_staging_selector = "test-only"
   }
 
   assert {
-    condition     = length(aws_cloudfront_distribution.staging) == 0
-    error_message = "Private phase must remove the temporary staging distribution."
+    condition     = length(aws_cloudfront_distribution.staging) == 1
+    error_message = "Private phase must retain staging resources until controlled cleanup."
   }
 
   assert {
@@ -139,6 +139,11 @@ run "private_phase_cuts_primary_to_vpc_origin" {
   assert {
     condition     = length(one(aws_cloudfront_distribution.frontend.origin).vpc_origin_config) == 1
     error_message = "Private phase must use VPC Origin for primary traffic."
+  }
+
+  assert {
+    condition     = aws_cloudfront_continuous_deployment_policy.frontend[0].enabled == false
+    error_message = "Private phase must disable staging traffic before cutover."
   }
 }
 
@@ -159,7 +164,7 @@ run "rollback_phase_restores_public_and_retains_vpc_origin" {
     vpc_id                      = "vpc-00000000000000000"
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "rollback"
-    cloudfront_staging_selector = ""
+    cloudfront_staging_selector = "test-only"
   }
 
   assert {
@@ -168,12 +173,17 @@ run "rollback_phase_restores_public_and_retains_vpc_origin" {
   }
 
   assert {
-    condition     = length(aws_cloudfront_distribution.staging) == 0
-    error_message = "Rollback must not recreate the staging distribution."
+    condition     = length(aws_cloudfront_distribution.staging) == 1
+    error_message = "Rollback must retain staging resources until controlled cleanup."
   }
 
   assert {
     condition     = one(aws_cloudfront_distribution.frontend.origin).domain_name == "public.example.elb.amazonaws.com"
     error_message = "Rollback must restore the public ALB as primary origin."
+  }
+
+  assert {
+    condition     = aws_cloudfront_continuous_deployment_policy.frontend[0].enabled == false
+    error_message = "Rollback must keep staging traffic disabled."
   }
 }

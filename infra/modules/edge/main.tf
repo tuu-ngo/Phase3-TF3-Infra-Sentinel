@@ -1,8 +1,9 @@
 locals {
-  waf_enabled            = contains(["waf", "staging", "private", "rollback"], var.edge_phase)
-  private_origin_enabled = contains(["staging", "private", "rollback"], var.edge_phase)
-  staging_enabled        = var.edge_phase == "staging"
-  primary_uses_private   = var.edge_phase == "private"
+  waf_enabled               = contains(["waf", "staging", "private", "rollback"], var.edge_phase)
+  private_origin_enabled    = contains(["staging", "private", "rollback"], var.edge_phase)
+  staging_resources_enabled = contains(["staging", "private", "rollback"], var.edge_phase)
+  staging_traffic_enabled   = var.edge_phase == "staging"
+  primary_uses_private      = var.edge_phase == "private"
 
   public_origin_id  = "frontend-proxy-alb"
   private_origin_id = "frontend-private-alb"
@@ -146,7 +147,7 @@ resource "aws_cloudfront_vpc_origin" "frontend" {
 }
 
 resource "aws_cloudfront_distribution" "staging" {
-  count = local.staging_enabled ? 1 : 0
+  count = local.staging_resources_enabled ? 1 : 0
 
   enabled     = true
   staging     = true
@@ -186,9 +187,9 @@ resource "aws_cloudfront_distribution" "staging" {
 }
 
 resource "aws_cloudfront_continuous_deployment_policy" "frontend" {
-  count = local.staging_enabled ? 1 : 0
+  count = local.staging_resources_enabled ? 1 : 0
 
-  enabled = true
+  enabled = local.staging_traffic_enabled
 
   staging_distribution_dns_names {
     items    = [aws_cloudfront_distribution.staging[0].domain_name]
@@ -206,8 +207,8 @@ resource "aws_cloudfront_continuous_deployment_policy" "frontend" {
 
   lifecycle {
     precondition {
-      condition     = !local.staging_enabled || length(trimspace(var.cloudfront_staging_selector)) > 0
-      error_message = "cloudfront_staging_selector must be set during the staging phase."
+      condition     = !local.staging_resources_enabled || length(trimspace(var.cloudfront_staging_selector)) > 0
+      error_message = "cloudfront_staging_selector must be set while staging resources are retained."
     }
   }
 }
@@ -217,7 +218,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   comment                         = "${var.cluster_name} - frontend-proxy"
   price_class                     = "PriceClass_All"
   web_acl_id                      = local.waf_enabled ? aws_wafv2_web_acl.frontend[0].arn : null
-  continuous_deployment_policy_id = local.staging_enabled ? aws_cloudfront_continuous_deployment_policy.frontend[0].id : null
+  continuous_deployment_policy_id = local.staging_resources_enabled ? aws_cloudfront_continuous_deployment_policy.frontend[0].id : ""
 
   origin {
     domain_name = local.primary_uses_private ? data.aws_lb.private_frontend[0].dns_name : var.frontend_alb_dns_name

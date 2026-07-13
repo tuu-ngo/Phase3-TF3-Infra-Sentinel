@@ -58,8 +58,8 @@ và thu hẹp quyền apply role trước khi kết thúc migration.
 | `public` | Public ALB | Không |
 | `waf` | Public ALB | WAF + internal ALB security group |
 | `staging` | Public ALB | Internal VPC Origin + staging distribution |
-| `private` | Internal ALB qua VPC Origin | WAF, VPC Origin |
-| `rollback` | Public ALB | Giữ WAF, internal ALB security group và VPC Origin |
+| `private` | Internal ALB qua VPC Origin | Giữ staging resources, policy disabled |
+| `rollback` | Public ALB | Giữ WAF, VPC Origin và staging resources, policy disabled |
 
 Không nhảy phase và không override `edge_phase` khi apply. Runbook đầy đủ, quality gates và
 rollback: [`docs/runbooks/cloudfront-private-origin-migration.md`](../docs/runbooks/cloudfront-private-origin-migration.md).
