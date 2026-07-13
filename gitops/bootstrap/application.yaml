@@ -12,7 +12,16 @@ spec:
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: argocd
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Application
+      name: techx-corp
+      namespace: argocd
+      jsonPointers:
+        - /spec/source/helm/parameters
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
