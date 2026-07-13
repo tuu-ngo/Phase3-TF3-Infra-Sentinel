@@ -3,6 +3,16 @@
 Runbook này dùng để mentor tự xác minh Mandate #1. Storefront vẫn công khai qua CloudFront;
 các UI vận hành chỉ đi qua SSM bastion và Kubernetes port-forward.
 
+## Link công khai (storefront)
+
+Mentor mở trực tiếp trên trình duyệt, **không cần credential**:
+
+**https://d2tn71186d7ilz.cloudfront.net**
+
+Đây là cổng khách **duy nhất** được phép công khai. Mọi UI vận hành bên dưới phải KHÔNG truy cập
+được qua internet công khai — xác minh ở mục 5 trên chính domain này: storefront `/` trả `200`,
+còn `/grafana/`, `/jaeger/`, `/loadgen/`, `/feature/` trả `403`.
+
 ## Phạm vi quyền
 
 - IAM user bootstrap: `mentor-mandate-reviewer`
