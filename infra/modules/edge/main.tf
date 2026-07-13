@@ -103,6 +103,16 @@ resource "aws_wafv2_web_acl" "frontend" {
 
               text_transformation {
                 priority = 0
+                type     = "URL_DECODE"
+              }
+
+              text_transformation {
+                priority = 1
+                type     = "NORMALIZE_PATH"
+              }
+
+              text_transformation {
+                priority = 2
                 type     = "LOWERCASE"
               }
             }

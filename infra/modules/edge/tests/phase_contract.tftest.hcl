@@ -65,6 +65,14 @@ run "waf_phase_adds_guard_without_origin_cutover" {
   }
 
   assert {
+    condition = alltrue([
+      for transformation in one(one(one(aws_wafv2_web_acl.frontend).rule).statement).or_statement[0].statement[0].byte_match_statement[0].text_transformation :
+      contains(["URL_DECODE", "NORMALIZE_PATH", "LOWERCASE"], transformation.type)
+    ]) && length(one(one(one(aws_wafv2_web_acl.frontend).rule).statement).or_statement[0].statement[0].byte_match_statement[0].text_transformation) == 3
+    error_message = "Operations path matching must decode, normalize, and lowercase URI paths."
+  }
+
+  assert {
     condition     = one(aws_cloudfront_distribution.frontend.origin).domain_name == "public.example.elb.amazonaws.com"
     error_message = "WAF phase must keep the existing public ALB origin."
   }
