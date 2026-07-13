@@ -76,7 +76,7 @@ Waiting for connections...
 ```sh
 aws eks update-kubeconfig --name techx-corp-tf3 --region ap-southeast-1
 
-kubectl config set-cluster arn:aws:eks:ap-southeast-1:012619468490:cluster/techx-corp-tf3 \
+kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx-corp-tf3 \
   --server=https://localhost:8443 \
   --insecure-skip-tls-verify=true
 ```

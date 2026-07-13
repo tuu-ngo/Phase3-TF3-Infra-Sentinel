@@ -11,15 +11,9 @@ variable "cluster_name" {
 }
 
 variable "cluster_version" {
-  description = <<-EOT
-    Kubernetes version for the EKS control plane. Live cluster is on 1.32 -
-    someone upgraded it directly (console/eksctl) outside Terraform on or
-    before 09/07. Set to match reality so `terraform plan` doesn't propose
-    downgrading it (EKS doesn't support version downgrades - that apply
-    would likely fail or, worse, get stuck mid-upgrade).
-  EOT
+  description = "Kubernetes version for the EKS control plane and managed node group."
   type        = string
-  default     = "1.32"
+  default     = "1.35"
 }
 
 variable "vpc_cidr" {
@@ -92,5 +86,5 @@ variable "frontend_alb_dns_name" {
     and recreated (rare - a `helm upgrade` alone does not recreate it).
   EOT
   type        = string
-  default     = "k8s-techxtf3-frontend-3153771b08-570141225.ap-southeast-1.elb.amazonaws.com"
+  default     = "k8s-techxtf3-frontend-3153771b08-956551046.ap-southeast-1.elb.amazonaws.com"
 }

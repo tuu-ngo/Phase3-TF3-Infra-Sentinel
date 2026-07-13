@@ -1,7 +1,7 @@
 # Infra - VPC + EKS (Terraform)
 
 Dựng VPC + EKS cluster cho TF3 bằng Terraform, theo kiến trúc đã chốt (1 VPC/3AZ,
-1 NAT Gateway, VPC endpoint ECR/S3, EKS managed node group 3x t3.large,
+1 NAT Gateway, VPC endpoint ECR/S3/SSM, EKS managed node group 3x t3.large,
 IRSA cho cluster-autoscaler + aws-load-balancer-controller).
 
 ## 0. Bootstrap remote state (chỉ làm 1 lần cho cả TF3)
@@ -9,12 +9,12 @@ IRSA cho cluster-autoscaler + aws-load-balancer-controller).
 Terraform không thể tự tạo backend nó sắp dùng - tạo tay trước:
 
 ```sh
-aws s3 mb s3://techx-corp-tf3-terraform-state --region ap-southeast-1
-aws s3api put-bucket-versioning --bucket techx-corp-tf3-terraform-state \
+aws s3 mb s3://techx-tf3-197826770971-tfstate --region ap-southeast-1
+aws s3api put-bucket-versioning --bucket techx-tf3-197826770971-tfstate \
   --versioning-configuration Status=Enabled
 
 aws dynamodb create-table \
-  --table-name techx-corp-tf3-terraform-lock \
+  --table-name techx-tf3-terraform-lock \
   --attribute-definitions AttributeName=LockID,AttributeType=S \
   --key-schema AttributeName=LockID,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
@@ -26,9 +26,9 @@ Sau đó:
 cp backend.hcl.example backend.hcl   # backend.hcl không commit giá trị thật khác nhau theo account
 cp terraform.tfvars.example terraform.tfvars
 ```
-Điền `allowed_admin_cidrs` (IP thật của từng thành viên TF3) và
-`eks_admin_principal_arns` (ARN IAM user/role cần truy cập cluster) vào
-`terraform.tfvars` trước khi apply.
+Điền `eks_admin_principal_arns` (ARN IAM user/role cần truy cập cluster) vào
+`terraform.tfvars` trước khi apply. `allowed_admin_cidrs` đã deprecated vì EKS API
+private-only; giữ danh sách này rỗng.
 
 ## 1. Init / Plan / Apply
 
@@ -56,7 +56,7 @@ aws ssm start-session --target <bastion_instance_id, xem terraform output bastio
 
 # Bước 2 (terminal khác): trỏ kubectl vào tunnel
 aws eks update-kubeconfig --name techx-corp-tf3 --region ap-southeast-1
-kubectl config set-cluster arn:aws:eks:ap-southeast-1:012619468490:cluster/techx-corp-tf3 \
+kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx-corp-tf3 \
   --server=https://localhost:8443 --insecure-skip-tls-verify=true
 
 kubectl get nodes   # phải thấy 3 node Ready
@@ -70,8 +70,8 @@ Lệnh đầy đủ (đã điền sẵn ID) có thể lấy lại bất cứ lú
 terraform output ssm_tunnel_command
 ```
 
-**Yêu cầu để dùng được**: IAM user cần quyền gọi SSM (`ssm:StartSession` trên bastion) — tất cả
-user hiện có (`arthur`/`CDO01`/`CDO02`/`AIO02`, đều `AdministratorAccess`) đã đủ quyền sẵn.
+**Yêu cầu để dùng được**: IAM principal cần quyền gọi `ssm:StartSession` trên bastion và
+phải có mặt trong `eks_admin_principal_arns` để xác thực với EKS.
 
 Từ đây tiếp tục theo [`GETTING_STARTED.md`](../phase3%20-%20information/GETTING_STARTED.md)
 mục 2-5 (helm repo add, dependency build, `helm upgrade --install`).

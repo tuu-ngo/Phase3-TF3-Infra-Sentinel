@@ -1,14 +1,12 @@
 region       = "ap-southeast-1"
 cluster_name = "techx-corp-tf3"
 
-# Fill in real office/home/VPN IPs of TF3 members - never leave this as 0.0.0.0/0.
-allowed_admin_cidrs = [
-  "203.0.113.4/32", # example - replace with real IP
-]
+# Deprecated: EKS access is private-only through the SSM bastion.
+allowed_admin_cidrs = []
 
 # IAM user/role ARNs of TF3 members who need kubectl/helm access.
 eks_admin_principal_arns = [
-  "arn:aws:iam::012619468490:user/example-teammate",
+  "arn:aws:iam::197826770971:user/example-teammate",
 ]
 
 node_instance_type = "t3.large"

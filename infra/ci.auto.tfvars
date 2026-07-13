@@ -5,8 +5,5 @@
 # CloudTrail/console to anyone with access to this AWS account).
 
 eks_admin_principal_arns = [
-  "arn:aws:iam::012619468490:user/arthur",
-  "arn:aws:iam::012619468490:user/CDO01",
-  "arn:aws:iam::012619468490:user/CDO02",
-  "arn:aws:iam::012619468490:user/AIO02",
+  "arn:aws:iam::197826770971:user/cdo-2-admin-team",
 ]
