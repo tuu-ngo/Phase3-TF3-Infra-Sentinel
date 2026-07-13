@@ -26,6 +26,18 @@ output "cluster_autoscaler_role_arn" {
   value = module.eks_platform.cluster_autoscaler_role_arn
 }
 
+output "karpenter_controller_role_arn" {
+  value = module.eks_platform.karpenter_controller_role_arn
+}
+
+output "karpenter_node_role_name" {
+  value = module.eks_platform.karpenter_node_role_name
+}
+
+output "karpenter_interruption_queue_name" {
+  value = module.eks_platform.karpenter_interruption_queue_name
+}
+
 output "lb_controller_role_arn" {
   value = module.eks_platform.lb_controller_role_arn
 }

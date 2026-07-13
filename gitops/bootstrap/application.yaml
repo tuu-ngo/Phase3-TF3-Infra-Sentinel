@@ -7,12 +7,21 @@ spec:
   project: default
   source:
     repoURL: 'https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git'
-    targetRevision: main # Target main branch in production
+    targetRevision: deploy/account-migration-gitops # Temporary Mandate #2 validation branch
     path: gitops/apps
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: argocd
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Application
+      name: techx-corp
+      namespace: argocd
+      jsonPointers:
+        - /spec/source/helm/parameters
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true

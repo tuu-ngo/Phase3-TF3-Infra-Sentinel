@@ -33,8 +33,19 @@ components:
   # (frontend 1.4 rps, product-catalog 1.1 rps, còn lại <0.1 rps). Scale theo tải là việc
   # của HPA sau. LƯU Ý: KHÔNG thêm replicas cho postgresql/kafka/valkey (stateful singleton
   # — sẽ hỏng dữ liệu; HA datastore đi qua RDS/ElastiCache, xem ADR 0002).
+  ad:
+    resources:
+      requests:
+        cpu: 100m
+      limits:
+        cpu: 500m
   frontend:
     replicas: 2        # web khách thấy, traffic HTTP cao nhất
+    resources:
+      requests:
+        cpu: 100m
+      limits:
+        cpu: 500m
   product-catalog:
     replicas: 2        # backend traffic cao nhất + có crash history (REL-14)
     imageOverride: # CDO02 fix main.go - xem comment imageOverride đầu components:
@@ -79,6 +90,11 @@ components:
     replicas: 2
   currency:
     replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+      limits:
+        cpu: 300m
   shipping:
     replicas: 2
   quote:
@@ -138,11 +154,9 @@ components:
         mountPath: /data
     additionalVolumes:
       - name: valkey-cart-data
-        persistentVolumeClaim:
-          claimName: valkey-cart
+        emptyDir: {}
     persistence:
-      enabled: true
-      size: 1Gi
+      enabled: false
   flagd:
     env:
       - name: FLAGD_METRICS_EXPORTER

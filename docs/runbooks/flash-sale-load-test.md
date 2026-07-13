@@ -3,7 +3,7 @@
 **Mục tiêu:** chứng minh hệ thống gánh **200 user đồng thời trong 15 phút** mà **giữ SLO**
 (checkout ≥99%, browse/cart ≥99.5%, p95 <1s) và **cost/request không phình**, rồi **co xuống** sau đỉnh.
 
-**Điều kiện tiên quyết:** đã deploy metrics-server + HPA + Cluster Autoscaler (Mandate #2), account
+**Điều kiện tiên quyết:** đã deploy metrics-server EKS add-on + HPA + Karpenter Spot (Mandate #2), account
 AWS đã mở, cluster truy cập được (qua bastion — xem recovery runbook).
 
 ---
@@ -36,14 +36,16 @@ Grafana (private, qua bastion + port-forward — xem `private-access-to-ops-uis.
 - `postgresql-dashboard`: connection count không cạn (REL-05 giữ pool).
 ```bash
 watch kubectl -n techx-tf3 get hpa      # thấy replicas CO LÊN theo tải
-watch kubectl get nodes                  # Cluster Autoscaler thêm node nếu cần (tối đa 6)
+watch kubectl get nodes                  # Karpenter thêm Spot node nếu pod Pending
+kubectl get nodepool,nodeclaim           # NodePool/NodeClaim trạng thái Spot burst
 ```
 
 ## Bước 3 — Sau đỉnh: xác nhận CO XUỐNG (không neo tài nguyên/tiền)
 Tắt tải (Locust stop / LOCUST_USERS về mức thường), rồi đợi ~5-10 phút:
 ```bash
 kubectl -n techx-tf3 get hpa      # replicas co về min (2)
-kubectl get nodes                  # node co về 3 (scale-down-unneeded-time 2m)
+kubectl get nodes                  # node co về baseline on-demand
+kubectl get nodeclaim              # Spot NodeClaim được consolidate/xóa khi rảnh
 ```
 - Đây là bằng chứng **co lên → co xuống**: pod & node trở về baseline.
 
@@ -56,7 +58,7 @@ kubectl get nodes                  # node co về 3 (scale-down-unneeded-time 2m
 
 ## Nếu SLO tụt trong test (rollback)
 - Dừng tải ngay (Locust stop).
-- Nếu do HPA/CA bất ổn → `git revert` manifest Mandate #2 → ArgoCD prune → về baseline replicas cố định.
+- Nếu do HPA/Karpenter bất ổn → `git revert` manifest Mandate #2 → ArgoCD prune → về baseline replicas cố định.
 - Điều tra bottleneck (thường: CPU request quá thấp làm HPA scale sai, hoặc datastore bão hòa) → tinh
   chỉnh target/request → test lại. Bottleneck tầng latency/perf: phối hợp CDO01.
 
