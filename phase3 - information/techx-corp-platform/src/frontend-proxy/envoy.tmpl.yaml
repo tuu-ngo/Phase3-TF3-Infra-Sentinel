@@ -1,6 +1,6 @@
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
-#
+# rebuild-sync: touch to build alongside accounting/cart/checkout/product-catalog/product-reviews/recommendation under one CI tag
 
 static_resources:
   listeners:
