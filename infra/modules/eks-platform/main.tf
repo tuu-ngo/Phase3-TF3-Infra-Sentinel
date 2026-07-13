@@ -46,6 +46,11 @@ module "eks" {
       resolve_conflicts_on_create = "OVERWRITE"
       resolve_conflicts_on_update = "OVERWRITE"
     }
+    metrics-server = {
+      most_recent                 = true
+      resolve_conflicts_on_create = "OVERWRITE"
+      resolve_conflicts_on_update = "OVERWRITE"
+    }
   }
 
   eks_managed_node_group_defaults = {
@@ -61,6 +66,17 @@ module "eks" {
       max_size     = var.node_max_size
       desired_size = var.node_desired_size
       subnet_ids   = var.private_subnet_ids
+    }
+  }
+
+  node_security_group_additional_rules = {
+    ingress_metrics_server = {
+      description                   = "Cluster API to metrics server"
+      protocol                      = "tcp"
+      from_port                     = 10251
+      to_port                       = 10251
+      type                          = "ingress"
+      source_cluster_security_group = true
     }
   }
 
