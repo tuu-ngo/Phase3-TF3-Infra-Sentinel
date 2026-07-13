@@ -26,6 +26,16 @@ opensearch:
       cpu: 750m
       memory: 1100Mi
 
+prometheus:
+  server:
+    resources:
+      requests:
+        cpu: 150m
+        memory: 450Mi
+      limits:
+        cpu: 800m
+        memory: 800Mi
+
 components:
   # imageOverride (per-component) - dùng khi build/deploy lại 1 service riêng lẻ mà
   # KHÔNG bump default.image.tag dùng chung ở trên. build-push-ecr.yml giờ build scoped
