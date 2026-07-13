@@ -1,7 +1,3 @@
-# Cluster secrets (etcd envelope) encryption key - created directly here
-# instead of letting the eks module create its own (module.eks's built-in
-# KMS submodule is fetched via `git::`, which this environment can't reach;
-# a plain aws_kms_key avoids that dependency entirely and does the same job).
 resource "aws_kms_key" "eks" {
   description             = "EKS cluster secrets encryption - ${var.cluster_name}"
   deletion_window_in_days = 7
@@ -20,14 +16,9 @@ module "eks" {
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
 
-  vpc_id     = module.vpc.vpc_id
-  subnet_ids = module.vpc.private_subnets
+  vpc_id     = var.vpc_id
+  subnet_ids = var.private_subnet_ids
 
-  # Private-only API access as of 09/07 - team members reach it through the
-  # SSM bastion (bastion.tf) instead of an IP allowlist. This is what fixes
-  # the repeated "someone's terraform apply overwrote the CIDR list and
-  # locked everyone out" incidents documented in CLAUDE.md - there's no CIDR
-  # list to drift anymore.
   cluster_endpoint_public_access  = false
   cluster_endpoint_private_access = true
 
@@ -39,14 +30,6 @@ module "eks" {
 
   enable_irsa = true
 
-  # Keep the 3 core addons (coredns, kube-proxy, vpc-cni) EKS-managed so their
-  # versions remain compatible with the control plane.
-  #
-  # `most_recent` picks the latest version compatible with the current cluster.
-  #
-  # ⚠️ Apply in a low-traffic window: adopting vpc-cni rolls the aws-node DaemonSet.
-  # It does not kill networking of already-running pods, but new pod scheduling pauses
-  # briefly during the roll.
   cluster_addons = {
     coredns = {
       most_recent                 = true
@@ -72,18 +55,15 @@ module "eks" {
   eks_managed_node_groups = {
     default = {
       instance_types = [var.node_instance_type]
-      capacity_type  = "ON_DEMAND" # not spot yet - baseline is still single-replica per service (see CLAUDE.md); revisit once replicas/PDB are in place
+      capacity_type  = "ON_DEMAND"
 
       min_size     = var.node_min_size
       max_size     = var.node_max_size
       desired_size = var.node_desired_size
-
-      # Worker nodes always private - no direct route to the internet except via NAT.
-      subnet_ids = module.vpc.private_subnets
+      subnet_ids   = var.private_subnet_ids
     }
   }
 
-  # TF3 members who need kubectl/helm access - fill in real ARNs in terraform.tfvars.
   access_entries = {
     for arn in var.eks_admin_principal_arns : arn => {
       principal_arn = arn
@@ -95,6 +75,39 @@ module "eks" {
           }
         }
       }
+    }
+  }
+}
+
+module "cluster_autoscaler_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.48"
+
+  role_name = "${var.cluster_name}-cluster-autoscaler"
+
+  attach_cluster_autoscaler_policy = true
+  cluster_autoscaler_cluster_names = [var.cluster_name]
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:cluster-autoscaler"]
+    }
+  }
+}
+
+module "lb_controller_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.48"
+
+  role_name = "${var.cluster_name}-aws-lb-controller"
+
+  attach_load_balancer_controller_policy = true
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:aws-load-balancer-controller"]
     }
   }
 }

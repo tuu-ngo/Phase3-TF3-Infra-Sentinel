@@ -9,10 +9,6 @@ module "vpc" {
   private_subnets = var.private_subnet_cidrs
   public_subnets  = var.public_subnet_cidrs
 
-  # Cost decision (see ADR): single NAT instead of one-per-AZ. If that AZ's
-  # NAT goes down, only egress (image pulls / AWS API calls) from the other
-  # AZs is affected temporarily - traffic already being served to customers
-  # inside the VPC is not.
   enable_nat_gateway     = true
   single_nat_gateway     = true
   one_nat_gateway_per_az = false
@@ -20,8 +16,6 @@ module "vpc" {
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  # Required so the AWS Load Balancer Controller can auto-discover subnets,
-  # and so EKS knows which subnets belong to this cluster.
   public_subnet_tags = {
     "kubernetes.io/role/elb"                    = "1"
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
@@ -31,12 +25,6 @@ module "vpc" {
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
   }
 }
-
-# --- VPC endpoints: keep ECR + S3 traffic off the NAT Gateway ---
-# (S3 endpoint is a free gateway endpoint; ECR endpoints are interface
-# endpoints billed per-AZ/hour + data, but cheap relative to routing the
-# same traffic through NAT, and removes a dependency on NAT being up for
-# image pulls to succeed.)
 
 resource "aws_security_group" "vpc_endpoints" {
   name        = "${var.cluster_name}-vpce-sg"
@@ -88,8 +76,6 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   private_dns_enabled = true
 }
 
-# Keep Session Manager access independent from the NAT gateway. These
-# endpoints are required by the private bastion used to reach the EKS API.
 resource "aws_vpc_endpoint" "ssm" {
   vpc_id              = module.vpc.vpc_id
   service_name        = "com.amazonaws.${var.region}.ssm"
