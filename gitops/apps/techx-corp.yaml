@@ -15,6 +15,10 @@ spec:
         - ../deploy/values-flagd-sync.yaml
         - ../deploy/values-prod.yaml
       parameters:
+        - name: default.image.repository
+          value: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
+        - name: default.image.tag
+          value: 58b13f2
         - name: components.frontend-proxy.ingress.enabled
           value: "false"
   destination:
