@@ -174,7 +174,41 @@ func initDatabase() error {
 	return nil
 }
 
+func initDatabaseWithRetry(ctx context.Context, attempts int, delay time.Duration) error {
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := initDatabase(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			logger.Warn(
+				fmt.Sprintf(
+					"Database init failed on startup attempt %d/%d: %v",
+					attempt,
+					attempts,
+					err,
+				),
+			)
+		}
+
+		if attempt == attempts {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("database init canceled while waiting to retry: %w", ctx.Err())
+		case <-time.After(delay):
+		}
+	}
+
+	return fmt.Errorf("database init failed after %d attempts: %w", attempts, lastErr)
+}
+
 func main() {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
+	defer cancel()
+
 	lp := initLoggerProvider()
 	defer func() {
 		if err := lp.Shutdown(context.Background()); err != nil {
@@ -199,8 +233,9 @@ func main() {
 		logger.Info("Shutdown meter provider")
 	}()
 
-	// Initialize database connection
-	if err := initDatabase(); err != nil {
+	// REL-14: product-catalog historically crashes a few times during startup.
+	// Retry DB init so a brief Postgres warm-up window doesn't force pod restarts.
+	if err := initDatabaseWithRetry(ctx, 15, 2*time.Second); err != nil {
 		logger.Error(fmt.Sprintf("Error initializing database: %v", err))
 		os.Exit(1)
 	}
@@ -257,9 +292,6 @@ func main() {
 
 	healthcheck := health.NewServer()
 	healthpb.RegisterHealthServer(srv, healthcheck)
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
-	defer cancel()
 
 	// REL-02: make the health check reflect the real dependency instead of a
 	// static SERVING. Postgres is this service's hard dependency, so poll it and
