@@ -49,6 +49,21 @@ gh workflow run terraform-apply.yml \
 Chỉ chọn `action=apply` sau khi plan workflow gần nhất đã được review. Khôi phục trigger PR/main
 và thu hẹp quyền apply role trước khi kết thúc migration.
 
+## CloudFront private origin migration
+
+`edge_phase` trong `live/production/production.auto.tfvars` điều khiển migration theo thứ tự:
+
+| Phase | Primary origin | Tài nguyên thêm |
+|---|---|---|
+| `public` | Public ALB | Không |
+| `waf` | Public ALB | WAF + internal ALB security group |
+| `staging` | Public ALB | Internal VPC Origin + staging distribution |
+| `private` | Internal ALB qua VPC Origin | WAF, VPC Origin |
+| `rollback` | Public ALB | Giữ WAF, internal ALB security group và VPC Origin |
+
+Không nhảy phase và không override `edge_phase` khi apply. Runbook đầy đủ, quality gates và
+rollback: [`docs/runbooks/cloudfront-private-origin-migration.md`](../docs/runbooks/cloudfront-private-origin-migration.md).
+
 ## Truy cập cluster qua SSM bastion
 
 EKS API **đã chuyển private-only** (`cluster_endpoint_public_access = false`) — không còn IP
