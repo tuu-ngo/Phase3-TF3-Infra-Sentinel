@@ -3,8 +3,11 @@
 
 default:
   image:
-    repository: 012619468490.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
-    tag: d2bc367
+    # Switched to the new AWS account's ECR (temporary account, see team notes).
+    # Tag stays as-is until the build-push-ecr.yml run for frontend-proxy finishes -
+    # bump it in the same PR as the envoy.tmpl.yaml route removal once that image exists.
+    repository: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
+    tag: 58b13f2
 
 grafana:
   resources:
@@ -12,6 +15,17 @@ grafana:
       memory: 250Mi
 
 components:
+  # imageOverride (per-component) - dùng khi build/deploy lại 1 service riêng lẻ mà
+  # KHÔNG bump default.image.tag dùng chung ở trên. build-push-ecr.yml giờ build scoped
+  # theo service đổi (xem workflow) - bump default.image.tag sẽ làm MỌI service không có
+  # tag đó bị pull lỗi -> ImagePullBackOff hàng loạt. Giá trị hiện tại ở mỗi
+  # imageOverride.tag dưới đây = no-op (khớp default.image.tag hiện có). Đổi thành
+  # "<tag-CI-vừa-build>-<service>" (FULL string - chart KHÔNG tự nối hậu tố tên service
+  # cho imageOverride.tag, khác với default.image.tag) sau khi build-push-ecr.yml build
+  # xong service đó, trước khi tạo PR. Đang set cho: frontend-proxy (mandate-01, gỡ route
+  # Envoy) + accounting/cart/checkout/product-catalog/product-reviews/recommendation
+  # (fix app-code từ CDO02, xem handoff-cdo02-to-cdo01-deploy.md).
+  #
   # REL-01 (ADR 0001 — pre-work bước 1 nâng cấp EKS 1.32→1.34): replicas ≥2 cho nhóm
   # đường ra tiền + gateway, để node rolling-replace lúc upgrade không đứt checkout.
   # PDB đi kèm ở gitops/infrastructure/pdb-checkout.yaml.
@@ -23,6 +37,8 @@ components:
     replicas: 2        # web khách thấy, traffic HTTP cao nhất
   product-catalog:
     replicas: 2        # backend traffic cao nhất + có crash history (REL-14)
+    imageOverride: # CDO02 fix main.go - xem comment imageOverride đầu components:
+      tag: d2bc367-product-catalog
     readinessProbe:
       grpc:
         port: 8080
@@ -39,8 +55,12 @@ components:
       failureThreshold: 3
   cart:
     replicas: 2
+    imageOverride: # CDO02 fix HealthCheckService.cs - xem comment imageOverride đầu components:
+      tag: d2bc367-cart
   checkout:
     replicas: 2
+    imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
+      tag: d2bc367-checkout
     readinessProbe:
       grpc:
         port: 8080
@@ -65,6 +85,8 @@ components:
     replicas: 2        # shipping phụ thuộc quote
   product-reviews:
     replicas: 2        # đứng sau tính năng AI tóm tắt review
+    imageOverride: # CDO02 fix database.py + product_reviews_server.py - xem comment imageOverride đầu components:
+      tag: d2bc367-product-reviews
     readinessProbe:
       grpc:
         port: 3551
@@ -80,6 +102,8 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   recommendation:
+    imageOverride: # CDO02 fix recommendation_server.py - xem comment imageOverride đầu components:
+      tag: d2bc367-recommendation
     readinessProbe:
       grpc:
         port: 8080
@@ -95,6 +119,8 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   accounting:
+    imageOverride: # CDO02 fix Consumer.cs - xem comment imageOverride đầu components:
+      tag: d2bc367-accounting
     resources:
       limits:
         memory: 350Mi
@@ -142,6 +168,8 @@ components:
     sidecarContainers: []
   frontend-proxy:
     replicas: 2        # cổng vào DUY NHẤT (Envoy) — SPOF của toàn hệ thống
+    imageOverride: # mandate-01: gỡ route Envoy - xem comment imageOverride đầu components:
+      tag: d2bc367-frontend-proxy
     ingress:
       annotations:
         alb.ingress.kubernetes.io/healthcheck-path: /
