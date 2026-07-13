@@ -46,6 +46,7 @@ metadata:
 spec:
   role: KarpenterNodeRole-techx-corp-tf3
   amiFamily: AL2023
+  associatePublicIPAddress: false
   amiSelectorTerms:
     - id: ami-06ec1dc854f03470c
   subnetSelectorTerms:
