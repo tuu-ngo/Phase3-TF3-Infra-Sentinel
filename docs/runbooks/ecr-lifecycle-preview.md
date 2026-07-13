@@ -1,6 +1,6 @@
 # ECR Lifecycle Preview Runbook
 
-Use this before applying `infra/ecr.tf` to production.
+Use this before applying `infra/live/production/ecr.tf` to production.
 
 ## 1. Preview the policy without applying it
 
