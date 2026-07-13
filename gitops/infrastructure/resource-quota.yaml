@@ -6,5 +6,5 @@ metadata:
 spec:
   hard:
     requests.memory: 16Gi
-    limits.memory: 20Gi
-    pods: "50"
+    limits.memory: 24Gi
+    pods: "90"
