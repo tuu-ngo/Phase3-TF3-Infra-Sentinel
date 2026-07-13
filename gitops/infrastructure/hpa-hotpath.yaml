@@ -1,0 +1,144 @@
+# Mandate #2 (Cost + Reliability): HPA cho các service hot path browse+checkout.
+# techx-infrastructure-app (ArgoCD) sync file này.
+#
+# minReplicas: 2 khớp REL-01 (baseline chống SPOF). maxReplicas: 5 = trần để không
+# scale vô hạn vượt quota/ngân sách. Target CPU 70%. scaleDown stabilization 120s để
+# CO XUỐNG nhanh sau đỉnh flash sale (không neo tài nguyên/tiền ở đỉnh).
+#
+# Yêu cầu: metrics-server (gitops/apps/metrics-server-app.yaml) + CPU requests
+# (LimitRange của CDO01 set default 100m). KHÔNG đặt HPA cho datastore (stateful).
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-proxy-hpa
+  namespace: techx-tf3
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: frontend-proxy }
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 120 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-hpa
+  namespace: techx-tf3
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: frontend }
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 120 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: product-catalog-hpa
+  namespace: techx-tf3
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: product-catalog }
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 120 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cart-hpa
+  namespace: techx-tf3
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: cart }
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 120 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: checkout-hpa
+  namespace: techx-tf3
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: checkout }
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 120 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: currency-hpa
+  namespace: techx-tf3
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: currency }
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 120 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: recommendation-hpa
+  namespace: techx-tf3
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: recommendation }
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 120 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: product-reviews-hpa
+  namespace: techx-tf3
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: product-reviews }
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 120 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ad-hpa
+  namespace: techx-tf3
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: ad }
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 120 }
