@@ -81,7 +81,12 @@ jobs:
             exit 0
           fi
 
-          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- "phase3 - information/techx-corp-platform")
+          # -C "$GITHUB_WORKSPACE": this step's cwd is already the working-directory default
+          # (phase3 - information/techx-corp-platform), and a bare `-- <pathspec>` resolves
+          # relative to cwd, not repo root - without -C this pathspec silently matched nothing
+          # (git treats a non-matching pathspec as "no changes", not an error) and every build
+          # step below got skipped regardless of what actually changed.
+          CHANGED=$(git -C "$GITHUB_WORKSPACE" diff --name-only "$BEFORE" "${{ github.sha }}" -- "phase3 - information/techx-corp-platform")
           echo "Changed files under techx-corp-platform:"
           echo "$CHANGED"
 
