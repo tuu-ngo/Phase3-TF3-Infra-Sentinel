@@ -3,7 +3,10 @@
 
 default:
   image:
-    repository: 012619468490.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
+    # Switched to the new AWS account's ECR (temporary account, see team notes).
+    # Tag stays as-is until the build-push-ecr.yml run for frontend-proxy finishes -
+    # bump it in the same PR as the envoy.tmpl.yaml route removal once that image exists.
+    repository: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
     tag: d2bc367
 
 grafana:
@@ -142,6 +145,18 @@ components:
     sidecarContainers: []
   frontend-proxy:
     replicas: 2        # cổng vào DUY NHẤT (Envoy) — SPOF của toàn hệ thống
+    # Tag riêng cho frontend-proxy - KHÔNG dùng chung default.image.tag với 17 service
+    # còn lại. Lý do: build-push-ecr.yml giờ build scoped theo service đổi (chỉ
+    # frontend-proxy cho lần sửa route Envoy này), nên ECR sẽ KHÔNG có
+    # <tag-mới>-checkout / -cart / -... — nếu bump default.image.tag lên tag mới thay
+    # vì dùng imageOverride ở đây, 17 service kia sẽ pull 1 tag không tồn tại và
+    # ImagePullBackOff hàng loạt. imageOverride.tag phải là FULL tag như CI đã push
+    # (templates/_objects.tpl KHÔNG tự nối "-frontend-proxy" khi có imageOverride.tag,
+    # khác với default.image.tag).
+    # TODO (sau khi build-push-ecr.yml build xong frontend-proxy dưới commit mới):
+    # đổi giá trị dưới đây thành "<tag-mới>-frontend-proxy" trước khi tạo PR.
+    imageOverride:
+      tag: d2bc367-frontend-proxy
     ingress:
       annotations:
         alb.ingress.kubernetes.io/healthcheck-path: /
