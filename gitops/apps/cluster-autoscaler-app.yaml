@@ -20,7 +20,7 @@ spec:
         rbac:
           serviceAccount:
             annotations:
-              eks.amazonaws.com/role-arn: arn:aws:iam::012619468490:role/techx-corp-tf3-cluster-autoscaler
+              eks.amazonaws.com/role-arn: arn:aws:iam::197826770971:role/techx-corp-tf3-cluster-autoscaler
         extraArgs:
           # Co xuống nhanh sau đỉnh: node rảnh 2 phút là gỡ (không neo tiền ở đỉnh).
           scale-down-unneeded-time: 2m

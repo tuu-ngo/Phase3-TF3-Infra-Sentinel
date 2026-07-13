@@ -3,7 +3,7 @@
 
 default:
   image:
-    repository: 012619468490.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
+    repository: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
     tag: d2bc367
 
 grafana:
