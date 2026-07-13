@@ -98,6 +98,25 @@ components:
     resources:
       limits:
         memory: 350Mi
+  valkey-cart:
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --dir
+      - /data
+    additionalVolumeMounts:
+      - name: valkey-cart-data
+        mountPath: /data
+    additionalVolumes:
+      - name: valkey-cart-data
+        persistentVolumeClaim:
+          claimName: valkey-cart
+    persistence:
+      enabled: true
+      size: 1Gi
   flagd:
     env:
       - name: FLAGD_METRICS_EXPORTER
