@@ -293,7 +293,7 @@ func main() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
-			healthcheck.SetServingStatus("", cs.dependencyHealthStatus(ctx))
+			healthcheck.SetServingStatus("", svc.dependencyHealthStatus(ctx))
 			select {
 			case <-ctx.Done():
 				return
