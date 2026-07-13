@@ -2,6 +2,7 @@
 
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
+# rebuild-sync: touch to build alongside frontend-proxy/accounting/cart/checkout/product-catalog/recommendation under one CI tag
 
 # Python
 import os
