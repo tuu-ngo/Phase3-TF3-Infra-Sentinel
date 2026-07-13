@@ -30,7 +30,6 @@ jobs:
     name: Create saved plan
     if: github.ref == 'refs/heads/deploy/account-migration-gitops'
     runs-on: ubuntu-latest
-    environment: production
     env:
       TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}
     defaults:
@@ -86,7 +85,6 @@ jobs:
     needs: plan
     if: github.ref == 'refs/heads/deploy/account-migration-gitops' && inputs.action == 'apply'
     runs-on: ubuntu-latest
-    environment: production
     env:
       TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}
     defaults:

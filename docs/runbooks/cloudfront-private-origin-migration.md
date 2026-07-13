@@ -115,11 +115,11 @@ Expected: timeout hoặc không kết nối được.
 
 ## Phase C - VPC Origin và staging
 
-Repo admin tạo GitHub Environment secret trước khi đổi phase:
+Repo admin tạo GitHub repository secret trước khi đổi phase:
 
 ```sh
 openssl rand -hex 24 | gh secret set CLOUDFRONT_STAGING_SELECTOR \
-  --env production --repo tuu-ngo/Phase3-TF3-Infra-Sentinel
+  --repo tuu-ngo/Phase3-TF3-Infra-Sentinel
 ```
 
 Không in, ghi file hoặc commit giá trị này. Đổi tracked desired state:

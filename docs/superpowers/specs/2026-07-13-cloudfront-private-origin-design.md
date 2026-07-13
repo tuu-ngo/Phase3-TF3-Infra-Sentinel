@@ -132,7 +132,7 @@ Public ALB van ton tai va la rollback origin trong phase nay.
 1. Terraform tao staging distribution voi cung behavior cua primary, nhung origin la
    VPC Origin.
 2. Tao header-based continuous deployment policy. Header name bat dau bang
-   `aws-cf-cd-`; gia tri test duoc truyen qua GitHub Environment secret, khong commit.
+   `aws-cf-cd-`; gia tri test duoc truyen qua GitHub repository secret, khong commit.
 3. Gan policy vao primary distribution.
 4. Smoke test qua domain production voi header test de CloudFront route co dinh sang
    staging. Request khong co header tiep tuc dung public origin.

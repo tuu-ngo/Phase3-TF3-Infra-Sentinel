@@ -253,7 +253,7 @@ git commit -m "feat: add private CloudFront origin phases"
 
 **Interfaces:**
 - Consumes: Task 2 module interface.
-- Produces: production phase fixed in tracked tfvars and staging selector supplied only from GitHub Environment secret `CLOUDFRONT_STAGING_SELECTOR`.
+- Produces: production phase fixed in tracked tfvars and staging selector supplied only from GitHub repository secret `CLOUDFRONT_STAGING_SELECTOR`.
 
 - [ ] **Step 1: Add the us-east-1 provider and root variables**
 
@@ -310,7 +310,6 @@ This first plan may add WAF and one security group and update CloudFront WebACL 
 At workflow job level add:
 
 ```yaml
-environment: production
 env:
   TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}
 ```
