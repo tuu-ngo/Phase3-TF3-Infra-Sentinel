@@ -13,6 +13,11 @@ variable "github_repository" {
   default = "tuu-ngo/Phase3-TF3-Infra-Sentinel"
 }
 
+variable "deployment_branch" {
+  type    = string
+  default = "deploy/account-migration-gitops"
+}
+
 variable "state_bucket_name" {
   type    = string
   default = "techx-tf3-197826770971-tfstate"

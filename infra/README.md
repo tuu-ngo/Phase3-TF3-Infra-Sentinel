@@ -32,9 +32,22 @@ terraform validate
 terraform plan -lock=false
 ```
 
-`production.auto.tfvars` chứa principal EKS của account hiện tại. Mọi thay đổi production đi
-qua PR; workflow plan đăng diff lên PR và workflow apply chỉ chạy trên `main` sau approval của
-GitHub Environment `production`. Không chạy local apply trong quy trình thông thường.
+`production.auto.tfvars` chứa principal EKS của account hiện tại. Trong giai đoạn migration,
+push vào nhánh `deploy/account-migration-gitops` sẽ chạy workflow plan; `main` không kích hoạt
+Terraform. Workflow apply chỉ chạy thủ công trên đúng migration branch:
+
+```sh
+# Chỉ tạo và kiểm tra saved plan
+gh workflow run terraform-apply.yml \
+  --ref deploy/account-migration-gitops -f action=plan
+
+# Tạo saved plan mới rồi apply chính plan đó
+gh workflow run terraform-apply.yml \
+  --ref deploy/account-migration-gitops -f action=apply
+```
+
+Chỉ chọn `action=apply` sau khi plan workflow gần nhất đã được review. Khôi phục trigger PR/main
+và thu hẹp quyền apply role trước khi kết thúc migration.
 
 ## Truy cập cluster qua SSM bastion
 

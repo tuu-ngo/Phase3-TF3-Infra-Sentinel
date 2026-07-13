@@ -1,35 +1,39 @@
-name: Terraform Apply (production)
-
-# Runs after a production Terraform PR is merged into main. Uses the "production"
-# GitHub Environment, which requires manual approval before this job can
-# run - so merging alone is not enough to change live AWS infra, someone
-# still has to explicitly click approve after seeing the plan.
-#
-# Full-admin role (AWS_TF_APPLY_ROLE_ARN) can ONLY be assumed from the main
-# branch (see infra/bootstrap/github-oidc) - no PR branch can use it.
+name: Terraform Apply (migration branch)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "infra/live/production/**"
-      - "infra/modules/**"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Run a fresh plan only, or apply that exact saved plan
+        required: true
+        type: choice
+        default: plan
+        options:
+          - plan
+          - apply
 
 permissions:
-  id-token: write # OIDC -> assume AWS role
+  id-token: write
   contents: read
 
 env:
   AWS_REGION: ap-southeast-1
   TF_VERSION: "1.15.4"
+  TF_WORKING_DIR: infra/live/production
+
+concurrency:
+  group: terraform-production
+  cancel-in-progress: false
 
 jobs:
-  apply:
+  plan:
+    name: Create saved plan
+    if: github.ref == 'refs/heads/deploy/account-migration-gitops'
     runs-on: ubuntu-latest
-    environment: production
     defaults:
       run:
         working-directory: infra/live/production
+
     steps:
       - uses: actions/checkout@v6
 
@@ -37,13 +41,16 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure plan credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_TF_APPLY_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::197826770971:role/techx-corp-tf3-gha-terraform-plan
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: terraform init
+      - name: Check formatting
+        run: terraform fmt -check -recursive ../../
+
+      - name: Initialize Terraform
         run: |
           terraform init \
             -backend-config="bucket=techx-tf3-197826770971-tfstate" \
@@ -52,8 +59,66 @@ jobs:
             -backend-config="dynamodb_table=techx-tf3-terraform-lock" \
             -backend-config="encrypt=true"
 
-      - name: terraform plan
-        run: terraform plan -no-color -input=false -out=tfplan
+      - name: Validate configuration
+        run: terraform validate
 
-      - name: terraform apply
+      - name: Create saved plan
+        run: |
+          terraform plan -no-color -input=false -out=tfplan
+          terraform show -no-color tfplan
+          sha256sum tfplan > tfplan.sha256
+
+      - name: Upload saved plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}-${{ github.sha }}
+          path: |
+            ${{ env.TF_WORKING_DIR }}/tfplan
+            ${{ env.TF_WORKING_DIR }}/tfplan.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  apply:
+    name: Apply saved plan
+    needs: plan
+    if: github.ref == 'refs/heads/deploy/account-migration-gitops' && inputs.action == 'apply'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/live/production
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure apply credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::197826770971:role/techx-corp-tf3-gha-terraform-apply
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Initialize Terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=techx-tf3-197826770971-tfstate" \
+            -backend-config="key=eks-baseline/terraform.tfstate" \
+            -backend-config="region=ap-southeast-1" \
+            -backend-config="dynamodb_table=techx-tf3-terraform-lock" \
+            -backend-config="encrypt=true"
+
+      - name: Download saved plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}-${{ github.sha }}
+          path: ${{ env.TF_WORKING_DIR }}
+
+      - name: Verify saved plan
+        run: sha256sum --check tfplan.sha256
+
+      - name: Apply saved plan
         run: terraform apply -input=false tfplan
