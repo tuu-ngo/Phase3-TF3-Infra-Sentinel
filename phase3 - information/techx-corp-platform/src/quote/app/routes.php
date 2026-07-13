@@ -55,6 +55,21 @@ return function (App $app) {
 
         $jsonObject = $request->getParsedBody();
 
+        // REL-12: reject malformed requests with a clear 400 instead of silently
+        // returning a 0.0 quote. calculateQuote() swallows the missing-field
+        // exception and returns 0.0, which hides the bug from the caller (shipping)
+        // and can turn into a silent $0 shipping fee.
+        if (!is_array($jsonObject)
+            || !array_key_exists('numberOfItems', $jsonObject)
+            || !is_numeric($jsonObject['numberOfItems'])) {
+            $span->addEvent('Invalid get quote request: numberOfItems missing or not numeric');
+            $error = json_encode(['error' => 'numberOfItems is required and must be numeric']);
+            $response->getBody()->write($error);
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(400);
+        }
+
         $data = calculateQuote($jsonObject);
 
         $payload = json_encode($data);
