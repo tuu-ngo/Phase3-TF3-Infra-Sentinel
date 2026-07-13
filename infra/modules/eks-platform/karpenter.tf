@@ -13,8 +13,8 @@ resource "aws_ec2_tag" "karpenter_private_subnets" {
   value       = var.cluster_name
 }
 
-resource "aws_ec2_tag" "karpenter_cluster_security_group" {
-  resource_id = module.eks.cluster_security_group_id
+resource "aws_ec2_tag" "karpenter_node_security_group" {
+  resource_id = module.eks.node_security_group_id
   key         = "karpenter.sh/discovery"
   value       = var.cluster_name
 }
