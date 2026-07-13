@@ -74,8 +74,9 @@ Internal Ingress dung:
 - Security group do Terraform tao.
 - Controller duoc phep quan ly backend security-group rules can thiet cho pod targets.
 
-Security group ID la environment identifier, khong phai secret. Sau Phase A, output nay
-duoc ghi vao manifest production tren nhanh migration va review truoc khi sync.
+Ingress tham chieu security group bang `Name` tag on dinh
+`techx-corp-tf3-internal-alb`. AWS Load Balancer Controller ho tro ca security group ID
+va Name tag; dung ten loai bo viec commit ID dong ma van giu dung ownership Terraform.
 
 Sau khi thay doi steady-state duoc merge vao `main`, bootstrap Application quan ly cung
 `techx-edge` Application. Internal Ingress giu nguyen owner va khong bi xoa/tao lai.
