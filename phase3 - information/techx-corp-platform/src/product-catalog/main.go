@@ -1,6 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
-// rebuild-sync: touch to build alongside frontend-proxy/accounting/cart/checkout/product-reviews/recommendation under one CI tag
+// rebuild-sync (retry after checkout main.go fix): touch to build alongside frontend-proxy/accounting/cart/checkout/product-reviews/recommendation under one CI tag
 package main
 
 //go:generate go install google.golang.org/protobuf/cmd/protoc-gen-go

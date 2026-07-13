@@ -1,6 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
-// rebuild-sync: touch to build alongside frontend-proxy/cart/checkout/product-catalog/product-reviews/recommendation under one CI tag
+// rebuild-sync (retry after checkout main.go fix): touch to build alongside frontend-proxy/cart/checkout/product-catalog/product-reviews/recommendation under one CI tag
 
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
