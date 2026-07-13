@@ -198,8 +198,8 @@ Rollback ngay neu:
 
 ## 8. Rollback
 
-Truoc Phase E, rollback la mot Terraform apply dua primary CloudFront ve public origin
-cu va tat continuous deployment policy. Neu WAF chan nham route runtime, disable rule
+Truoc Phase E, rollback dat `edge_phase = "rollback"` de dua primary CloudFront ve public
+origin cu, tat continuous deployment policy va van giu VPC Origin. Neu WAF chan nham route runtime, disable rule
 gay loi; chi disassociate WebACL sau khi continuous deployment policy da tat. Internal
 ALB va VPC Origin duoc giu lai de dieu tra; khong xoa trong cung lenh rollback.
 

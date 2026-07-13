@@ -29,7 +29,7 @@
 
 **Interfaces:**
 - Consumes: `cluster_name`, public ALB DNS, VPC ID, private ALB stable name.
-- Produces: `edge_phase` contract with values `public`, `waf`, `staging`, `private`; sensitive `cloudfront_staging_selector` used only in `staging`.
+- Produces: `edge_phase` contract with values `public`, `waf`, `staging`, `private`, `rollback`; sensitive `cloudfront_staging_selector` used only in `staging`.
 
 - [ ] **Step 1: Add failing phase-contract tests**
 
@@ -74,13 +74,13 @@ Add exact validations:
 
 ```hcl
 variable "edge_phase" {
-  description = "Controlled edge migration phase: public, waf, staging, or private."
+  description = "Controlled edge migration phase: public, waf, staging, private, or rollback."
   type        = string
   default     = "public"
 
   validation {
-    condition     = contains(["public", "waf", "staging", "private"], var.edge_phase)
-    error_message = "edge_phase must be one of: public, waf, staging, private."
+    condition     = contains(["public", "waf", "staging", "private", "rollback"], var.edge_phase)
+    error_message = "edge_phase must be one of: public, waf, staging, private, rollback."
   }
 }
 
@@ -144,7 +144,7 @@ assert {
 }
 ```
 
-Add separate runs for `public`, `waf`, `staging`, and `private` resource counts and origin type.
+Add separate runs for `public`, `waf`, `staging`, `private`, and `rollback` resource counts and origin type.
 
 - [ ] **Step 2: Verify resource tests fail**
 
@@ -468,7 +468,7 @@ curl -H "aws-cf-cd-techx-private-origin: $CLOUDFRONT_STAGING_SELECTOR" \
   https://d2tn71186d7ilz.cloudfront.net/
 ```
 
-To cut over, change `edge_phase` to `private`. Rollback changes it to `waf`, which keeps WAF but returns primary to the public origin.
+To cut over, change `edge_phase` to `private`. Rollback changes it to `rollback`, which keeps WAF and VPC Origin but returns primary to the public origin.
 
 - [ ] **Step 4: Document cleanup guard**
 

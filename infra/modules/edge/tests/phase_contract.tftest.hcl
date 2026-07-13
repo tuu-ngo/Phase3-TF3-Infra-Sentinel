@@ -146,3 +146,40 @@ run "private_phase_cuts_primary_to_vpc_origin" {
     error_message = "Private phase must use VPC Origin for primary traffic."
   }
 }
+
+run "rollback_phase_restores_public_and_retains_vpc_origin" {
+  command = plan
+
+  override_data {
+    target = data.aws_lb.private_frontend[0]
+    values = {
+      arn      = "arn:aws:elasticloadbalancing:ap-southeast-1:197826770971:loadbalancer/app/techx-tf3-frontend-internal/0123456789abcdef"
+      dns_name = "internal.example.elb.amazonaws.com"
+    }
+  }
+
+  variables {
+    cluster_name                = "techx-corp-tf3"
+    frontend_alb_dns_name       = "public.example.elb.amazonaws.com"
+    vpc_id                      = "vpc-00000000000000000"
+    private_subnet_ids          = ["subnet-a", "subnet-b", "subnet-c"]
+    private_alb_name            = "techx-tf3-frontend-internal"
+    edge_phase                  = "rollback"
+    cloudfront_staging_selector = ""
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_vpc_origin.frontend) == 1
+    error_message = "Rollback must retain the VPC Origin for investigation."
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.staging) == 0
+    error_message = "Rollback must not recreate the staging distribution."
+  }
+
+  assert {
+    condition     = one(aws_cloudfront_distribution.frontend.origin).domain_name == "public.example.elb.amazonaws.com"
+    error_message = "Rollback must restore the public ALB as primary origin."
+  }
+}

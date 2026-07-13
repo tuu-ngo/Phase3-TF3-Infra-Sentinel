@@ -1,6 +1,6 @@
 locals {
-  waf_enabled            = contains(["waf", "staging", "private"], var.edge_phase)
-  private_origin_enabled = contains(["staging", "private"], var.edge_phase)
+  waf_enabled            = contains(["waf", "staging", "private", "rollback"], var.edge_phase)
+  private_origin_enabled = contains(["staging", "private", "rollback"], var.edge_phase)
   staging_enabled        = var.edge_phase == "staging"
   primary_uses_private   = var.edge_phase == "private"
 
