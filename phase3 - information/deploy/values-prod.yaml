@@ -38,7 +38,7 @@ components:
   product-catalog:
     replicas: 2        # backend traffic cao nhất + có crash history (REL-14)
     imageOverride: # CDO02 fix main.go - xem comment imageOverride đầu components:
-      tag: d2bc367-product-catalog
+      tag: 6a3fe95-product-catalog
     readinessProbe:
       grpc:
         port: 8080
@@ -56,11 +56,11 @@ components:
   cart:
     replicas: 2
     imageOverride: # CDO02 fix HealthCheckService.cs - xem comment imageOverride đầu components:
-      tag: d2bc367-cart
+      tag: 6a3fe95-cart
   checkout:
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
-      tag: d2bc367-checkout
+      tag: 6a3fe95-checkout
     readinessProbe:
       grpc:
         port: 8080
@@ -86,7 +86,7 @@ components:
   product-reviews:
     replicas: 2        # đứng sau tính năng AI tóm tắt review
     imageOverride: # CDO02 fix database.py + product_reviews_server.py - xem comment imageOverride đầu components:
-      tag: d2bc367-product-reviews
+      tag: 6a3fe95-product-reviews
     readinessProbe:
       grpc:
         port: 3551
@@ -103,7 +103,7 @@ components:
       failureThreshold: 3
   recommendation:
     imageOverride: # CDO02 fix recommendation_server.py - xem comment imageOverride đầu components:
-      tag: d2bc367-recommendation
+      tag: 6a3fe95-recommendation
     readinessProbe:
       grpc:
         port: 8080
@@ -120,7 +120,7 @@ components:
       failureThreshold: 3
   accounting:
     imageOverride: # CDO02 fix Consumer.cs - xem comment imageOverride đầu components:
-      tag: d2bc367-accounting
+      tag: 6a3fe95-accounting
     resources:
       limits:
         memory: 350Mi
@@ -169,7 +169,7 @@ components:
   frontend-proxy:
     replicas: 2        # cổng vào DUY NHẤT (Envoy) — SPOF của toàn hệ thống
     imageOverride: # mandate-01: gỡ route Envoy - xem comment imageOverride đầu components:
-      tag: d2bc367-frontend-proxy
+      tag: 6a3fe95-frontend-proxy
     ingress:
       annotations:
         alb.ingress.kubernetes.io/healthcheck-path: /
