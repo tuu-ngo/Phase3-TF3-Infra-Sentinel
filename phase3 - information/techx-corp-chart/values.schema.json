@@ -251,6 +251,9 @@
         "readinessProbe": {
           "$ref": "#/definitions/ReadinessProbe"
         },
+        "startupProbe": {
+          "$ref": "#/definitions/LivenessProbe"
+        },
         "schedulingRules": {
           "$ref": "#/definitions/SchedulingRules"
         },
@@ -469,6 +472,9 @@
         },
         "nodePort": {
           "type": "integer"
+        },
+        "publishNotReadyAddresses": {
+          "type": "boolean"
         },
         "annotations": {
           "type": "object"

@@ -95,6 +95,10 @@ spec:
           readinessProbe:
             {{- .readinessProbe | toYaml | nindent 12 }}
           {{- end }}
+          {{- if .startupProbe }}
+          startupProbe:
+            {{- .startupProbe | toYaml | nindent 12 }}
+          {{- end }}
           volumeMounts:
             {{- if .additionalVolumeMounts }}
             {{- tpl (toYaml .additionalVolumeMounts) . | nindent 12 }}
@@ -147,6 +151,10 @@ spec:
           readinessProbe:
             {{- .readinessProbe | toYaml | nindent 12 }}
           {{- end }}
+          {{- if .startupProbe }}
+          startupProbe:
+            {{- .startupProbe | toYaml | nindent 12 }}
+          {{- end }}
           {{- if .volumeMounts }}
           volumeMounts:
             {{- .volumeMounts | toYaml | nindent 12 }}
@@ -194,6 +202,9 @@ metadata:
   {{- end }}
 spec:
   type: {{ $service.type | default "ClusterIP" }}
+  {{- if $service.publishNotReadyAddresses }}
+  publishNotReadyAddresses: {{ $service.publishNotReadyAddresses }}
+  {{- end }}
   ports:
     {{- if .ports }}
     {{- range .ports }}

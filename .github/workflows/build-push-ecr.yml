@@ -176,24 +176,19 @@ jobs:
             --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
             ${{ steps.scope.outputs.services }}
 
-      - name: ECR scan gate
+      - name: Scan pushed images with Trivy (Security Gate)
         if: steps.scope.outputs.mode != 'none'
-        env:
-          MODE: ${{ steps.scope.outputs.mode }}
-          IMAGE_TAG: ${{ steps.vars.outputs.tag }}
-          SCOPE_SERVICES: ${{ steps.scope.outputs.services }}
-          ALL_SERVICES: ${{ env.ALL_SERVICES }}
         run: |
-          set -euo pipefail
-          if [ "$MODE" = "full" ]; then
-            SERVICES="$ALL_SERVICES"
-          else
-            SERVICES="$SCOPE_SERVICES"
+          set -a; . ./.env.override; set +a
+          SERVICES="$ALL_SERVICES"
+          if [ "${{ steps.scope.outputs.mode }}" = "scoped" ]; then
+            SERVICES="${{ steps.scope.outputs.services }}"
           fi
-          bash "../../deploy/verify-ecr-scan.sh" \
-            --repository "$ECR_REPOSITORY" \
-            --region "$AWS_REGION" \
-            --base-tag "$IMAGE_TAG" \
-            --services "$SERVICES" \
-            --max-high 0 \
-            --max-critical 0
+          echo "Installing Trivy..."
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          
+          for svc in $SERVICES; do
+            IMAGE="${IMAGE_NAME}:${IMAGE_VERSION}-${svc}"
+            echo "Scanning $IMAGE for HIGH/CRITICAL vulnerabilities..."
+            trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --no-progress "$IMAGE"
+          done
