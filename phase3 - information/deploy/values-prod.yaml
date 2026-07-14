@@ -186,6 +186,25 @@ components:
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
       digest: sha256:a774cb69f27795406f768881a7c575ba882f024f8e99ca928413047f3b3eb532
       tag: 7527509-checkout
+    # Mandate 2 remediation: 2 pod stable từng bị xếp chung 1 node (xác nhận qua
+    # kubectl trước load test) - checkout là service chịu tải chính, mất cả node đó
+    # là mất cả 2 pod dù có PDB. hostname dùng ScheduleAnyway (soft) để không chặn
+    # HPA scale lên tới 8 pod nếu node chưa kịp Karpenter cung cấp; zone dùng
+    # DoNotSchedule (hard) vì luôn dư số AZ, không có rủi ro kẹt lịch.
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: checkout
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: checkout
     resources:
       requests:
         cpu: 100m
@@ -227,13 +246,16 @@ components:
       timeoutSeconds: 3
       failureThreshold: 3
     replicas: 2
+    # Mandate 2: memory limit cũ (180Mi) đã bị dùng ~50-54% chỉ với 10 user loadgen
+    # nền (xác nhận qua kubectl top) - payment đứng đường charge tiền, ưu tiên tăng
+    # trước 200 user thật, tránh OOM đúng lúc checkout.
     resources:
       requests:
         cpu: 50m
         memory: 100Mi
       limits:
         cpu: 300m
-        memory: 180Mi
+        memory: 300Mi
   currency:
     imageOverride:
       digest: sha256:e4e4c76b27fea4d82bbc25aa2f2d6c2163450a223f89c71e7ae4985fb6c0203a
@@ -281,13 +303,14 @@ components:
       timeoutSeconds: 3
       failureThreshold: 3
     replicas: 2
+    # Mandate 2: 20Mi limit quá mỏng cho tải 200 user, không có HPA để bù nếu chạm.
     resources:
       requests:
         cpu: 50m
         memory: 8Mi
       limits:
         cpu: 150m
-        memory: 20Mi
+        memory: 64Mi
   quote:
     imageOverride:
       digest: sha256:97fbf36ede49bb20218b75bfe0f2c9e90ed976114813091abb11ca789f567df3
@@ -308,13 +331,14 @@ components:
       timeoutSeconds: 3
       failureThreshold: 3
     replicas: 2        # shipping phụ thuộc quote
+    # Mandate 2: 40Mi limit quá mỏng cho tải 200 user, không có HPA để bù nếu chạm.
     resources:
       requests:
         cpu: 50m
         memory: 24Mi
       limits:
         cpu: 150m
-        memory: 40Mi
+        memory: 80Mi
   product-reviews:
     replicas: 2        # đứng sau tính năng AI tóm tắt review
     imageOverride: # CDO02 fix database.py + product_reviews_server.py - xem comment imageOverride đầu components:

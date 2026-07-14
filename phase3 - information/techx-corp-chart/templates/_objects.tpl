@@ -50,6 +50,10 @@ spec:
       tolerations:
         {{- $schedulingRules.tolerations | default .defaultValues.schedulingRules.tolerations | toYaml | nindent 8 }}
       {{- end }}
+      {{- if or .defaultValues.schedulingRules.topologySpreadConstraints $schedulingRules.topologySpreadConstraints}}
+      topologySpreadConstraints:
+        {{- $schedulingRules.topologySpreadConstraints | default .defaultValues.schedulingRules.topologySpreadConstraints | toYaml | nindent 8 }}
+      {{- end }}
       {{- if or .defaultValues.podSecurityContext .podSecurityContext }}
       securityContext:
         {{- .podSecurityContext | default .defaultValues.podSecurityContext | toYaml | nindent 8 }}

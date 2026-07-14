@@ -37,7 +37,11 @@ spec:
     memory: 48Gi
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
-    consolidateAfter: 2m
+    # TẠM tăng từ 2m lên 1h cho cửa sổ load test Mandate 2 (200 users) - 2m quá nhạy,
+    # Karpenter đã evict pod checkout/otel-collector giữa lúc canary analysis đang đo,
+    # gây latency spike giả làm rollout fail oan (xem docs/mandate-02-load-test-remediation-plan.md).
+    # PHẢI đổi lại 2m ngay sau khi test xong, để lâu sẽ tốn thêm chi phí node không được tối ưu.
+    consolidateAfter: 1h
 ---
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
