@@ -43,7 +43,7 @@ opensearch:
       memory: 750Mi
     limits:
       cpu: 750m
-      memory: 1100Mi
+      memory: 1600Mi
 
 prometheus:
   server:
@@ -53,7 +53,7 @@ prometheus:
         memory: 450Mi
       limits:
         cpu: 800m
-        memory: 800Mi
+        memory: 1200Mi
 
 components:
   # imageOverride (per-component) - dùng khi build/deploy lại 1 service riêng lẻ mà
@@ -452,7 +452,7 @@ components:
         memory: 650Mi
       limits:
         cpu: 500m
-        memory: 700Mi
+        memory: 1Gi
     # REL-10: PVC persistence cho Kafka (KRaft). image apache/kafka 3.9.1, chay uid/gid 1000,
     # CLUSTER_ID co dinh qua env -> format KRaft idempotent (launch script skip "already formatted").
     envOverrides:
