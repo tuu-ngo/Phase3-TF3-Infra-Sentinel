@@ -51,14 +51,14 @@ error: {
 }
 ```
 
-![jaeger](/Phase3-TF3-Infra-Sentinel/docs/postmortem/images/image.png)
+![jaeger](./images/image.png)
 
-![jaeger-traces-id](/Phase3-TF3-Infra-Sentinel/docs/postmortem/images/image-1.png)
+![jaeger-traces-id](./images/image-1.png)
 
  
 ### Dashboard
 
-![dashboard](/Phase3-TF3-Infra-Sentinel/docs/postmortem/images/dashboard.png)
+![dashboard](./images/dashboard.png)
 
 
 ### Chi tiết Log Lỗi: Payment Request Failed từ log của pod payment
@@ -160,6 +160,18 @@ Query trực tiếp OFREP endpoint của flagd lúc điều tra (~sau 14:34):
 **Không.** Kiểm tra `grafana-alerting` ConfigMap trong cluster hiện **rỗng** (0 alert rule nào được cấu hình) — chưa có alert nào tự bắn ra khi payment fail tăng đột biến. Phát hiện sự cố này hoàn toàn qua: (1) thử đặt đơn thủ công thấy lỗi, (2) chạy Locust thấy tỷ lệ fail cao bất thường trên `/api/checkout`, rồi mới chủ động vào Jaeger/log để tìm nguyên nhân. Đây là **gap thật cần đưa vào backlog** (xem Bài học).
 
 Có sẵn 1 dashboard tên `slo-dashboard` trong Grafana (ConfigMap `grafana-dashboard-slo-dashboard`) — chưa xác nhận được có show đúng số liệu payment/checkout success rate theo thời gian thực hay không, cần review riêng.
+
+### Vì sao chưa có alerting tự động — bối cảnh thời gian, không phải bỏ sót
+
+Đối chiếu lại timeline hạ tầng của TF trong đúng tuần này để thấy rõ đây là vấn đề **thứ tự ưu tiên bắt buộc dưới áp lực deadline**, không phải team đánh giá thấp tầm quan trọng của alerting:
+
+- **12/07** — sự cố tài khoản AWS bị hold + mất bastion (`docs/postmortem/0002-account-hold-and-bastion-loss.md`). Toàn bộ hạ tầng đang chạy (EKS, ECR, CI/CD OIDC role, Terraform state, network) buộc phải di dời sang tài khoản AWS mới (`197826770971`) — một việc phát sinh ngoài kế hoạch, không phải do TF chủ động chọn làm.
+- **13-14/07** — dồn toàn lực xử lý migration: dựng lại module Terraform (network/EKS/access/edge), sửa trust policy OIDC cho CI/CD, chuyển pipeline build image sang scoped-build, dựng lại private edge (CloudFront + WAF) cho Mandate #1, dựng HPA + Karpenter + ResourceQuota cho Mandate #2 — toàn bộ đều là hạ tầng **nền tảng bắt buộc phải có** để hệ thống chạy đúng yêu cầu 2 mandate, xếp trước mọi hạng mục "biết sớm hơn khi có sự cố" như alerting.
+- **14/07 (hôm nay)** — deadline chính thức của cả Mandate #1 và #2. Ưu tiên bắt buộc trong quỹ thời gian còn lại là đảm bảo storefront/checkout **sống đúng** và **đạt yêu cầu** 2 mandate trước, alerting dù quan trọng nhưng không phải điều kiện để hệ thống hoạt động đúng, nên hợp lý khi xếp sau trong tuần bị dồn việc migration ngoài kế hoạch.
+
+- **Biện pháp dự phòng**: do chưa kịp thời gian dựng alert, nên nhóm hiện đang chia lịch on-call liên tục để đảm bảo hệ thống được theo dõi liên tục
+
+Điểm đáng lưu ý: đây **không phải khoảng trống thiết kế lớn phải xây lại từ đầu** — nền tảng quan sát (Prometheus scrape metric, Grafana đã chạy, dashboard `slo-dashboard` đã tồn tại sẵn) đã có đủ. Việc còn thiếu chỉ là **viết thêm alert rule cụ thể** trên nền đã có, ước tính vài giờ công, không phải một dự án riêng — sẽ đưa vào ngay sau khi ổn định xong migration và qua deadline hôm nay (xem mục Bài học/việc cần làm).
 
 ## Ảnh hưởng
 
