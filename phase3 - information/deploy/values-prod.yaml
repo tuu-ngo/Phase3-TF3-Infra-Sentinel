@@ -482,6 +482,11 @@ components:
       type: Recreate
     podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
       cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+      # PV này khoá AZ (topology.kubernetes.io/zone) — nếu node hiện tại là node Spot
+      # (flash-sale-spot), annotation này chặn Karpenter TỰ NGUYỆN consolidate/evict pod.
+      # KHÔNG chặn được AWS thu hồi Spot instance thật (spot interruption) — mitigation
+      # thật là đưa postgres về on-demand khi có đủ capacity ở đúng AZ (xem báo cáo CDO01).
+      karpenter.sh/do-not-disrupt: "true"
     readinessProbe:
       tcpSocket:
         port: 5432
@@ -529,6 +534,9 @@ components:
       type: Recreate
     podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
       cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+      # Cùng lý do với postgresql phía trên: PV khoá AZ, chặn Karpenter tự nguyện
+      # consolidate/evict — không chặn được spot interruption thật.
+      karpenter.sh/do-not-disrupt: "true"
     readinessProbe:
       tcpSocket:
         port: 6379
