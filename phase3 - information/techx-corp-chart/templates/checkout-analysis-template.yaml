@@ -16,6 +16,9 @@ spec:
     # A rollout without requests is inconclusive, not healthy. The controlled
     # demo must run checkout traffic while this AnalysisRun is active.
     - name: checkout-request-rate
+      # Give the new pod enough time to export spans for the 2-minute rate
+      # window before taking the first decision.
+      initialDelay: 2m
       interval: 2m
       count: 3
       # Zero tolerated failures: the first bad measurement aborts checkout.
@@ -30,6 +33,7 @@ spec:
               rollouts_pod_template_hash="{{`{{args.canary-hash}}`}}"
             }[2m])) or vector(0)
     - name: checkout-canary-success-rate
+      initialDelay: 2m
       interval: 2m
       count: 3
       failureLimit: 0
@@ -45,12 +49,13 @@ spec:
                 status_code="STATUS_CODE_ERROR"
               }[2m])) or vector(0))
               /
-              clamp_min(sum(rate(traces_span_metrics_calls_total{
+              clamp_min((sum(rate(traces_span_metrics_calls_total{
                 service_name="{{`{{args.service-name}}`}}",
                 rollouts_pod_template_hash="{{`{{args.canary-hash}}`}}"
-              }[2m])), 0.001)
+              }[2m])) or vector(0)), 0.001)
             )
     - name: checkout-success-rate-regression-vs-stable
+      initialDelay: 2m
       interval: 2m
       count: 3
       failureLimit: 0
@@ -67,10 +72,10 @@ spec:
                   status_code="STATUS_CODE_ERROR"
                 }[2m])) or vector(0))
                 /
-                clamp_min(sum(rate(traces_span_metrics_calls_total{
+                clamp_min((sum(rate(traces_span_metrics_calls_total{
                   service_name="{{`{{args.service-name}}`}}",
                   rollouts_pod_template_hash="{{`{{args.stable-hash}}`}}"
-                }[2m])), 0.001)
+                }[2m])) or vector(0)), 0.001)
               )
             ) - (
               1 - (
@@ -80,13 +85,14 @@ spec:
                   status_code="STATUS_CODE_ERROR"
                 }[2m])) or vector(0))
                 /
-                clamp_min(sum(rate(traces_span_metrics_calls_total{
+                clamp_min((sum(rate(traces_span_metrics_calls_total{
                   service_name="{{`{{args.service-name}}`}}",
                   rollouts_pod_template_hash="{{`{{args.canary-hash}}`}}"
-                }[2m])), 0.001)
+                }[2m])) or vector(0)), 0.001)
               )
             )
     - name: checkout-canary-p95-latency-ms
+      initialDelay: 2m
       interval: 2m
       count: 3
       failureLimit: 0
@@ -102,6 +108,7 @@ spec:
               }[2m])) by (le)
             ) or vector(999999)
     - name: checkout-p95-regression-vs-stable-ms
+      initialDelay: 2m
       interval: 2m
       count: 3
       failureLimit: 0
@@ -110,19 +117,19 @@ spec:
         prometheus:
           address: {{ .Values.rollouts.prometheusAddress | quote }}
           query: |
-            (
+            ((
               histogram_quantile(0.95,
                 sum(rate(traces_span_metrics_duration_milliseconds_bucket{
                   service_name="{{`{{args.service-name}}`}}",
                   rollouts_pod_template_hash="{{`{{args.canary-hash}}`}}"
                 }[2m])) by (le)
               )
-            ) - (
+            ) or vector(999999)) - ((
               histogram_quantile(0.95,
                 sum(rate(traces_span_metrics_duration_milliseconds_bucket{
                   service_name="{{`{{args.service-name}}`}}",
                   rollouts_pod_template_hash="{{`{{args.stable-hash}}`}}"
                 }[2m])) by (le)
               )
-            )
+            ) or vector(999999))
 {{- end }}
