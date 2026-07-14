@@ -126,6 +126,11 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 
 - *Evidence:*
   `techx-corp-chart/values.yaml` không có key `readinessProbe`/`livenessProbe` nào cho app component. Verify trực tiếp trên pod live (09/07): `kubectl -n techx-tf3 get pod payment-8447bf7668-zx4dj -o jsonpath='{.spec.containers[0].readinessProbe}'` → **rỗng hoàn toàn**, không có warning event nào cho `payment` tại thời điểm kiểm tra. (Đối chứng: Grafana có probe riêng nhưng đến từ subchart Bitnami, không liên quan app components — không mâu thuẫn với kết luận này.)
+- *Cập nhật hiện trạng (14/07 — audit live trên account mới `197826770971`):*
+  Đã có tiến triển một phần. **4 app service ĐÃ được thêm gRPC probe** qua `values-prod.yaml` (verify pod Ready, probe đang pass — **cơ chế health check hoạt động tốt**): `checkout`, `product-catalog`, `recommendation` (readiness `grpc:8080` / liveness `tcp:8080`); `product-reviews` (`grpc:3551` / `tcp:3551`).
+  **Còn THIẾU cả 2 probe — 14 app service + 3 datastore:** `accounting, ad, cart, currency, email, frontend, frontend-proxy, fraud-detection, image-provider, kafka, llm, payment, quote, shipping` + datastore `postgresql, valkey-cart, kafka`. (`load-generator`, `grafana` bỏ qua — tool/subchart.)
+  *Bằng chứng tươi:* `shipping` bị báo "có vẻ chết" (14/07) — điều tra ra pod vẫn Running và **serve đúng** ($8.99 phí ship, HTTP 200); "chết" chỉ vì **không có probe = không tín hiệu sống**. Đúng rủi ro mục này cảnh báo: thiếu liveness → service treo dưới tải 200 user không bị restart; thiếu readiness → vẫn route traffic vào pod hỏng.
+  *Probe type theo service khi triển khai nốt:* service gRPC → `grpc:<port>`; `frontend`/`frontend-proxy` (HTTP) → `httpGet /`; datastore → `tcpSocket` hoặc exec (`pg_isready` cho postgres, `valkey-cli ping` cho valkey, tcp cho kafka). Threshold + nguyên tắc liveness-lỏng-hơn-readiness giữ như phần *Giải pháp* bên dưới.
 - *Ảnh hưởng khách hàng:*
   Mỗi lần deploy/rollout, K8s route traffic vào pod mới trước khi pod thật sự sẵn sàng nhận request → khách gặp lỗi ngay lúc deploy (đúng kịch bản đã xảy ra ở INC-3, lỗi thanh toán lúc deploy).
 - *Rủi ro (khả năng × mức nghiêm trọng):*
