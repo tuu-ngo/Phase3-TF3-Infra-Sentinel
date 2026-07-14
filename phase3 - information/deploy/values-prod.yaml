@@ -416,6 +416,12 @@ components:
         cpu: 100m
         memory: 50Mi
   kafka:
+    service:
+      # REL-10: KRaft 1-node tu noi controller cua chinh no qua Service kafka:9093. Pod PHAI nam
+      # trong Service endpoints NGAY khi chua ready, neu khong startupProbe/readinessProbe se loai pod
+      # khoi endpoints -> broker khong noi duoc controller -> 9092 khong mo -> DEADLOCK (2 cutover 14/07
+      # that bai vi thieu field nay). publishNotReadyAddresses giu pod trong endpoints ke ca khi not-ready.
+      publishNotReadyAddresses: true
     resources:
       requests:
         cpu: 100m
