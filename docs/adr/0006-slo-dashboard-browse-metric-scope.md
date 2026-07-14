@@ -63,6 +63,8 @@ service_name="frontend", span_kind="SPAN_KIND_SERVER", span_name=~"GET /|HEAD /|
 
 Đã verify trực tiếp trên Prometheus live trước khi áp: query sau khi lọc trả **2.74 req/s**, so với **11.57 req/s** của query cũ không lọc — xác nhận filter loại bỏ đúng phần traffic không thuộc Browse (checkout/cart/internal spans), không phải lỗi regex làm rỗng dữ liệu.
 
+⚠️ **Bẫy escaping khi sửa file JSON này (đã dính 1 lần, ghi lại để không lặp lại):** để regex match đúng ký tự `[`/`]`/`{`/`}` theo nghĩa đen (không phải ký tự đặc biệt của regex), file `.json` phải viết **4 dấu `\`** liên tiếp trước mỗi ký tự đó (vd `\\\\[productId\\\\]`), không phải 2. Lý do: JSON decode bóc 1 lớp escape (4 dấu `\` → còn 2), rồi PromQL tự thân cũng escape chuỗi kiểu Go string literal nên bóc thêm 1 lớp nữa (2 dấu `\` → còn 1) — chỉ còn đúng 1 dấu `\` tới được regex engine, khớp cú pháp regex cần. Viết 2 dấu `\` (tưởng là đủ) sẽ qua được JSON nhưng PromQL báo lỗi `unknown escape sequence` vì `\[` không phải escape hợp lệ trong string literal của nó — toàn bộ panel liên quan sẽ hiện "No data" dù JSON vẫn valid. Trước khi commit, luôn test bằng cách `json.load()` file lấy đúng `expr` đã decode rồi gửi thẳng chuỗi đó cho Prometheus API — không test bằng chuỗi gõ tay trong terminal, vì sẽ thiếu đúng 1 lớp escape mà chỉ JSON thật mới tạo ra.
+
 ## Việc còn để ngỏ
 
 - [ ] Xác nhận `GET /api/currency`, `GET /api/data`, `GET /api/shipping` có nên tính vào Browse không — hiện đang loại theo hướng thận trọng (chỉ tính cái chắc chắn), review lại sau nếu cần.
