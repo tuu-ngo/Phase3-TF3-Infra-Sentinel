@@ -84,3 +84,14 @@ output "cloudfront_vpc_origin_id" {
   description = "CloudFront VPC Origin ID after the internal origin phase begins."
   value       = module.edge.cloudfront_vpc_origin_id
 }
+
+output "cloudflare_tunnel_token" {
+  description = "REL-17: paste into the cloudflared Kubernetes Secret (never commit). Empty when enable_cloudflare_access = false."
+  value       = try(module.cloudflare_access[0].tunnel_token, null)
+  sensitive   = true
+}
+
+output "cloudflare_client_access_command" {
+  description = "REL-17: what each team member runs locally instead of `aws ssm start-session`. Empty when enable_cloudflare_access = false."
+  value       = try(module.cloudflare_access[0].client_access_command, null)
+}
