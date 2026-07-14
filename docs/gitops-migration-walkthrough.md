@@ -15,8 +15,39 @@ Tai lieu nay tom tat nhung viec da lam trong dot migrate sang AWS account moi va
 - Khong commit secret that vao Git, chat, PR, log.
 - Khong vo hieu hoa `flagd` hoac co che sync token cua BTC.
 - Khong bat default-deny NetworkPolicy toan namespace khi chua co allowlist va smoke test day du.
+- Sau nay moi thay doi ha tang/GitOps/Security/Performance dang ke phai cap nhat them vao file nay:
+  - ghi ro thay doi da lam;
+  - ghi lenh/evidence smoke test;
+  - ghi rollback neu thay doi co rui ro lam gian doan;
+  - ghi nhung phan chua hoan tat de team khong hieu nham la da done.
 
 ## Tong quan trang thai hien tai
+
+### EKS version / support mode
+
+Live cluster:
+
+```text
+cluster version: 1.35
+platformVersion: eks.18
+cluster status: ACTIVE
+createdAt: 2026-07-13T18:46:58+07:00
+upgradePolicy.supportType: EXTENDED
+```
+
+Worker nodes:
+
+```text
+kubelet: v1.35.6-eks-8f14419
+OS: Amazon Linux 2023.12.20260611
+instance type: t3.large
+```
+
+Ket luan tai ngay 14/07/2026:
+
+- Kubernetes `1.35` dang nam trong danh sach EKS versions o **standard support**.
+- `upgradePolicy.supportType=EXTENDED` la chinh sach cho phep cluster tu dong vao extended support khi version het standard support; no khong co nghia cluster hien tai dang bi tinh la extended support.
+- Can tiep tuc theo doi AWS Health/EKS release lifecycle truoc khi het standard support de tranh phi extended support khong can thiet.
 
 ### GitOps / ArgoCD
 
