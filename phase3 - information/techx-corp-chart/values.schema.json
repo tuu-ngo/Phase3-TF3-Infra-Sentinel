@@ -475,6 +475,9 @@
         },
         "annotations": {
           "type": "object"
+        },
+        "publishNotReadyAddresses": {
+          "type": "boolean"
         }
       },
       "title": "Service"

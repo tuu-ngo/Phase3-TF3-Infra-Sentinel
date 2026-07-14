@@ -189,6 +189,9 @@ metadata:
   {{- end }}
 spec:
   type: {{ $service.type | default "ClusterIP" }}
+  {{- if $service.publishNotReadyAddresses }}
+  publishNotReadyAddresses: {{ $service.publishNotReadyAddresses }}
+  {{- end }}
   ports:
     {{- if .ports }}
     {{- range .ports }}
