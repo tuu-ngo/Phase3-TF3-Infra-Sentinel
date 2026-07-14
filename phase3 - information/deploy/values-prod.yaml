@@ -423,36 +423,6 @@ components:
       limits:
         cpu: 500m
         memory: 700Mi
-    envOverrides:              # data dir tường minh: image mặc định /tmp/kafka-logs (ephemeral)
-      - name: KAFKA_LOG_DIRS   # -> chuyển sang PVC. Image tự format KRaft bằng CLUSTER_ID cố định.
-        value: /var/lib/kafka/data
-    additionalVolumeMounts:
-      - name: kafka-data
-        mountPath: /var/lib/kafka/data
-    additionalVolumes:
-      - name: kafka-data
-        persistentVolumeClaim:
-          claimName: kafka-data   # PVC ở gitops/infrastructure/datastore-pvc.yaml
-    podSecurityContext:        # kafka chạy uid/gid 1000 -> fsGroup để ghi được vào EBS volume
-      fsGroup: 1000            # (thiếu fsGroup = valkey đã crash "Permission denied")
-    strategy:                  # RWO PVC + Deployment -> Recreate tránh deadlock
-      type: Recreate
-    podAnnotations:
-      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
-    readinessProbe:            # kafka JVM + format chậm khởi động -> initialDelay cao
-      tcpSocket:
-        port: 9092
-      initialDelaySeconds: 30
-      periodSeconds: 10
-      timeoutSeconds: 3
-      failureThreshold: 3
-    livenessProbe:
-      tcpSocket:
-        port: 9092
-      initialDelaySeconds: 60
-      periodSeconds: 20
-      timeoutSeconds: 3
-      failureThreshold: 5
   llm:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
