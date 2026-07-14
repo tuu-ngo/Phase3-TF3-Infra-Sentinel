@@ -51,6 +51,13 @@ module "eks" {
       most_recent                 = true
       resolve_conflicts_on_create = "OVERWRITE"
       resolve_conflicts_on_update = "OVERWRITE"
+      configuration_values = jsonencode({
+        enableNetworkPolicy = "true"
+        nodeAgent = {
+          healthProbeBindAddr = "8163"
+          metricsBindAddr     = "8162"
+        }
+      })
     }
     metrics-server = {
       addon_version               = "v0.8.1-eksbuild.11"
