@@ -476,9 +476,8 @@ components:
         mountPath: /var/lib/postgresql/data
     additionalVolumes:
       - name: postgresql-data
-        # EBS CSI is not installed in this cluster, so the gp2 PVC cannot bind.
-        # Keep PostgreSQL available on ephemeral storage until CSI is ready.
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: postgresql-data   # PVC ở gitops/infrastructure/datastore-pvc.yaml
     strategy:                  # RWO PVC + Deployment -> Recreate tránh deadlock rolling update
       type: Recreate
     podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
@@ -520,11 +519,10 @@ components:
         mountPath: /data
     additionalVolumes:
       - name: valkey-cart-data
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: valkey-cart
     persistence:
-      # EBS CSI is not installed in this cluster. Keeping the gp2 PVC enabled
-      # leaves Valkey Pending and takes cart/checkout out of service.
-      enabled: false
+      enabled: true            # chart tạo PVC 'valkey-cart' (valkey-cart-pvc.yaml). AOF ghi vào PVC
       size: 1Gi
       storageClassName: gp2
     strategy:                  # RWO PVC + Deployment -> Recreate tránh deadlock rolling update
