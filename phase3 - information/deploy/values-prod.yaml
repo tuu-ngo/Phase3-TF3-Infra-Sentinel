@@ -455,20 +455,23 @@ components:
       type: Recreate
     podAnnotations:
       cluster-autoscaler.kubernetes.io/safe-to-evict: "false"   # dung de Karpenter/CA evict pod stateful
-    readinessProbe:                   # JVM + KRaft format + EBS attach khoi dong cham -> initialDelay cao
+    # REL-10 probe fix (cutover 14/07 that bai): BO readinessProbe. KRaft 1-node tu noi controller
+    # cua chinh no qua Service kafka:9093; readiness gate 9092 -> pod chua Ready bi loai khoi Service
+    # endpoints -> broker khong noi duoc controller -> 9092 khong bao gio mo -> DEADLOCK.
+    # Thay bang startupProbe: cho broker du thoi gian bootstrap tren EBS + KRaft format; trong luc do
+    # liveness bi TAT. Startup xong liveness moi bat -> co the gat, bat treo runtime nhanh.
+    startupProbe:
       tcpSocket:
         port: 9092
-      initialDelaySeconds: 45
       periodSeconds: 10
+      failureThreshold: 30            # ~300s ngan sach khoi dong (EBS attach + format + JVM)
       timeoutSeconds: 3
-      failureThreshold: 3
-    livenessProbe:
+    livenessProbe:                    # chi chay SAU startupProbe thanh cong -> khong can initialDelay
       tcpSocket:
         port: 9092
-      initialDelaySeconds: 75
       periodSeconds: 20
       timeoutSeconds: 3
-      failureThreshold: 5
+      failureThreshold: 3
   llm:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
