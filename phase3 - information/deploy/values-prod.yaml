@@ -476,8 +476,9 @@ components:
         mountPath: /var/lib/postgresql/data
     additionalVolumes:
       - name: postgresql-data
-        persistentVolumeClaim:
-          claimName: postgresql-data   # PVC ở gitops/infrastructure/datastore-pvc.yaml
+        # EBS CSI is not installed in this cluster, so the gp2 PVC cannot bind.
+        # Keep PostgreSQL available on ephemeral storage until CSI is ready.
+        emptyDir: {}
     strategy:                  # RWO PVC + Deployment -> Recreate tránh deadlock rolling update
       type: Recreate
     podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
