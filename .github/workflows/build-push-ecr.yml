@@ -175,3 +175,20 @@ jobs:
           docker buildx bake -f docker-compose.yml --push \
             --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
             ${{ steps.scope.outputs.services }}
+
+      - name: Scan pushed images with Trivy (Security Gate)
+        if: steps.scope.outputs.mode != 'none'
+        run: |
+          set -a; . ./.env.override; set +a
+          SERVICES="$ALL_SERVICES"
+          if [ "${{ steps.scope.outputs.mode }}" = "scoped" ]; then
+            SERVICES="${{ steps.scope.outputs.services }}"
+          fi
+          echo "Installing Trivy..."
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          
+          for svc in $SERVICES; do
+            IMAGE="${IMAGE_NAME}:${IMAGE_VERSION}-${svc}"
+            echo "Scanning $IMAGE for HIGH/CRITICAL vulnerabilities..."
+            trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --no-progress "$IMAGE"
+          done

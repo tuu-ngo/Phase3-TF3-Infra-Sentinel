@@ -56,7 +56,12 @@ spec:
       {{- end}}
       containers:
         - name: {{ .name }}
-          image: '{{ ((.imageOverride).repository) | default .defaultValues.image.repository }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
+          {{- $repo := ((.imageOverride).repository) | default .defaultValues.image.repository }}
+          {{- if ((.imageOverride).digest) }}
+          image: '{{ $repo }}@{{ .imageOverride.digest }}'
+          {{- else }}
+          image: '{{ $repo }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
+          {{- end }}
           imagePullPolicy: {{ ((.imageOverride).pullPolicy) | default .defaultValues.image.pullPolicy }}
           {{- if .command }}
           command:
@@ -110,7 +115,12 @@ spec:
         {{- $sidecar := set . "Release" $.Release }}
         {{- $sidecar := set . "defaultValues" $.defaultValues }}
         - name: {{ .name   }}
-          image: '{{ ((.imageOverride).repository) | default .defaultValues.image.repository }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
+          {{- $repo := ((.imageOverride).repository) | default .defaultValues.image.repository }}
+          {{- if ((.imageOverride).digest) }}
+          image: '{{ $repo }}@{{ .imageOverride.digest }}'
+          {{- else }}
+          image: '{{ $repo }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
+          {{- end }}
           imagePullPolicy: {{ ((.imageOverride).pullPolicy) | default .defaultValues.image.pullPolicy }}
           {{- if .command }}
           command:
