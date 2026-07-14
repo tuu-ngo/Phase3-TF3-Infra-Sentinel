@@ -51,14 +51,14 @@ error: {
 }
 ```
 
-![jaeger](images/image.png)
+![jaeger](./images/image.png)
 
-![jaeger-traces-id](images/image-1.png)
+![jaeger-traces-id](./images/image-1.png)
 
  
 ### Dashboard
 
-![dashboard](images/dashboard.png)
+![dashboard](./images/dashboard.png)
 
 
 ### Chi tiết Log Lỗi: Payment Request Failed từ log của pod payment
@@ -168,6 +168,8 @@ Có sẵn 1 dashboard tên `slo-dashboard` trong Grafana (ConfigMap `grafana-das
 - **12/07** — sự cố tài khoản AWS bị hold + mất bastion (`docs/postmortem/0002-account-hold-and-bastion-loss.md`). Toàn bộ hạ tầng đang chạy (EKS, ECR, CI/CD OIDC role, Terraform state, network) buộc phải di dời sang tài khoản AWS mới (`197826770971`) — một việc phát sinh ngoài kế hoạch, không phải do TF chủ động chọn làm.
 - **13-14/07** — dồn toàn lực xử lý migration: dựng lại module Terraform (network/EKS/access/edge), sửa trust policy OIDC cho CI/CD, chuyển pipeline build image sang scoped-build, dựng lại private edge (CloudFront + WAF) cho Mandate #1, dựng HPA + Karpenter + ResourceQuota cho Mandate #2 — toàn bộ đều là hạ tầng **nền tảng bắt buộc phải có** để hệ thống chạy đúng yêu cầu 2 mandate, xếp trước mọi hạng mục "biết sớm hơn khi có sự cố" như alerting.
 - **14/07 (hôm nay)** — deadline chính thức của cả Mandate #1 và #2. Ưu tiên bắt buộc trong quỹ thời gian còn lại là đảm bảo storefront/checkout **sống đúng** và **đạt yêu cầu** 2 mandate trước, alerting dù quan trọng nhưng không phải điều kiện để hệ thống hoạt động đúng, nên hợp lý khi xếp sau trong tuần bị dồn việc migration ngoài kế hoạch.
+
+- **Biện pháp dự phòng**: do chưa kịp thời gian dựng alert, nên nhóm hiện đang chia lịch on-call liên tục để đảm bảo hệ thống được theo dõi liên tục
 
 Điểm đáng lưu ý: đây **không phải khoảng trống thiết kế lớn phải xây lại từ đầu** — nền tảng quan sát (Prometheus scrape metric, Grafana đã chạy, dashboard `slo-dashboard` đã tồn tại sẵn) đã có đủ. Việc còn thiếu chỉ là **viết thêm alert rule cụ thể** trên nền đã có, ước tính vài giờ công, không phải một dự án riêng — sẽ đưa vào ngay sau khi ổn định xong migration và qua deadline hôm nay (xem mục Bài học/việc cần làm).
 
