@@ -423,6 +423,52 @@ components:
       limits:
         cpu: 500m
         memory: 700Mi
+    # REL-10: PVC persistence cho Kafka (KRaft). image apache/kafka 3.9.1, chay uid/gid 1000,
+    # CLUSTER_ID co dinh qua env -> format KRaft idempotent (launch script skip "already formatted").
+    envOverrides:
+      - name: KAFKA_LOG_DIRS          # data trong SUBDIR cua volume, KHONG phai volume root ->
+        value: /var/lib/kafka/data    # lost+found (o root EBS) vo hinh voi LogManager, khong crash loadLogs
+      - name: CLUSTER_ID              # PIN cluster-id: lan format dau + MOI restart dung 1 gia tri co dinh
+        value: ckjPoprWQzOf0-FuNkGfFQ # -> tranh "Cluster ID mismatch" crash. Git truoc day KHONG set (image
+                                      # default doi khac) -> pin tuong minh de deterministic qua restart/redeploy
+    podSecurityContext:
+      fsGroup: 1000                   # kafka ghi duoc vao EBS volume moi (thieu -> "Permission denied", nhu valkey da dinh)
+    initContainers:
+      # Tao + chown subdir data truoc khi kafka chay. Chu dich thay vi subPath: subPath + fsGroup
+      # co bug kubelet khong chown subpath dir -> uid 1000 khong ghi duoc. Mount thang + initContainer chown la chac an.
+      - name: init-kafka-data
+        image: busybox:1.36
+        command: ["sh", "-c", "mkdir -p /var/lib/kafka/data && chown -R 1000:1000 /var/lib/kafka/data"]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+          - name: kafka-data
+            mountPath: /var/lib/kafka
+    additionalVolumeMounts:
+      - name: kafka-data
+        mountPath: /var/lib/kafka     # mount THANG volume (khong subPath); kafka chi doc/ghi subdir /data
+    additionalVolumes:
+      - name: kafka-data
+        persistentVolumeClaim:
+          claimName: kafka-data       # khai o gitops/infrastructure/datastore-pvc.yaml
+    strategy:                         # RWO PVC + Deployment -> Recreate tranh multi-attach deadlock khi rollout
+      type: Recreate
+    podAnnotations:
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"   # dung de Karpenter/CA evict pod stateful
+    readinessProbe:                   # JVM + KRaft format + EBS attach khoi dong cham -> initialDelay cao
+      tcpSocket:
+        port: 9092
+      initialDelaySeconds: 45
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 9092
+      initialDelaySeconds: 75
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 5
   llm:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
