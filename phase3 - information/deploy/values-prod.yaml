@@ -10,6 +10,18 @@ default:
     tag: 58b13f2
 
 grafana:
+  # REL-17: Grafana giờ có hostname riêng qua Cloudflare (grafana.arthur-ngo.org).
+  # Base chart values.yaml đặt root_url = http://%(domain)s:%(http_port)s/grafana +
+  # serve_from_sub_path=true (cho đường truy cập /grafana subpath cũ) → khi vào qua
+  # hostname riêng, Grafana redirect tuyệt đối về http://localhost:3000/grafana (domain
+  # rỗng mặc định localhost) → ERR_CONNECTION_REFUSED. Override để phục vụ ở ROOT của
+  # hostname riêng. Đánh đổi đã chấp nhận: port-forward localhost:3000 cho Grafana sẽ
+  # redirect về hostname này thay vì đứng độc lập (dùng Cloudflare URL thay thế).
+  grafana.ini:
+    server:
+      domain: grafana.arthur-ngo.org
+      root_url: "%(protocol)s://%(domain)s/"
+      serve_from_sub_path: false
   sidecar:
     resources:
       requests:
