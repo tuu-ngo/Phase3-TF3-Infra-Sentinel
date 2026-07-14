@@ -142,7 +142,7 @@ type checkout struct {
 	paymentSvcAddr        string
 	kafkaBrokerSvcAddr    string
 	pb.UnimplementedCheckoutServiceServer
-	KafkaProducerClient     sarama.AsyncProducer
+	KafkaProducerClient     sarama.SyncProducer
 	shippingSvcClient       pb.ShippingServiceClient
 	productCatalogSvcClient pb.ProductCatalogServiceClient
 	cartSvcClient           pb.CartServiceClient
@@ -676,51 +676,41 @@ func (cs *checkout) sendToPostProcessor(ctx context.Context, result *pb.OrderRes
 	span := createProducerSpan(ctx, &msg)
 	defer span.End()
 
-	// Send message and handle response
+	// Send message and handle response. SyncProducer.SendMessage blocks until
+	// this specific message is acked (or fails/times out per
+	// saramaConfig.Producer.Timeout) - the result belongs to this call only,
+	// unlike AsyncProducer's shared Successes()/Errors() channels which used
+	// to race across concurrent PlaceOrder calls on the same pod (see
+	// kafka/producer.go for the full explanation of why that hung requests).
 	startTime := time.Now()
-	select {
-	case cs.KafkaProducerClient.Input() <- &msg:
-		select {
-		case successMsg := <-cs.KafkaProducerClient.Successes():
-			span.SetAttributes(
-				attribute.Bool("messaging.kafka.producer.success", true),
-				attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
-				attribute.KeyValue(semconv.MessagingKafkaMessageOffset(int(successMsg.Offset))),
-			)
-			logger.Info(fmt.Sprintf("Successful to write message. offset: %v, duration: %v", successMsg.Offset, time.Since(startTime)))
-		case errMsg := <-cs.KafkaProducerClient.Errors():
-			span.SetAttributes(
-				attribute.Bool("messaging.kafka.producer.success", false),
-				attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
-			)
-			span.SetStatus(otelcodes.Error, errMsg.Err.Error())
-			logger.Error(fmt.Sprintf("Failed to write message: %v", errMsg.Err))
-		case <-ctx.Done():
-			span.SetAttributes(
-				attribute.Bool("messaging.kafka.producer.success", false),
-				attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
-			)
-			span.SetStatus(otelcodes.Error, "Context cancelled: "+ctx.Err().Error())
-			logger.Warn(fmt.Sprintf("Context canceled before success message received: %v", ctx.Err()))
-		}
-	case <-ctx.Done():
+	partition, offset, err := cs.KafkaProducerClient.SendMessage(&msg)
+	if err != nil {
 		span.SetAttributes(
 			attribute.Bool("messaging.kafka.producer.success", false),
 			attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
 		)
-		span.SetStatus(otelcodes.Error, "Failed to send: "+ctx.Err().Error())
-		logger.Error(fmt.Sprintf("Failed to send message to Kafka within context deadline: %v", ctx.Err()))
-		return
+		span.SetStatus(otelcodes.Error, err.Error())
+		logger.Error(fmt.Sprintf("Failed to write message: %v", err))
+	} else {
+		span.SetAttributes(
+			attribute.Bool("messaging.kafka.producer.success", true),
+			attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
+			attribute.KeyValue(semconv.MessagingKafkaMessageOffset(int(offset))),
+			attribute.KeyValue(semconv.MessagingKafkaDestinationPartition(int(partition))),
+		)
+		logger.Info(fmt.Sprintf("Successful to write message. offset: %v, duration: %v", offset, time.Since(startTime)))
 	}
 
 	ffValue := cs.getIntFeatureFlag(ctx, "kafkaQueueProblems")
 	if ffValue > 0 {
 		logger.Info("Warning: FeatureFlag 'kafkaQueueProblems' is activated, overloading queue now.")
 		for i := 0; i < ffValue; i++ {
-			go func(i int) {
-				cs.KafkaProducerClient.Input() <- &msg
-				_ = <-cs.KafkaProducerClient.Successes()
-			}(i)
+			m := msg // own copy per goroutine - SendMessage may mutate the message it's given
+			go func(i int, m sarama.ProducerMessage) {
+				if _, _, err := cs.KafkaProducerClient.SendMessage(&m); err != nil {
+					logger.Error(fmt.Sprintf("kafkaQueueProblems overload message #%d failed: %v", i, err))
+				}
+			}(i, m)
 		}
 		logger.Info(fmt.Sprintf("Done with #%d messages for overload simulation.", ffValue))
 	}
