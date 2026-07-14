@@ -8,6 +8,8 @@ locals {
   public_origin_id  = "frontend-proxy-alb"
   private_origin_id = "frontend-private-alb"
 
+  cloudfront_staging_selector = local.staging_traffic_enabled ? trimspace(var.cloudfront_staging_selector) : "__disabled__"
+
   operations_path_prefixes = [
     "/grafana",
     "/jaeger",
@@ -211,14 +213,14 @@ resource "aws_cloudfront_continuous_deployment_policy" "frontend" {
 
     single_header_config {
       header = "aws-cf-cd-techx-private-origin"
-      value  = var.cloudfront_staging_selector
+      value  = local.cloudfront_staging_selector
     }
   }
 
   lifecycle {
     precondition {
-      condition     = !local.staging_resources_enabled || length(trimspace(var.cloudfront_staging_selector)) > 0
-      error_message = "cloudfront_staging_selector must be set while staging resources are retained."
+      condition     = !local.staging_traffic_enabled || length(trimspace(var.cloudfront_staging_selector)) > 0
+      error_message = "cloudfront_staging_selector must be set while staging traffic is enabled."
     }
   }
 }

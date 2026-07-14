@@ -114,6 +114,29 @@ run "staging_phase_keeps_primary_on_public_origin" {
   }
 }
 
+run "staging_phase_requires_selector" {
+  command = plan
+
+  override_data {
+    target = data.aws_lb.private_frontend[0]
+    values = {
+      arn      = "arn:aws:elasticloadbalancing:ap-southeast-1:197826770971:loadbalancer/app/techx-tf3-frontend-internal/0123456789abcdef"
+      dns_name = "internal.example.elb.amazonaws.com"
+    }
+  }
+
+  variables {
+    cluster_name                = "techx-corp-tf3"
+    frontend_alb_dns_name       = "public.example.elb.amazonaws.com"
+    vpc_id                      = "vpc-00000000000000000"
+    private_alb_name            = "techx-tf3-frontend-internal"
+    edge_phase                  = "staging"
+    cloudfront_staging_selector = ""
+  }
+
+  expect_failures = [aws_cloudfront_continuous_deployment_policy.frontend]
+}
+
 run "private_phase_cuts_primary_to_vpc_origin" {
   command = plan
 
@@ -131,7 +154,7 @@ run "private_phase_cuts_primary_to_vpc_origin" {
     vpc_id                      = "vpc-00000000000000000"
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "private"
-    cloudfront_staging_selector = "test-only"
+    cloudfront_staging_selector = ""
   }
 
   assert {
@@ -172,7 +195,7 @@ run "rollback_phase_restores_public_and_retains_vpc_origin" {
     vpc_id                      = "vpc-00000000000000000"
     private_alb_name            = "techx-tf3-frontend-internal"
     edge_phase                  = "rollback"
-    cloudfront_staging_selector = "test-only"
+    cloudfront_staging_selector = ""
   }
 
   assert {

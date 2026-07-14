@@ -546,7 +546,23 @@ Can nop rieng evidence:
 
 ### Full Terraform plan
 
-Targeted apply da dung cho VPC CNI vi full plan bi chan boi precondition CloudFront staging selector. Can xu ly bien `cloudfront_staging_selector`/edge phase de full `terraform plan` sach tro lai truoc khi merge/chot production.
+Da sua precondition CloudFront staging selector trong `infra/modules/edge/main.tf`:
+
+- `edge_phase = "staging"` van bat buoc co `cloudfront_staging_selector`.
+- `edge_phase = "private"`/`rollback` khong can selector chi de chay plan vi staging traffic dang disabled.
+- Neu selector khong duoc truyen khi staging disabled, module dung placeholder `__disabled__` cho Continuous Deployment policy.
+
+Verify sau sua:
+
+```bash
+terraform -chdir=infra/modules/edge test -no-color
+# Success! 7 passed, 0 failed.
+
+terraform -chdir=infra/live/production plan -no-color -input=false
+# Plan: 0 to add, 6 to change, 0 to destroy.
+```
+
+Plan hien tai da het loi precondition. Cac change con lai khong destroy: update tag discovery cho Karpenter IAM/SQS/EKS access entry va update header value cua CloudFront Continuous Deployment policy dang disabled.
 
 ## Ghi chu cho team
 
