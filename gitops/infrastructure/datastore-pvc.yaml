@@ -1,0 +1,21 @@
+# PVC cho Postgres (Mandate #2, Reliability — chống mất data khi pod restart/reschedule).
+# Chart chỉ tự tạo PVC cho valkey (valkey-cart-pvc.yaml); postgres phải khai riêng ở đây.
+# Kafka HOÃN: KRaft cần format storage với cluster-id trên volume mới — rủi ro cao, làm PR riêng.
+#
+# storageClass gp2 (WaitForFirstConsumer — bind khi pod schedule, đúng AZ). RWO: chỉ 1 pod mount
+# tại 1 thời điểm -> component postgres phải dùng strategy: Recreate (đã set trong values-prod.yaml).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-data
+  namespace: techx-tf3
+  labels:
+    app.kubernetes.io/component: postgresql
+    app.kubernetes.io/part-of: techx-corp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp2
+  resources:
+    requests:
+      storage: 2Gi

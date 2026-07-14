@@ -12,6 +12,10 @@ metadata:
 spec:
   replicas: {{ .replicas | default .defaultValues.replicas }}
   revisionHistoryLimit: {{ .revisionHistoryLimit | default .defaultValues.revisionHistoryLimit }}
+  {{- if .strategy }}
+  strategy:
+    {{- toYaml .strategy | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "techx-corp.selectorLabels" . | nindent 6 }}
