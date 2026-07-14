@@ -332,10 +332,16 @@ cart            -> valkey-cart:6379  VALKEY_ALLOWED
 checkout        -> kafka:9092        KAFKA_ALLOWED
 ```
 
-Ket luan:
-
 - P0 NetworkPolicy phase 1 da dat cho Postgres/Valkey/Kafka/Grafana.
 - Observability surface con lai (`Jaeger`, `Prometheus`, `OpenSearch`, `load-generator`, `otel-collector`) van la phase sau theo backlog item #9.
+
+### 7. Grafana memory resources tuning (Tránh lỗi OOMKilled)
+
+- **Vấn đề**: Trong quá trình vận hành hệ thống và điều tra sự cố (truy vấn metrics/traces dung lượng lớn cùng lúc), container `grafana` bị hệ điều hành kết liễu (`OOMKilled`, exit code 137) do vượt quá giới hạn bộ nhớ cũ (`500Mi`), làm đứt kết nối port-forward.
+- **Giải pháp**: Tăng tài nguyên RAM cho Grafana trong `phase3 - information/deploy/values-prod.yaml`:
+  - `requests.memory`: `250Mi` $\rightarrow$ `512Mi`
+  - `limits.memory`: `500Mi` $\rightarrow$ `1Gi`
+- **Kết quả**: Pod Grafana tự động khởi động lại, chạy ổn định (`4/4 Ready`), không còn bị crash khi truy vấn tải cao.
 
 ## Smoke test ngay 14/07/2026
 
