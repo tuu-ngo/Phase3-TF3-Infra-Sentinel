@@ -42,6 +42,14 @@ output "lb_controller_role_arn" {
   value = module.eks_platform.lb_controller_role_arn
 }
 
+output "external_secrets_role_arn" {
+  value = module.eks_platform.external_secrets_role_arn
+}
+
+output "flagd_sync_secret_name" {
+  value = module.eks_platform.flagd_sync_secret_name
+}
+
 output "configure_kubectl" {
   description = "Run this to configure kubectl for the production cluster."
   value       = "aws eks update-kubeconfig --name ${module.eks_platform.cluster_name} --region ${var.region}"

@@ -33,3 +33,11 @@ output "karpenter_interruption_queue_name" {
 output "lb_controller_role_arn" {
   value = module.lb_controller_irsa.iam_role_arn
 }
+
+output "external_secrets_role_arn" {
+  value = aws_iam_role.external_secrets.arn
+}
+
+output "flagd_sync_secret_name" {
+  value = aws_secretsmanager_secret.flagd_sync_token.name
+}
