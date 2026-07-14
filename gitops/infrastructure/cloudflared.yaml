@@ -32,7 +32,7 @@ spec:
     spec:
       containers:
         - name: cloudflared
-          image: cloudflare/cloudflared:2026.1.0
+          image: cloudflare/cloudflared:2026.7.1
           args:
             - tunnel
             - --no-autoupdate
@@ -43,6 +43,13 @@ spec:
                 secretKeyRef:
                   name: cloudflared-tunnel-credentials
                   key: token
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           resources:
             requests:
               cpu: 50m
