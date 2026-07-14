@@ -99,6 +99,33 @@ module "eks" {
       desired_size = var.node_desired_size
       subnet_ids   = var.private_subnet_ids
     }
+
+    stateful_1a = {
+      name           = "${var.cluster_name}-db-1a"
+      instance_types = [var.stateful_node_instance_type]
+      capacity_type  = "ON_DEMAND"
+      subnet_ids     = [var.stateful_node_subnet_id]
+
+      min_size     = 1
+      max_size     = 1
+      desired_size = 1
+
+      labels = {
+        "techx.io/workload" = "stateful"
+      }
+
+      taints = {
+        stateful = {
+          key    = "techx.io/workload"
+          value  = "stateful"
+          effect = "NO_SCHEDULE"
+        }
+      }
+
+      iam_role_additional_policies = {
+        AmazonEBSCSIDriverPolicy = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+      }
+    }
   }
 
   access_entries = {

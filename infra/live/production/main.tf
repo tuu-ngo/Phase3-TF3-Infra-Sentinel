@@ -12,15 +12,17 @@ module "network" {
 module "eks_platform" {
   source = "../../modules/eks-platform"
 
-  cluster_name             = var.cluster_name
-  cluster_version          = var.cluster_version
-  vpc_id                   = module.network.vpc_id
-  private_subnet_ids       = module.network.private_subnet_ids
-  node_instance_type       = var.node_instance_type
-  node_desired_size        = var.node_desired_size
-  node_min_size            = var.node_min_size
-  node_max_size            = var.node_max_size
-  eks_admin_principal_arns = var.eks_admin_principal_arns
+  cluster_name                = var.cluster_name
+  cluster_version             = var.cluster_version
+  vpc_id                      = module.network.vpc_id
+  private_subnet_ids          = module.network.private_subnet_ids
+  node_instance_type          = var.node_instance_type
+  node_desired_size           = var.node_desired_size
+  node_min_size               = var.node_min_size
+  node_max_size               = var.node_max_size
+  stateful_node_subnet_id     = module.network.private_subnet_ids[index(var.azs, var.stateful_node_availability_zone)]
+  stateful_node_instance_type = var.stateful_node_instance_type
+  eks_admin_principal_arns    = var.eks_admin_principal_arns
 }
 
 module "access" {
