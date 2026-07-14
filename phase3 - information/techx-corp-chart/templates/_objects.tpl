@@ -82,6 +82,10 @@ spec:
           readinessProbe:
             {{- .readinessProbe | toYaml | nindent 12 }}
           {{- end }}
+          {{- if .startupProbe }}
+          startupProbe:
+            {{- .startupProbe | toYaml | nindent 12 }}
+          {{- end }}
           volumeMounts:
             {{- if .additionalVolumeMounts }}
             {{- tpl (toYaml .additionalVolumeMounts) . | nindent 12 }}
@@ -133,6 +137,10 @@ spec:
           {{- if .readinessProbe }}
           readinessProbe:
             {{- .readinessProbe | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .startupProbe }}
+          startupProbe:
+            {{- .startupProbe | toYaml | nindent 12 }}
           {{- end }}
           {{- if .volumeMounts }}
           volumeMounts:
