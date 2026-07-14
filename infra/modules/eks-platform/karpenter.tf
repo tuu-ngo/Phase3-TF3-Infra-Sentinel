@@ -43,6 +43,7 @@ resource "aws_iam_role_policy_attachment" "karpenter_node" {
     "AmazonEKSWorkerNodePolicy",
     "AmazonEC2ContainerRegistryPullOnly",
     "AmazonSSMManagedInstanceCore",
+    "service-role/AmazonEBSCSIDriverPolicy",
   ])
 
   role       = aws_iam_role.karpenter_node.name

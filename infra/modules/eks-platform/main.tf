@@ -42,6 +42,11 @@ module "eks" {
       resolve_conflicts_on_create = "OVERWRITE"
       resolve_conflicts_on_update = "OVERWRITE"
     }
+    aws-ebs-csi-driver = {
+      most_recent                 = true
+      resolve_conflicts_on_create = "OVERWRITE"
+      resolve_conflicts_on_update = "OVERWRITE"
+    }
     kube-proxy = {
       most_recent                 = true
       resolve_conflicts_on_create = "OVERWRITE"
@@ -85,6 +90,9 @@ module "eks" {
     default = {
       instance_types = [var.node_instance_type]
       capacity_type  = "ON_DEMAND"
+      iam_role_additional_policies = {
+        AmazonEBSCSIDriverPolicy = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+      }
 
       min_size     = var.node_min_size
       max_size     = var.node_max_size
