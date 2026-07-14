@@ -175,3 +175,25 @@ jobs:
           docker buildx bake -f docker-compose.yml --push \
             --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
             ${{ steps.scope.outputs.services }}
+
+      - name: ECR scan gate
+        if: steps.scope.outputs.mode != 'none'
+        env:
+          MODE: ${{ steps.scope.outputs.mode }}
+          IMAGE_TAG: ${{ steps.vars.outputs.tag }}
+          SCOPE_SERVICES: ${{ steps.scope.outputs.services }}
+          ALL_SERVICES: ${{ env.ALL_SERVICES }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "full" ]; then
+            SERVICES="$ALL_SERVICES"
+          else
+            SERVICES="$SCOPE_SERVICES"
+          fi
+          bash "../../deploy/verify-ecr-scan.sh" \
+            --repository "$ECR_REPOSITORY" \
+            --region "$AWS_REGION" \
+            --base-tag "$IMAGE_TAG" \
+            --services "$SERVICES" \
+            --max-high 0 \
+            --max-critical 0

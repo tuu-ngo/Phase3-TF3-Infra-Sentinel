@@ -77,6 +77,8 @@ components:
   ad:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
+    imageOverride:
+      digest: sha256:a45fdb96972c11c4b75261ef1205f96c92f5c23fb5edbc47f3b6bb95eb3f27bb
     readinessProbe:
       tcpSocket:
         port: 8080
@@ -101,6 +103,8 @@ components:
   frontend:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
+    imageOverride:
+      digest: sha256:047faed92fe4ecf8b2bb7d3d99c191a2d495f41024abc44c204fe94a9ae019a3
     readinessProbe:
       tcpSocket:
         port: 8080
@@ -127,6 +131,7 @@ components:
     replicas: 2        # backend traffic cao nhất + có crash history (REL-14)
     imageOverride: # CDO02 fix main.go - xem comment imageOverride đầu components:
       tag: 6a3fe95-product-catalog
+      digest: sha256:412f75faac8b02fc48676c1fe2d3bc695e39b9cf6c0fbd6bb941c1fbea80f83f
     resources:
       requests:
         cpu: 100m
@@ -168,6 +173,7 @@ components:
     replicas: 2
     imageOverride: # CDO02 fix HealthCheckService.cs - xem comment imageOverride đầu components:
       tag: 6a3fe95-cart
+      digest: sha256:1cc20ba4d7f195245429e084e5aa495a305ed0b14539261953f8595ab50c05b6
     resources:
       requests:
         cpu: 100m
@@ -179,6 +185,7 @@ components:
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
       tag: 7527509-checkout
+      digest: sha256:a774cb69f27795406f768881a7c575ba882f024f8e99ca928413047f3b3eb532
     resources:
       requests:
         cpu: 100m
@@ -203,6 +210,8 @@ components:
   payment:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
+    imageOverride:
+      digest: sha256:839b9cb5e5c50ba9a03acea8a4b15e29be724089e30cf18904530a1bc07bede5
     readinessProbe:
       tcpSocket:
         port: 8080
@@ -243,6 +252,8 @@ components:
       timeoutSeconds: 3
       failureThreshold: 3
     replicas: 2
+    imageOverride:
+      digest: sha256:e4e4c76b27fea4d82bbc25aa2f2d6c2163450a223f89c71e7ae4985fb6c0203a
     resources:
       requests:
         cpu: 100m
@@ -268,6 +279,8 @@ components:
       timeoutSeconds: 3
       failureThreshold: 3
     replicas: 2
+    imageOverride:
+      digest: sha256:4952c73703cca38ec8afe934a3571f5f0a5f5e8e2adeb4af3eafc5cfa5ddb3ec
     resources:
       requests:
         cpu: 50m
@@ -293,6 +306,8 @@ components:
       timeoutSeconds: 3
       failureThreshold: 3
     replicas: 2        # shipping phụ thuộc quote
+    imageOverride:
+      digest: sha256:97fbf36ede49bb20218b75bfe0f2c9e90ed976114813091abb11ca789f567df3
     resources:
       requests:
         cpu: 50m
@@ -304,6 +319,7 @@ components:
     replicas: 2        # đứng sau tính năng AI tóm tắt review
     imageOverride: # CDO02 fix database.py + product_reviews_server.py - xem comment imageOverride đầu components:
       tag: 6a3fe95-product-reviews
+      digest: sha256:4d5403f3b7beda840dad76b406e1a25f4d1dd90248638930ed4327bdb1517439
     resources:
       requests:
         cpu: 100m
@@ -328,6 +344,7 @@ components:
   recommendation:
     imageOverride: # CDO02 fix recommendation_server.py - xem comment imageOverride đầu components:
       tag: 6a3fe95-recommendation
+      digest: sha256:7b1246d011356a0e6d2b0b94b854b2bc3eb0ee06a502d02d9a79a3163b447b78
     resources:
       requests:
         cpu: 100m
@@ -352,6 +369,7 @@ components:
   accounting:
     imageOverride: # CDO02 fix Consumer.cs - xem comment imageOverride đầu components:
       tag: 6a3fe95-accounting
+      digest: sha256:8fc8a91f98ae40d6be284ff9009b32dd0e1e1c3152532362ed363f8bc71c4ed6
     resources:
       requests:
         cpu: 50m
@@ -362,6 +380,8 @@ components:
   email:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
+    imageOverride:
+      digest: sha256:ca14e55cc0855e3a8a2de19098d75f69772408d2bef6f9b52663e864ae1a545f
     readinessProbe:
       tcpSocket:
         port: 8080
@@ -384,6 +404,8 @@ components:
         cpu: 100m
         memory: 100Mi
   fraud-detection:
+    imageOverride:
+      digest: sha256:b4797d6b16bf6a3b88ec8ddb9dbcd6c29c208e6be221f4f018af4b5f624fbc13
     resources:
       requests:
         cpu: 50m
@@ -394,6 +416,8 @@ components:
   image-provider:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
+    imageOverride:
+      digest: sha256:00b73a3efd2caab3e69fce24b40b4e176da5c5f89b7b2c8ae2f37c25400cf44a
     readinessProbe:
       tcpSocket:
         port: 8081
@@ -416,6 +440,8 @@ components:
         cpu: 100m
         memory: 50Mi
   kafka:
+    imageOverride:
+      digest: sha256:afc05edcd00b7f56c8331d5e4a83c7ff6bf46182fd0667033529c964bccc2e68
     resources:
       requests:
         cpu: 100m
@@ -426,6 +452,8 @@ components:
   llm:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
+    imageOverride:
+      digest: sha256:85a7578ef9b826196632fdd219eaa131f0caed024753499d036fc5baabf374b8
     readinessProbe:
       tcpSocket:
         port: 8000
@@ -448,6 +476,8 @@ components:
         cpu: 300m
         memory: 256Mi
   load-generator:
+    imageOverride:
+      digest: sha256:db7016dbed1d6b24c5aa6beb1102fd11148aa791a6b61b745ef8fdebc6146641
     envOverrides:
       - name: LOCUST_AUTOSTART
         value: "true"
@@ -584,6 +614,8 @@ components:
   frontend-proxy:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
+    imageOverride:
+      digest: sha256:7cf4dd2e0c5cdf097ee8c56600ca94b31d4bd1fc04965dac13f6c26262287630
     readinessProbe:
       tcpSocket:
         port: 8080
