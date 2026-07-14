@@ -158,6 +158,9 @@
         "revisionHistoryLimit": {
           "type": "integer"
         },
+        "strategy": {
+          "type": "object"
+        },
         "service": {
           "$ref": "#/definitions/Service"
         },
@@ -317,6 +320,9 @@
         },
         "revisionHistoryLimit": {
           "type": "integer"
+        },
+        "strategy": {
+          "type": "object"
         },
         "image": {
           "$ref": "#/definitions/Image"

@@ -468,6 +468,34 @@ components:
       limits:
         cpu: 300m
         memory: 100Mi
+    envOverrides:              # PGDATA vào subdir để lost+found của EBS volume không làm initdb từ chối
+      - name: PGDATA
+        value: /var/lib/postgresql/data/pgdata
+    additionalVolumeMounts:
+      - name: postgresql-data
+        mountPath: /var/lib/postgresql/data
+    additionalVolumes:
+      - name: postgresql-data
+        persistentVolumeClaim:
+          claimName: postgresql-data   # PVC ở gitops/infrastructure/datastore-pvc.yaml
+    strategy:                  # RWO PVC + Deployment -> Recreate tránh deadlock rolling update
+      type: Recreate
+    podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+    readinessProbe:
+      tcpSocket:
+        port: 5432
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 5432
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 5
   valkey-cart:
     resources:
       requests:
@@ -489,9 +517,30 @@ components:
         mountPath: /data
     additionalVolumes:
       - name: valkey-cart-data
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: valkey-cart
     persistence:
-      enabled: false
+      enabled: true            # chart tạo PVC 'valkey-cart' (valkey-cart-pvc.yaml). AOF trước ghi vào
+      size: 1Gi                # emptyDir -> vô nghĩa; giờ ghi vào PVC -> restart không mất giỏ hàng
+      storageClassName: gp2
+    strategy:                  # RWO PVC + Deployment -> Recreate tránh deadlock rolling update
+      type: Recreate
+    podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+    readinessProbe:
+      tcpSocket:
+        port: 6379
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 6379
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 5
   flagd:
     resources:
       requests:
