@@ -74,7 +74,9 @@ metadata:
   name: checkout-hpa
   namespace: techx-tf3
 spec:
-  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: checkout }
+  # checkout now migrates through checkout-rollout. Target the Rollout scale
+  # subresource so HPA retains REL-01's minReplicas=2 during each canary step.
+  scaleTargetRef: { apiVersion: argoproj.io/v1alpha1, kind: Rollout, name: checkout-rollout }
   minReplicas: 2
   maxReplicas: 5
   metrics:

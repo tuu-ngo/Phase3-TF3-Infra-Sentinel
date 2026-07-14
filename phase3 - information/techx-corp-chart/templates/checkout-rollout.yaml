@@ -1,0 +1,39 @@
+{{- if .Values.rollouts.checkout.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ .Values.rollouts.checkout.rolloutName }}
+  labels:
+    {{- include "techx-corp.labels" (dict "Chart" .Chart "Release" .Release "name" "checkout") | nindent 4 }}
+spec:
+  # HPA owns this value after the initial sync. Keep it at REL-01's baseline
+  # until metrics-server/HPA calculate another desired replica count.
+  replicas: {{ .Values.rollouts.checkout.replicas }}
+  revisionHistoryLimit: {{ .Values.components.checkout.revisionHistoryLimit | default .Values.default.revisionHistoryLimit }}
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: checkout
+    # Start alongside the existing checkout Deployment, then take capacity over
+    # progressively. This prevents a delete/recreate availability gap.
+    scaleDown: progressively
+  strategy:
+    canary:
+      maxSurge: 1
+      maxUnavailable: 0
+      steps:
+        - setWeight: 20
+        - analysis:
+            templates:
+              - templateName: {{ .Values.rollouts.checkout.analysisTemplateName }}
+        - pause:
+            duration: 5m
+        - setWeight: 50
+        - analysis:
+            templates:
+              - templateName: {{ .Values.rollouts.checkout.analysisTemplateName }}
+        - pause:
+            duration: 5m
+        - setWeight: 100
+{{- end }}

@@ -904,6 +904,18 @@ components:
       runAsGroup: 1000
       runAsNonRoot: true
 
+# Progressive delivery is deliberately opt-in and starts with checkout only.
+# Its Deployment remains the workload template during migration; see
+# templates/checkout-rollout.yaml.
+rollouts:
+  prometheusAddress: http://prometheus-server
+  checkout:
+    enabled: true
+    rolloutName: checkout-rollout
+    analysisTemplateName: checkout-slo
+    # Must not fall below REL-01 / checkout-hpa minReplicas.
+    replicas: 2
+
 opentelemetry-collector:
   enabled: true
   image:
@@ -975,6 +987,15 @@ opentelemetry-collector:
         check_interval: 5s
         limit_percentage: 80
         spike_limit_percentage: 25
+      # Expose the Argo Rollouts revision as a low-cardinality dimension on
+      # span metrics. AnalysisRuns use this to compare the canary with stable,
+      # rather than judging a blended service-wide metric.
+      k8sattributes:
+        extract:
+          labels:
+            - tag_name: rollouts_pod_template_hash
+              key: rollouts-pod-template-hash
+              from: pod
       resourcedetection:
         detectors: [env, system]
       transform:
@@ -1006,12 +1027,14 @@ opentelemetry-collector:
           action: insert
 
     connectors:
-      spanmetrics: {}
+      spanmetrics:
+        dimensions:
+          - name: rollouts_pod_template_hash
 
     service:
       pipelines:
         traces:
-          processors: [memory_limiter, resourcedetection, resource, transform, batch]
+          processors: [memory_limiter, k8sattributes, resourcedetection, resource, transform, batch]
           exporters: [otlp/jaeger, debug, spanmetrics]
         metrics:
           receivers: [otlp, kafkametrics, spanmetrics]

@@ -24,7 +24,18 @@ spec:
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: techx-tf3
+  # The rollout controller progressively scales its referenced Deployment down.
+  # ArgoCD must not self-heal that controller-owned replica count back to 2.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: checkout
+      namespace: techx-tf3
+      jsonPointers:
+        - /spec/replicas
   syncPolicy:
     automated:
       prune: false
       selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true

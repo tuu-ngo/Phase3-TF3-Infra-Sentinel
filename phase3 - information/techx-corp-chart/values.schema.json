@@ -35,6 +35,9 @@
     "components": {
       "$ref": "#/definitions/Components"
     },
+    "rollouts": {
+      "$ref": "#/definitions/Rollouts"
+    },
     "opentelemetry-collector": {
       "type": "object"
     },
@@ -56,6 +59,44 @@
     "serviceAccount"
   ],
   "definitions": {
+    "Rollouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prometheusAddress": {
+          "type": "string"
+        },
+        "checkout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "rolloutName": {
+              "type": "string"
+            },
+            "analysisTemplateName": {
+              "type": "string"
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 2
+            }
+          },
+          "required": [
+            "enabled",
+            "rolloutName",
+            "analysisTemplateName",
+            "replicas"
+          ]
+        }
+      },
+      "required": [
+        "prometheusAddress",
+        "checkout"
+      ]
+    },
     "Components": {
       "type": "object",
       "additionalProperties": false,
