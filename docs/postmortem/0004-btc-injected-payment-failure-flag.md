@@ -7,15 +7,32 @@
 
 ---
 
-## Tóm tắt
+## When — Khi nào
 
-Trong khoảng **14:22:16 - 14:34:00** (14/07/2026), `POST /api/checkout` fail hàng loạt (~85% trong 1 đợt Locust quan sát được: 28/33 request) với phản hồi **rất nhanh** (34-59ms, không phải treo/timeout như sự cố Kafka đã xử lý trước đó — xem `docs/postmortem/0003-...md`). Đây là ca **khác hoàn toàn** sự cố Kafka: lần này lỗi xảy ra ngay tức thì tại bước thanh toán (`payment`), không phải do checkout bị treo chờ.
+**14:22:16 → 14:34:00 (14/07/2026), kéo dài ~12 phút.**
 
-**Nguyên nhân xác nhận:** flag `paymentFailure` (đã có sẵn trong catalog flagd, đồng bộ từ nguồn trung tâm BTC) bị bật lên với 1 tỷ lệ % cao trong khung giờ trên, khiến service `payment` chủ động từ chối phần lớn yêu cầu charge thẻ với lỗi `"Payment request failed. Invalid token. app.loyalty.level=gold"`.
+- Log lỗi đầu tiên tại `payment`: `2026-07-14 14:22:16.825 +07:00`.
+- Log lỗi cuối cùng: `2026-07-14 14:34:00.123 +07:00` (chỉ 1 lỗi lẻ tẻ sau mốc này, coi như đã kết thúc đúng 14:34).
+- Khớp gần khít khung giờ user phản ánh (14:15-14:30) mà BTC nêu — sai lệch nhỏ có thể do độ trễ giữa lúc lỗi thật xảy ra và lúc user/TF nhận ra để báo cáo thời gian.
+- Query trực tiếp OFREP endpoint của flagd lúc điều tra (~sau 14:34):
+  ```json
+  {"value":0,"key":"paymentFailure","reason":"STATIC","variant":"off","metadata":{}}
+  ```
+  → Flag đã về `off`, hệ thống đã tự hồi phục — khớp với việc đây là 1 đợt bơm lỗi có kiểm soát, có giới hạn thời gian, không phải sự cố kéo dài.
 
-## Bằng chứng
+## Where — Ở đâu
 
-### 1. Locust — fail nhanh, không phải treo (khác hẳn ca Kafka trước)
+- **Service phát sinh lỗi:** `payment` — hàm `charge()`, file `src/payment/charge.js:37`.
+- **Lan truyền qua:** `checkout` (`PlaceOrder` gọi `payment.charge()`) → `frontend` (`/api/checkout`) → `frontend-proxy` → trả lỗi về client.
+- **Endpoint khách hàng thấy lỗi:** `POST /api/checkout` duy nhất.
+- **Không ảnh hưởng:** `GET /`, `GET /api/cart`, `POST /api/cart` — toàn bộ vẫn 0 fail trong cùng khung giờ (xem bảng ở mục What).
+- **Pod cụ thể có log:** `payment-59dd46cc87-p4zlm`.
+
+## What — Chuyện gì đã xảy ra
+
+`POST /api/checkout` fail hàng loạt (~85% trong 1 đợt Locust quan sát được: 28/33 request) với phản hồi **rất nhanh** (34-59ms, không phải treo/timeout như sự cố Kafka đã xử lý trước đó — xem `docs/postmortem/0003-...md`). Đây là ca **khác hoàn toàn** sự cố Kafka: lần này lỗi xảy ra ngay tức thì tại bước thanh toán, không phải do checkout bị treo chờ.
+
+### Bằng chứng 1 — Locust: fail nhanh, không phải treo
 
 | Endpoint | # Requests | # Fails | Median | 95%ile | 99%ile | Max |
 |---|---|---|---|---|---|---|
@@ -26,13 +43,21 @@ Trong khoảng **14:22:16 - 14:34:00** (14/07/2026), `POST /api/checkout` fail h
 
 → Toàn bộ request checkout (kể cả fail) đều trả lời trong **dưới 60ms** — không có dấu hiệu hang/timeout. Đây là fail **chủ động** (1 service trong chuỗi chủ động throw error), không phải nghẽn tài nguyên/concurrency.
 
-### 2. Jaeger trace (`load-generator: user_checkout_single`, ví dụ trace `7e11ce7...`)
+### Bằng chứng 2 — Jaeger trace (`load-generator: user_checkout_single`, ví dụ trace `7e11ce7...`)
 
 Trace 48.33ms, 10 service, 30 span — chuỗi `frontend-proxy` → `frontend` → `checkout` đều bị đánh dấu lỗi (icon "!" đỏ) ngay từ tầng ngoài cùng, lan từ trong ra (checkout lỗi trước, rồi frontend/frontend-proxy phản ánh lỗi đó lên client) — khớp với việc `checkout.PlaceOrder` gọi `payment.charge()` và nhận lỗi trả về ngay, không phải bị treo.
 
 Jaeger search cùng khung giờ (~14:27-14:34pm) cho thấy hàng loạt trace màu đỏ (error) xen kẽ liên tục, không phải 1-2 trace lẻ tẻ — khớp tỷ lệ fail cao quan sát ở Locust.
 
-### 3. Log `payment` pod — bằng chứng trực tiếp, có timestamp chính xác
+![jaeger](./images/image.png)
+
+![jaeger-traces-id](./images/image-1.png)
+
+### Dashboard
+
+![dashboard](./images/dashboard.png)
+
+### Bằng chứng 3 — Log `payment` pod, có timestamp chính xác
 
 ```
 kubectl logs -n techx-tf3 <payment-pod> --since=25m
@@ -51,19 +76,7 @@ error: {
 }
 ```
 
-![jaeger](./images/image.png)
-
-![jaeger-traces-id](./images/image-1.png)
-
- 
-### Dashboard
-
-![dashboard](./images/dashboard.png)
-
-
-### Chi tiết Log Lỗi: Payment Request Failed từ log của pod payment
-
-Dưới đây là payload chi tiết của log khi xảy ra lỗi thanh toán:
+Payload đầy đủ của 1 log lỗi:
 
 ```javascript
 {
@@ -121,12 +134,15 @@ Dưới đây là payload chi tiết của log khi xảy ra lỗi thanh toán:
 | **Thông báo lỗi** | *Invalid token* | Token thanh toán không hợp lệ (Khách hàng hạng `gold`). |
 | **Vị trí lỗi (Stack)** | `charge.js:37:13` | Hàm `charge` trong file `charge.js`. |
 
-Timestamp log lỗi **đầu tiên**: `2026-07-14 14:22:16.825 +07:00`
-Timestamp log lỗi **cuối cùng**: `2026-07-14 14:34:00.123 +07:00` (chỉ 1 lỗi lẻ tẻ sau mốc này trong log, coi như đã kết thúc đúng 14:34)
+### Ảnh hưởng
 
-→ Khớp gần khít khung giờ user phản ánh (14:15-14:30) mà BTC nêu, sai lệch nhỏ có thể do độ trễ giữa lúc lỗi thật xảy ra và lúc user/TF nhận ra để báo cáo thời gian.
+- Checkout success rate trong cửa sổ ~12 phút: ước tính ~15% (dựa trên mẫu Locust 33 request, 28 fail) — **vi phạm nghiêm trọng** SLO checkout ≥99%.
+- Không có rủi ro dữ liệu/tài chính: `payment.charge()` throw lỗi **trước khi** trả về `transactionId`, nên các request bị flag chặn **chưa hề charge thẻ thật** — không có giao dịch "ma" hay thu tiền nhầm. Khách chỉ đơn giản thấy đặt hàng thất bại, có thể thử lại.
+- Không liên quan, không chồng lấn với sự cố Kafka đã sửa (postmortem 0003) — 2 sự cố độc lập, xảy ra ở 2 thời điểm khác nhau, có chữ ký triệu chứng khác nhau (treo 15s vs fail nhanh <60ms).
 
-### 4. Xác nhận bằng code — chỉ 1 đường duy nhất tạo ra đúng lỗi này
+## Why — Vì sao
+
+**Nguyên nhân xác nhận:** flag `paymentFailure` (có sẵn trong catalog flagd, đồng bộ từ nguồn trung tâm BTC) bị bật lên với 1 tỷ lệ % cao trong khung giờ trên, khiến service `payment` chủ động từ chối phần lớn yêu cầu charge thẻ.
 
 `src/payment/charge.js`:
 
@@ -145,42 +161,27 @@ Chuỗi text `"Invalid token. app.loyalty.level=gold"` **chỉ có thể** sinh 
 
 Catalog `src/flagd/demo.flagd.json` (bản seed cục bộ, tham khảo) định nghĩa `paymentFailure` với các biến thể theo %: `100%, 90%, 75%, 50%, 25%, 10%, off` — giá trị **thật đang chạy** không lấy từ file này mà đồng bộ từ nguồn trung tâm của BTC (`values-flagd-sync.yaml`), nên TF không tự đặt %, chỉ đọc được.
 
-### 5. Xác nhận flag đã tắt tại thời điểm điều tra
+## How to fix — Khắc phục & phòng ngừa
 
-Query trực tiếp OFREP endpoint của flagd lúc điều tra (~sau 14:34):
+**Không có gì cần dọn dẹp/khắc phục hậu quả cho lần xảy ra vừa rồi** — đây là fault injection có chủ đích của BTC, flag đã tự tắt (`off`), hệ thống đã tự hồi phục hoàn toàn, không có dữ liệu/tài chính bị ảnh hưởng (xem mục Ảnh hưởng). Nhưng vì đây là dạng lỗi BTC **có thể bơm lại bất cứ lúc nào**, việc cần làm là: (1) đóng các khoảng trống về phát hiện/định vị nguyên nhân đã lộ ra qua lần điều tra này, và (2) chủ động thêm khả năng chịu lỗi để lần sau nếu bị bơm lại đúng kiểu này, hệ thống tự chống đỡ được thay vì chỉ biết chờ BTC tắt flag:
 
-```json
-{"value":0,"key":"paymentFailure","reason":"STATIC","variant":"off","metadata":{}}
-```
+1. **Không có alerting tự động cho tỷ lệ lỗi checkout/payment.** Kiểm tra `grafana-alerting` ConfigMap trong cluster hiện **rỗng** (0 alert rule) — chưa có alert nào tự bắn ra khi payment fail tăng đột biến. Phát hiện sự cố lần này hoàn toàn qua: (1) thử đặt đơn thủ công thấy lỗi, (2) chạy Locust thấy tỷ lệ fail cao bất thường trên `/api/checkout`, rồi mới chủ động vào Jaeger/log để tìm nguyên nhân — không phải qua alert tự động.
 
-→ Flag đã về `off`, hệ thống đã tự hồi phục — khớp với việc đây là 1 đợt bơm lỗi có kiểm soát, có giới hạn thời gian (~12 phút), không phải sự cố kéo dài.
+   Có sẵn 1 dashboard tên `slo-dashboard` trong Grafana (ConfigMap `grafana-dashboard-slo-dashboard`) — chưa xác nhận được có show đúng số liệu payment/checkout success rate theo thời gian thực hay không, cần review riêng.
 
-## Detect có tự động không?
+   **Trạng thái:** chưa triển khai. **Kế hoạch triển khai:** trong ngày 15/07/2026 — thêm Grafana alert rule cho success rate `/api/checkout` < 99% trong 5 phút, dựa trên nền Prometheus/Grafana đã có sẵn.
 
-**Không.** Kiểm tra `grafana-alerting` ConfigMap trong cluster hiện **rỗng** (0 alert rule nào được cấu hình) — chưa có alert nào tự bắn ra khi payment fail tăng đột biến. Phát hiện sự cố này hoàn toàn qua: (1) thử đặt đơn thủ công thấy lỗi, (2) chạy Locust thấy tỷ lệ fail cao bất thường trên `/api/checkout`, rồi mới chủ động vào Jaeger/log để tìm nguyên nhân. Đây là **gap thật cần đưa vào backlog** (xem Bài học).
+2. **Chưa có cách tra cứu nhanh "flag nào đang bật".** Lần này phải suy luận ngược từ log message + đọc code mới ra chính xác flag nào; nên có 1 lệnh/dashboard xem nhanh toàn bộ giá trị flag hiện tại (vd script `curl` OFREP cho từng flag trong catalog, hoặc dùng `flagd-ui` — hiện đã riêng tư theo Mandate #1, cần đi qua port-forward).
 
-Có sẵn 1 dashboard tên `slo-dashboard` trong Grafana (ConfigMap `grafana-dashboard-slo-dashboard`) — chưa xác nhận được có show đúng số liệu payment/checkout success rate theo thời gian thực hay không, cần review riêng.
+3. **Log lỗi ra `kubectl logs` chỉ có ở `payment` (Node.js).** `checkout` (Go) không in gì ra stdout (log qua OTel exporter thuần), nên khi debug sự cố phải biết đi thẳng vào service nào thật sự log ra console thay vì đoán mò; nên rà lại xem log của `checkout`/các service Go khác có đang đi đúng chỗ (OpenSearch qua otel-collector) để lúc cần vẫn tra được, không chỉ dựa vào `kubectl logs`.
 
-### Vì sao chưa có alerting tự động — bối cảnh thời gian, không phải bỏ sót
+4. **Nếu bị bơm lại đúng `paymentFailure` lần nữa — chịu tải tốt hơn bằng retry ở `checkout`, không phải che số liệu ở `frontend`.**
 
-Đối chiếu lại timeline hạ tầng của TF trong đúng tuần này để thấy rõ đây là vấn đề **thứ tự ưu tiên bắt buộc dưới áp lực deadline**, không phải team đánh giá thấp tầm quan trọng của alerting:
+   Có đề xuất trong team: bắt (try-catch) lỗi gRPC từ `payment` ngay ở `frontend`, trả về HTTP 400 kèm thông báo kiểu "thanh toán thất bại, vui lòng kiểm tra lại thẻ" thay vì để lỗi lan ra thành 500 — mục đích là giữ sạch chỉ số SLO. **Đề xuất này không nên làm, vì 2 lý do:**
+   - Thông báo "kiểm tra lại thẻ" là **sai sự thật**: đọc `charge.js` thì nhánh `paymentFailure` throw lỗi **trước khi** code chạm tới bước validate thẻ — lỗi hoàn toàn ngẫu nhiên (`Math.random() < numberVariant`), không liên quan gì tới thẻ khách nhập. Bảo khách "thẻ có vấn đề" trong khi thẻ hoàn toàn hợp lệ là đánh lừa khách về nguyên nhân thật.
+   - Đổi mã HTTP không làm đơn hàng được tạo — SLO checkout đo việc khách có đặt được đơn hay không, không phải đo "response có phải 5xx hay không". Đổi 500 thành 400 chỉ làm dashboard trông đẹp hơn về mặt hình thức trong khi khách **vẫn không mua được hàng** — đây là che số liệu (gaming metric), không phải fix. Nếu BTC/mentor đối chiếu số đơn tạo thành công thật với báo cáo, phát hiện lỗi hệ thống bị dán nhãn thành lỗi khách hàng để giữ số đẹp sẽ phản tác dụng nặng hơn nhiều so với báo cáo trung thực (như postmortem này).
 
-- **12/07** — sự cố tài khoản AWS bị hold + mất bastion (`docs/postmortem/0002-account-hold-and-bastion-loss.md`). Toàn bộ hạ tầng đang chạy (EKS, ECR, CI/CD OIDC role, Terraform state, network) buộc phải di dời sang tài khoản AWS mới (`197826770971`) — một việc phát sinh ngoài kế hoạch, không phải do TF chủ động chọn làm.
-- **13-14/07** — dồn toàn lực xử lý migration: dựng lại module Terraform (network/EKS/access/edge), sửa trust policy OIDC cho CI/CD, chuyển pipeline build image sang scoped-build, dựng lại private edge (CloudFront + WAF) cho Mandate #1, dựng HPA + Karpenter + ResourceQuota cho Mandate #2 — toàn bộ đều là hạ tầng **nền tảng bắt buộc phải có** để hệ thống chạy đúng yêu cầu 2 mandate, xếp trước mọi hạng mục "biết sớm hơn khi có sự cố" như alerting.
-- **14/07 (hôm nay)** — deadline chính thức của cả Mandate #1 và #2. Ưu tiên bắt buộc trong quỹ thời gian còn lại là đảm bảo storefront/checkout **sống đúng** và **đạt yêu cầu** 2 mandate trước, alerting dù quan trọng nhưng không phải điều kiện để hệ thống hoạt động đúng, nên hợp lý khi xếp sau trong tuần bị dồn việc migration ngoài kế hoạch.
-
-- **Biện pháp dự phòng**: do chưa kịp thời gian dựng alert, nên nhóm hiện đang chia lịch on-call liên tục để đảm bảo hệ thống được theo dõi liên tục
-
-Điểm đáng lưu ý: đây **không phải khoảng trống thiết kế lớn phải xây lại từ đầu** — nền tảng quan sát (Prometheus scrape metric, Grafana đã chạy, dashboard `slo-dashboard` đã tồn tại sẵn) đã có đủ. Việc còn thiếu chỉ là **viết thêm alert rule cụ thể** trên nền đã có, ước tính vài giờ công, không phải một dự án riêng — sẽ đưa vào ngay sau khi ổn định xong migration và qua deadline hôm nay (xem mục Bài học/việc cần làm).
-
-## Ảnh hưởng
-
-- Checkout success rate trong cửa sổ ~12 phút: ước tính ~15% (dựa trên mẫu Locust 33 request, 28 fail) — **vi phạm nghiêm trọng** SLO checkout ≥99%.
-- Không có rủi ro dữ liệu/tài chính: `payment.charge()` throw lỗi **trước khi** trả về `transactionId`, nên các request bị flag chặn **chưa hề charge thẻ thật** — không có giao dịch "ma" hay thu tiền nhầm. Khách chỉ đơn giản thấy đặt hàng thất bại, có thể thử lại.
-- Không liên quan, không chồng lấn với sự cố Kafka đã sửa (postmortem 0003) — 2 sự cố độc lập, xảy ra ở 2 thời điểm khác nhau, có chữ ký triệu chứng khác nhau (treo 15s vs fail nhanh <60ms).
-
-## Bài học / việc cần làm
-
-1. **Không có alerting tự động cho tỷ lệ lỗi checkout/payment** — cần thêm Grafana alert rule (vd: success rate `/api/checkout` < 99% trong 5 phút → bắn cảnh báo) để lần sau BTC bơm lỗi, team phát hiện được **ngay lúc xảy ra**, không phải chờ user phản ánh hoặc tình cờ chạy load test trúng lúc đó.
-2. **Có sẵn cơ chế tra cứu nhanh "flag nào đang bật"** — lần này phải suy luận ngược từ log message + đọc code mới ra chính xác flag nào; nên có 1 lệnh/dashboard xem nhanh toàn bộ giá trị flag hiện tại (vd script `curl` OFREP cho từng flag trong catalog, hoặc dùng `flagd-ui` — hiện đã riêng tư theo Mandate #1, cần đi qua port-forward).
-3. **Việc log lỗi ra `kubectl logs` chỉ có ở `payment` (Node.js)** — `checkout` (Go) không in gì ra stdout (log qua OTel exporter thuần), nên khi debug sự cố phải biết đi thẳng vào service nào thật sự log ra console thay vì đoán mò; nên rà lại xem log của `checkout`/các service Go khác có đang đi đúng chỗ (OpenSearch qua otel-collector) để lúc cần vẫn tra được, không chỉ dựa vào `kubectl logs`.
+   **Cách sửa đúng, cùng tinh thần "khách không thấy lỗi xấu" nhưng không gian dối và thật sự cứu được đơn hàng:**
+   - Thêm **retry** ở `checkout` khi gọi `payment.charge()` thất bại (1-2 lần, có backoff ngắn). Vì lỗi này là xác suất theo từng lần gọi (không phải luôn luôn fail), retry có xác suất tốt để thành công ở lần sau — ví dụ flag ở mức 75% thì 1 lần gọi có ~75% khả năng fail, nhưng fail liên tiếp cả 3 lần chỉ còn ~42% (0.75³) — tức là **retry cứu được phần lớn đơn hàng thật**, thay vì chỉ đổi cách hiển thị lỗi.
+   - Nếu retry hết vẫn fail, trả thông báo **trung thực**: "Hệ thống thanh toán đang gặp sự cố, vui lòng thử lại sau" — không đổ lỗi cho thẻ khách.
+   - Trường hợp retry hết mà vẫn fail thì vẫn tính là fail trong SLO — đúng bản chất, không che giấu con số.
