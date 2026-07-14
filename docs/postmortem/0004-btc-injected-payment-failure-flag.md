@@ -1,7 +1,7 @@
 # Postmortem 0004 — BTC bơm lỗi qua flagd (`paymentFailure`), checkout fail nhanh ~14:22-14:34 14/07/2026
 
 **Ngày:** 14/07/2026
-**Người ghi nhận & xử lý:** CDO01 (qua Claude Code) — điều tra theo yêu cầu khẩn từ BTC/tư lệnh
+**Người ghi nhận & xử lý:** CDO01 — điều tra theo yêu cầu khẩn từ BTC/tư lệnh
 **Mức độ ảnh hưởng:** Cao — khách hàng đặt đơn bị từ chối thanh toán hàng loạt trong ~12 phút, đúng luồng ra tiền. Đây là **sự cố do BTC chủ động bơm vào** (fault injection có kiểm soát qua flagd), không phải bug hệ thống.
 **Trạng thái:** ✅ Đã xác định chính xác nguyên nhân, có bằng chứng đầy đủ. Flag đã tự tắt (`off`) tại thời điểm điều tra — hệ thống đã hồi phục, không cần hành động khắc phục thêm ở phía TF (đây không phải lỗi của TF).
 
@@ -56,6 +56,10 @@ error: {
 ![jaeger-traces-id](/Phase3-TF3-Infra-Sentinel/docs/postmortem/images/image-1.png)
 
  
+### Dashboard
+
+![dashboard](/Phase3-TF3-Infra-Sentinel/docs/postmortem/images/dashboard.png)
+
 
 ### Chi tiết Log Lỗi: Payment Request Failed từ log của pod payment
 
