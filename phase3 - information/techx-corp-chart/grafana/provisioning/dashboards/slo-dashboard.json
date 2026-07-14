@@ -51,7 +51,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
           "editorMode": "code",
-          "expr": "1 - (\n  sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", status_code=\"STATUS_CODE_ERROR\"}[24h]))\n  /\n  sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\"}[24h]))\n)",
+          "expr": "1 - (\n  (sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", status_code=\"STATUS_CODE_ERROR\"}[24h])) or vector(0))\n  /\n  sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\"}[24h]))\n)",
           "legendFormat": "Browse Success Rate",
           "instant": true,
           "refId": "A"
@@ -260,7 +260,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
           "editorMode": "code",
-          "expr": "1 - (sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) / sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\"}[$__rate_interval])))",
+          "expr": "1 - ((sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\"}[$__rate_interval])))",
           "legendFormat": "Browse success rate",
           "range": true,
           "refId": "A"
@@ -556,7 +556,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
           "editorMode": "code",
-          "expr": "1 - (\n  (sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", status_code=\"STATUS_CODE_ERROR\"}[24h])) / sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\"}[24h])))\n  / (1 - 0.995)\n)",
+          "expr": "1 - (\n  ((sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", status_code=\"STATUS_CODE_ERROR\"}[24h])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\"}[24h])))\n  / (1 - 0.995)\n)",
           "legendFormat": "Budget remaining",
           "instant": true,
           "refId": "A"
@@ -639,6 +639,71 @@
           "expr": "1 - (\n  ((sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\", status_code=\"STATUS_CODE_ERROR\"}[24h])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\"}[24h])))\n  / (1 - 0.990)\n)",
           "legendFormat": "Budget remaining",
           "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 53,
+      "type": "row",
+      "title": "📦 Scale Evidence — HPA + Karpenter (co lên rồi co xuống)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 }
+    },
+    {
+      "id": 54,
+      "title": "Pod count — hot-path services (HPA scale)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 44 },
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
+          "editorMode": "code",
+          "expr": "count(up{job=\"kubernetes-pods\", namespace=\"techx-tf3\", app_kubernetes_io_name=~\"checkout|frontend|frontend-proxy|product-catalog|cart|currency|recommendation|product-reviews|ad\"}) by (app_kubernetes_io_name)",
+          "legendFormat": "{{app_kubernetes_io_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 55,
+      "title": "Node count (Karpenter burst)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 44 },
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
+          "editorMode": "code",
+          "expr": "count(up{job=\"kubernetes-nodes\"})",
+          "legendFormat": "Node count",
+          "range": true,
           "refId": "A"
         }
       ]
