@@ -46,3 +46,21 @@ variable "session_duration" {
   type        = string
   default     = "8h"
 }
+
+variable "internal_ui_routes" {
+  description = <<-EOT
+    Direct browser routes to in-cluster HTTP UIs (Grafana, Jaeger, ArgoCD...), bypassing
+    kubectl/EKS-API/AWS IAM entirely - cloudflared (running inside the cluster) proxies
+    straight to the Service's ClusterIP DNS name. Each entry gets its own hostname, DNS
+    record, and Access application+policy (same allowlist as the rest of this module).
+    Key = short name used in resource names (e.g. "grafana"). service must be a full
+    scheme://host:port the cloudflared pod can reach, e.g.
+    "http://grafana.techx-tf3.svc.cluster.local:80".
+  EOT
+  type = map(object({
+    hostname      = string
+    service       = string
+    no_tls_verify = optional(bool, false)
+  }))
+  default = {}
+}

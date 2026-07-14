@@ -1,4 +1,15 @@
-# REL-17 — Truy cập EKS API qua Cloudflare Zero Trust (thay dần SSM bastion)
+# REL-17 — Truy cập EKS API + UI vận hành qua Cloudflare Zero Trust (thay dần SSM bastion)
+
+**Trạng thái hiện tại (đã live):** domain đang dùng là `arthur-ngo.org` (domain cá nhân đã có sẵn
+trong account Cloudflare — xem ghi chú "domain cá nhân" ở cuối file trước khi dùng làm bằng chứng
+mandate chính thức). Đã có 4 route đang chạy:
+
+| Route | URL | Đích |
+|---|---|---|
+| kubectl (TCP, qua EKS API) | `kubectl.arthur-ngo.org` | EKS API server — vẫn cần AWS IAM/EKS access entry riêng, xem giải thích ở Phần D |
+| Grafana | `https://grafana.arthur-ngo.org` | thẳng vào Service trong cluster, **không cần IAM** |
+| Jaeger | `https://jaeger.arthur-ngo.org` | thẳng vào Service trong cluster, **không cần IAM** |
+| ArgoCD | `https://argocd.arthur-ngo.org` | thẳng vào Service trong cluster, **không cần IAM** (chặng nội bộ tới `argocd-server` bỏ qua verify TLS vì cert tự ký — xem `no_tls_verify` trong `internal_ui_routes`) |
 
 Bổ sung, **không thay thế ngay**, cho `docs/runbooks/private-access-to-ops-uis.md` / SSM bastion.
 Xem lý do + đánh giá phương án ở `docs/backlog/cdo02-reliability-cost-backlog.md` (REL-17). SSM
@@ -34,11 +45,26 @@ Lý do: tạo tài khoản + nhập thông tin xác thực nằm ngoài phạm v
 
 ### A3. Tạo API Token cho Terraform
 
-1. dash.cloudflare.com → **My Profile → API Tokens → Create Token**.
-2. Dùng template **"Edit zero trust"** hoặc **Custom token** với quyền tối thiểu:
-   - `Account` → `Cloudflare Tunnel:Edit`, `Access: Apps and Policies:Edit`
-   - `Zone` → `DNS:Edit` (scope đúng zone vừa tạo ở A1)
-3. Copy token — **không dán vào file trong repo**. Set làm biến môi trường lúc cần apply:
+Giao diện hiện tại của Cloudflare dùng **policy theo resource scope** (không còn tab Account/Zone
+tách riêng như tài liệu cũ) — mỗi token cần **2 policy** vì 2 nhóm quyền khác phạm vi resource:
+
+1. dash.cloudflare.com → **My Profile → API Tokens → Create Token → Create Custom Token**
+   (đừng dùng template có sẵn — không cái nào khớp đủ 3 quyền cần).
+2. **Policy 1 — quyền cấp account** (Tunnel + Access): ở dropdown resource scope (mặc định đang
+   là **"Entire Account"**, giữ nguyên, KHÔNG đổi sang "Specified Domains" cho policy này) →
+   thêm 2 permission:
+   - Tìm theo từ khoá `Connector` hoặc `Tunnel` — tên nhóm quyền này Cloudflare đã đổi, hiện tại
+     là **"Cloudflare One Connectors"** hoặc **"Cloudflare One Connector: cloudflared"** (tên cũ
+     "Cloudflare Tunnel" có thể không còn hiện) → chọn **Edit**.
+   - `Access: Apps and Policies` → **Edit**.
+3. Bấm **"+ Add more"** / **"Add policy"** bên dưới để thêm **Policy 2 — quyền DNS riêng zone**:
+   đổi resource scope của policy này từ "Entire Account" sang **"Specified Domains"** → chọn đúng
+   domain vừa tạo ở A1. Chỉ sau khi đổi sang "Specified Domains" thì danh mục quyền mới đổi từ
+   cấp account sang cấp zone — lúc đó cuộn tới **DNS & Zones** sẽ thấy dòng **"DNS"** (khác với
+   "Account DNS Settings" thấy ở policy Entire Account) → chọn **Edit**.
+4. Nếu Policy 1 vẫn không thấy quyền Tunnel/Connector nào: khả năng Zero Trust chưa active xong
+   (quay lại A2 trước).
+5. Copy token — **không dán vào file trong repo**. Set làm biến môi trường lúc cần apply:
 
    ```sh
    export CLOUDFLARE_API_TOKEN="<token vừa copy>"
@@ -96,13 +122,35 @@ kubectl -n techx-tf3 logs -l app.kubernetes.io/name=cloudflared --tail=20
 
 Log mong đợi: `Registered tunnel connection` — nghĩa là cloudflared đã nối ra edge thành công.
 
-## Phần D — Team dùng hằng ngày (thay `aws ssm start-session`)
+## Phần D — Team dùng hằng ngày
 
-Mỗi người cài `cloudflared` local 1 lần (`brew install cloudflared` / tải binary từ
+Có **2 kiểu truy cập** khác hẳn nhau về độ đơn giản — chọn đúng cái cần, đừng dùng nhầm cái nặng
+hơn nếu chỉ cần xem UI.
+
+### D1. Xem Grafana/Jaeger/ArgoCD — chỉ cần mở link, không cần cài gì
+
+Không cần `cloudflared` client, không cần AWS IAM, không cần terminal nào cả:
+
+1. Mở trình duyệt, vào thẳng: `https://grafana.arthur-ngo.org`, `https://jaeger.arthur-ngo.org`,
+   hoặc `https://argocd.arthur-ngo.org`.
+2. Lần đầu (hoặc sau khi session hết hạn — mặc định 8h) sẽ bị redirect sang trang đăng nhập SSO
+   của Cloudflare Access → đăng nhập bằng email đã được cấp quyền.
+3. Đăng nhập xong, thấy thẳng UI — xong.
+
+Đây chính là cách trả lời câu hỏi mentor về "đơn giản hoá, dùng domain, không cần cert".
+
+### D2. `kubectl` thật (thao tác cluster, không chỉ xem) — vẫn cần `cloudflared` client + IAM
+
+`kubectl` gọi thẳng EKS API server, mà **bản thân EKS luôn đòi hỏi danh tính AWS IAM riêng** để xác
+thực API call — Cloudflare chỉ lo phần "ai tới được cổng vào mạng", không thay được bước IAM này.
+Người dùng cần đã có EKS access entry + K8s RBAC từ trước (như mentor-mandate-reviewer, hoặc IAM
+user thường của team), rồi:
+
+Cài `cloudflared` local 1 lần (`brew install cloudflared` / tải binary từ
 github.com/cloudflare/cloudflared/releases), sau đó:
 
 ```sh
-cloudflared access tcp --hostname <tunnel_hostname từ A4> --url 127.0.0.1:8443
+cloudflared access tcp --hostname kubectl.arthur-ngo.org --url 127.0.0.1:8443
 ```
 
 Lệnh trên tự mở trình duyệt cho đăng nhập SSO (lần đầu, hoặc khi session hết hạn theo
@@ -115,6 +163,13 @@ kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx
   --server=https://localhost:8443 --insecure-skip-tls-verify=true
 kubectl get pods -n techx-tf3
 ```
+
+### D3. Thêm UI mới vào danh sách route trực tiếp (D1)
+
+Sửa `internal_ui_routes` trong `infra/live/production/cloudflare-access.tf` — thêm 1 entry
+`{ hostname = "<tên>.arthur-ngo.org", service = "http://<service>.<namespace>.svc.cluster.local:<port>" }`,
+`terraform apply` lại (`-target="module.cloudflare_access"` để an toàn, không đụng resource khác).
+Không cần sửa gì phía `cloudflared` Deployment — 1 tunnel phục vụ được nhiều route cùng lúc.
 
 ## Rollback
 
@@ -137,3 +192,13 @@ Access application + DNS record trên Cloudflare, không ảnh hưởng gì tớ
 - [ ] SSM bastion vẫn hoạt động song song, không bị đụng.
 - [ ] Sau ≥1 tuần vận hành ổn định, đánh giá lại có nên tắt/giữ SSM bastion làm fallback lâu dài
       hay không (không tự tắt trong runbook này).
+
+## Ghi chú — domain cá nhân, cân nhắc trước khi dùng làm bằng chứng mandate
+
+`arthur-ngo.org` là domain cá nhân có sẵn trong account Cloudflare dùng để dựng nhanh (team chưa
+mua domain riêng cho dự án). Dùng được cho vận hành nội bộ team, nhưng **chưa nên dùng làm route
+chính thức để nộp bằng chứng Mandate #1 cho mentor** — Mandate #1 hiện đã đạt độc lập qua route
+Envoy đã gỡ + runbook SSM (`private-access-to-ops-uis.md`, dùng IAM role scoped riêng cho mentor,
+không dính domain cá nhân). Nếu muốn dùng Cloudflare Access làm đường chính thức luôn, cần: (1) đổi
+sang domain thuộc sở hữu team/dự án, (2) thêm email mentor vào Access Policy (hiện chỉ có
+`hiimtuu@gmail.com`).

@@ -16,3 +16,7 @@ output "client_access_command" {
   description = "Command each team member runs locally instead of `aws ssm start-session`."
   value       = "cloudflared access tcp --hostname ${var.tunnel_hostname} --url 127.0.0.1:8443"
 }
+
+output "internal_ui_routes" {
+  value = var.internal_ui_routes
+}

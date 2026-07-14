@@ -12,4 +12,24 @@ module "cloudflare_access" {
   eks_cluster_endpoint = module.eks_platform.cluster_endpoint
   allowed_email_domain = var.cloudflare_allowed_email_domain
   allowed_emails       = var.cloudflare_allowed_emails
+
+  # Browser UIs go straight to their in-cluster Service - no kubectl/EKS-API/AWS IAM in
+  # this path. argocd-server only serves TLS with its own self-signed cert on :443, so
+  # that one route needs no_tls_verify (the leg from cloudflared to the Service stays
+  # inside the cluster network either way - Cloudflare Access is the real auth boundary).
+  internal_ui_routes = var.enable_cloudflare_access ? {
+    grafana = {
+      hostname = "grafana.${var.cloudflare_zone_name}"
+      service  = "http://grafana.techx-tf3.svc.cluster.local:80"
+    }
+    jaeger = {
+      hostname = "jaeger.${var.cloudflare_zone_name}"
+      service  = "http://jaeger.techx-tf3.svc.cluster.local:16686"
+    }
+    argocd = {
+      hostname      = "argocd.${var.cloudflare_zone_name}"
+      service       = "https://argocd-server.argocd.svc.cluster.local:443"
+      no_tls_verify = true
+    }
+  } : {}
 }
