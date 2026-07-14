@@ -30,6 +30,16 @@ variable "node_max_size" {
   type = number
 }
 
+variable "stateful_node_subnet_id" {
+  description = "Private subnet for the dedicated on-demand stateful node group."
+  type        = string
+}
+
+variable "stateful_node_instance_type" {
+  description = "Instance type for the dedicated on-demand stateful node group."
+  type        = string
+}
+
 variable "eks_admin_principal_arns" {
   type = list(string)
 }

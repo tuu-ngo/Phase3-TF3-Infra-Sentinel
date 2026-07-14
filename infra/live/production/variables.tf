@@ -61,6 +61,23 @@ variable "node_max_size" {
   default = 6
 }
 
+variable "stateful_node_availability_zone" {
+  description = "Availability zone for the dedicated on-demand stateful node group."
+  type        = string
+  default     = "ap-southeast-1a"
+
+  validation {
+    condition     = can(regex("^ap-southeast-1[a-c]$", var.stateful_node_availability_zone))
+    error_message = "stateful_node_availability_zone must be an ap-southeast-1 availability zone."
+  }
+}
+
+variable "stateful_node_instance_type" {
+  description = "Instance type for the dedicated on-demand stateful node group."
+  type        = string
+  default     = "t3.medium"
+}
+
 variable "eks_admin_principal_arns" {
   description = "IAM principal ARNs that receive EKS cluster-admin access."
   type        = list(string)
