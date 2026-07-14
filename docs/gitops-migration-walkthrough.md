@@ -533,6 +533,10 @@ Can map allowlist ky truoc khi chuyen sang deny:
 - App services can day telemetry toi `otel-collector`.
 - `flagd` la co che fault-injection cua BTC, khong duoc vo hieu hoa.
 
+### Private access UX phase sau
+
+Mentor feedback: SSM bastion + port-forward dat least-exposure nhanh cho Mandate #1 nhung chua tot ve van hanh dai han. Da dua vao backlog CDO01 muc #15 de spike solution khac nhu Cloudflare Zero Trust, Tailscale, NetBird hoac OpenVPN, kem private domain va onboarding/offboarding chuan. SSM hien giu lai nhu break-glass/private fallback cho toi khi solution moi duoc verify.
+
 ### Load test 200 users
 
 Smoke test trong tai lieu nay chi la functional smoke nhe. Chua thay the cho bai load test 200 concurrent users / 15 phut cua Mandate #2.
