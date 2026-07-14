@@ -461,6 +461,14 @@ components:
         cpu: "1"
         memory: 1500Mi
   postgresql:
+    schedulingRules:
+      nodeSelector:
+        techx.io/workload: stateful
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: stateful
+          effect: NoSchedule
     resources:
       requests:
         cpu: 50m
@@ -502,6 +510,14 @@ components:
       timeoutSeconds: 3
       failureThreshold: 5
   valkey-cart:
+    schedulingRules:
+      nodeSelector:
+        techx.io/workload: stateful
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: stateful
+          effect: NoSchedule
     podSecurityContext:
       fsGroup: 999
     resources:
