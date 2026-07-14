@@ -27,12 +27,26 @@ spec:
         - analysis:
             templates:
               - templateName: {{ .Values.rollouts.checkout.analysisTemplateName }}
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+              - name: stable-hash
+                valueFrom:
+                  podTemplateHashValue: Stable
         - pause:
             duration: 5m
         - setWeight: 50
         - analysis:
             templates:
               - templateName: {{ .Values.rollouts.checkout.analysisTemplateName }}
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+              - name: stable-hash
+                valueFrom:
+                  podTemplateHashValue: Stable
         - pause:
             duration: 5m
         - setWeight: 100

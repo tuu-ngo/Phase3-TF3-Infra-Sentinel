@@ -11,11 +11,7 @@ spec:
     - name: service-name
       value: checkout
     - name: canary-hash
-      valueFrom:
-        podTemplateHashValue: Latest
     - name: stable-hash
-      valueFrom:
-        podTemplateHashValue: Stable
   metrics:
     # A rollout without requests is inconclusive, not healthy. The controlled
     # demo must run checkout traffic while this AnalysisRun is active.

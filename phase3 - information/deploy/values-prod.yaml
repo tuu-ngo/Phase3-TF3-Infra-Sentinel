@@ -183,7 +183,7 @@ components:
     # after the AnalysisRun proves automatic canary abort.
     envOverrides:
       - name: PAYMENT_ADDR
-        value: payment.invalid:8080
+        value: payment.invalid:8081
     resources:
       requests:
         cpu: 100m
