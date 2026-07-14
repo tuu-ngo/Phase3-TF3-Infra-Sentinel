@@ -450,7 +450,7 @@ components:
   load-generator:
     envOverrides:
       - name: LOCUST_AUTOSTART
-        value: "false"
+        value: "true"
       - name: LOCUST_BROWSER_TRAFFIC_ENABLED
         value: "false"
     resources:
