@@ -951,7 +951,7 @@ components:
 # Its Deployment remains the workload template during migration; see
 # templates/checkout-rollout.yaml.
 rollouts:
-  prometheusAddress: http://prometheus-server
+  prometheusAddress: http://prometheus:9090
   checkout:
     enabled: true
     rolloutName: checkout-rollout
