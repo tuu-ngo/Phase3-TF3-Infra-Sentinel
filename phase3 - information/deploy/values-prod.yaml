@@ -94,10 +94,10 @@ components:
     resources:
       requests:
         cpu: 100m
-        memory: 200Mi
+        memory: 256Mi
       limits:
         cpu: 500m
-        memory: 300Mi
+        memory: 512Mi
   frontend:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
@@ -130,10 +130,10 @@ components:
     resources:
       requests:
         cpu: 100m
-        memory: 16Mi
+        memory: 32Mi
       limits:
         cpu: 500m
-        memory: 20Mi
+        memory: 64Mi
     readinessProbe:
       grpc:
         port: 8080
@@ -182,10 +182,10 @@ components:
     resources:
       requests:
         cpu: 100m
-        memory: 16Mi
+        memory: 32Mi
       limits:
         cpu: 500m
-        memory: 20Mi
+        memory: 64Mi
     readinessProbe:
       grpc:
         port: 8080
@@ -387,10 +387,10 @@ components:
     resources:
       requests:
         cpu: 50m
-        memory: 250Mi
+        memory: 256Mi
       limits:
         cpu: 300m
-        memory: 300Mi
+        memory: 512Mi
   image-provider:
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
@@ -518,10 +518,10 @@ components:
     resources:
       requests:
         cpu: 50m
-        memory: 64Mi
+        memory: 256Mi
       limits:
         cpu: 300m
-        memory: 100Mi
+        memory: 512Mi
     envOverrides:              # PGDATA vào subdir để lost+found của EBS volume không làm initdb từ chối
       - name: PGDATA
         value: /var/lib/postgresql/data/pgdata
@@ -569,10 +569,10 @@ components:
     resources:
       requests:
         cpu: 50m
-        memory: 8Mi
+        memory: 32Mi
       limits:
         cpu: 200m
-        memory: 20Mi
+        memory: 128Mi
     command:
       - valkey-server
       - --appendonly
