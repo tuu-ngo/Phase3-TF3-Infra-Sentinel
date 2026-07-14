@@ -1,9 +1,12 @@
-# PVC cho Postgres (Mandate #2, Reliability — chống mất data khi pod restart/reschedule).
-# Chart chỉ tự tạo PVC cho valkey (valkey-cart-pvc.yaml); postgres phải khai riêng ở đây.
-# Kafka HOÃN: KRaft cần format storage với cluster-id trên volume mới — rủi ro cao, làm PR riêng.
+# PVC cho Postgres + Kafka (Mandate #2, Reliability — chống mất data khi pod restart/reschedule).
+# Chart chỉ tự tạo PVC cho valkey (valkey-cart-pvc.yaml); postgres + kafka khai riêng ở đây.
+# Kafka (KRaft): image apache/kafka tự format bằng CLUSTER_ID cố định khi log dir trống; launch
+# script idempotent ("already formatted" thì skip) nên PVC sống qua restart. Data để trong SUBDIR
+# /var/lib/kafka/data (không phải volume root) để lost+found của EBS không bị LogManager parse thành
+# topic-partition; quyền ghi lo bằng fsGroup:1000 + initContainer chown (xem block kafka values-prod).
 #
 # storageClass gp2 (WaitForFirstConsumer — bind khi pod schedule, đúng AZ). RWO: chỉ 1 pod mount
-# tại 1 thời điểm -> component postgres phải dùng strategy: Recreate (đã set trong values-prod.yaml).
+# tại 1 thời điểm -> component postgres/kafka phải dùng strategy: Recreate (set trong values-prod.yaml).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -19,3 +22,19 @@ spec:
   resources:
     requests:
       storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-data
+  namespace: techx-tf3
+  labels:
+    app.kubernetes.io/component: kafka
+    app.kubernetes.io/part-of: techx-corp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp2
+  resources:
+    requests:
+      storage: 3Gi
