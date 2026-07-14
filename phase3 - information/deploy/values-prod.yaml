@@ -182,8 +182,8 @@ components:
     # Backlog #14 controlled failure: this temporary override must be reverted
     # after the AnalysisRun proves automatic canary abort.
     envOverrides:
-      - name: CART_ADDR
-        value: cart.invalid:8080
+      - name: PAYMENT_ADDR
+        value: payment.invalid:8085
     resources:
       requests:
         cpu: 100m
