@@ -179,11 +179,6 @@ components:
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
       tag: 7527509-checkout
-    # Backlog #14 controlled failure: this temporary override must be reverted
-    # after the AnalysisRun proves automatic canary abort.
-    envOverrides:
-      - name: PAYMENT_ADDR
-        value: payment.invalid:8085
     resources:
       requests:
         cpu: 100m
