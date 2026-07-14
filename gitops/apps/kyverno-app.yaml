@@ -21,6 +21,9 @@ spec:
           replicas: 1
         cleanupController:
           replicas: 1
+        policyReportsCleanup:
+          image:
+            repository: bitnamilegacy/kubectl
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
