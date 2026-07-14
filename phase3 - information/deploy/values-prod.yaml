@@ -130,7 +130,7 @@ components:
   checkout:
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
-      tag: 6a3fe95-checkout
+      tag: 7527509-checkout
     resources:
       requests:
         cpu: 100m
