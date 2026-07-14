@@ -75,6 +75,22 @@ components:
   # của HPA sau. LƯU Ý: KHÔNG thêm replicas cho postgresql/kafka/valkey (stateful singleton
   # — sẽ hỏng dữ liệu; HA datastore đi qua RDS/ElastiCache, xem ADR 0002).
   ad:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     resources:
       requests:
         cpu: 100m
@@ -83,6 +99,22 @@ components:
         cpu: 500m
         memory: 300Mi
   frontend:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 20
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     replicas: 2        # web khách thấy, traffic HTTP cao nhất
     resources:
       requests:
@@ -117,6 +149,22 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   cart:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     replicas: 2
     imageOverride: # CDO02 fix HealthCheckService.cs - xem comment imageOverride đầu components:
       tag: 6a3fe95-cart
@@ -153,6 +201,22 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   payment:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 20
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     replicas: 2
     resources:
       requests:
@@ -162,6 +226,22 @@ components:
         cpu: 300m
         memory: 180Mi
   currency:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     replicas: 2
     resources:
       requests:
@@ -171,6 +251,22 @@ components:
         cpu: 300m
         memory: 20Mi
   shipping:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     replicas: 2
     resources:
       requests:
@@ -180,6 +276,22 @@ components:
         cpu: 150m
         memory: 20Mi
   quote:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     replicas: 2        # shipping phụ thuộc quote
     resources:
       requests:
@@ -248,6 +360,22 @@ components:
         cpu: 200m
         memory: 350Mi
   email:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 20
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     resources:
       requests:
         cpu: 25m
@@ -264,6 +392,22 @@ components:
         cpu: 300m
         memory: 300Mi
   image-provider:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8081
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8081
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     resources:
       requests:
         cpu: 25m
@@ -280,6 +424,22 @@ components:
         cpu: 500m
         memory: 700Mi
   llm:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8000
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8000
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     resources:
       requests:
         cpu: 50m
@@ -363,6 +523,22 @@ components:
       - '[{"uri":"https://122.248.223.194.sslip.io/flags.json","provider":"http","authHeader":"Bearer $(FLAGD_SYNC_TOKEN)"}]'
     sidecarContainers: []
   frontend-proxy:
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     replicas: 2        # cổng vào DUY NHẤT (Envoy) — SPOF của toàn hệ thống
     imageOverride: # mandate-01: gỡ route Envoy - xem comment imageOverride đầu components:
       tag: 6a3fe95-frontend-proxy
