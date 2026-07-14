@@ -7,17 +7,24 @@ spec:
   project: default
   source:
     repoURL: 'https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git'
-    targetRevision: main
+    targetRevision: deploy/account-migration-gitops
     path: phase3 - information/techx-corp-chart
     helm:
       valueFiles:
         - values.yaml
         - ../deploy/values-flagd-sync.yaml
         - ../deploy/values-prod.yaml
+      parameters:
+        - name: default.image.repository
+          value: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
+        - name: default.image.tag
+          value: 58b13f2
+        - name: components.frontend-proxy.ingress.enabled
+          value: "false"
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: techx-tf3
   syncPolicy:
     automated:
-      prune: true
+      prune: false
       selfHeal: true

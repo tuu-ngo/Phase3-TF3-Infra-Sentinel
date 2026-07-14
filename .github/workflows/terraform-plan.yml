@@ -1,30 +1,38 @@
-name: Terraform Plan (infra/)
-
-# Runs on every PR touching infra/ - posts the plan as a PR comment so the
-# whole team sees exactly what's about to change before merge. Read-only
-# role (AWS_TF_PLAN_ROLE_ARN) - this workflow cannot modify AWS resources.
+name: Terraform Plan (migration branch)
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - deploy/account-migration-gitops
     paths:
-      - "infra/**"
+      - "infra/live/production/**"
+      - "infra/modules/**"
+      - ".github/workflows/terraform-plan.yml"
+  workflow_dispatch:
 
 permissions:
-  id-token: write # OIDC -> assume AWS role
+  id-token: write
   contents: read
-  pull-requests: write # post/update the plan comment
 
 env:
   AWS_REGION: ap-southeast-1
-  TF_VERSION: "1.9.8"
+  TF_VERSION: "1.15.4"
+
+concurrency:
+  group: terraform-production
+  cancel-in-progress: false
 
 jobs:
   plan:
+    name: Plan production
+    if: github.ref == 'refs/heads/deploy/account-migration-gitops'
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}
     defaults:
       run:
-        working-directory: infra
+        working-directory: infra/live/production
+
     steps:
       - uses: actions/checkout@v6
 
@@ -32,69 +40,26 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure plan credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_TF_PLAN_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::197826770971:role/techx-corp-tf3-gha-terraform-plan
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: terraform fmt -check
-        run: terraform fmt -check -recursive
+      - name: Check formatting
+        run: terraform fmt -check -recursive ../../
 
-      - name: terraform init
+      - name: Initialize Terraform
         run: |
           terraform init \
-            -backend-config="bucket=techx-corp-tf3-terraform-state" \
+            -backend-config="bucket=techx-tf3-197826770971-tfstate" \
             -backend-config="key=eks-baseline/terraform.tfstate" \
             -backend-config="region=ap-southeast-1" \
-            -backend-config="dynamodb_table=techx-corp-tf3-terraform-lock" \
+            -backend-config="dynamodb_table=techx-tf3-terraform-lock" \
             -backend-config="encrypt=true"
 
-      - name: terraform validate
+      - name: Validate configuration
         run: terraform validate
 
-      - name: terraform plan
-        id: plan
-        run: |
-          terraform plan -no-color -input=false 2>&1 | tee plan_output.txt
-        continue-on-error: true
-
-      - name: Trim plan output (GitHub comment size limit)
-        run: |
-          tail -c 60000 plan_output.txt > plan_output_trimmed.txt
-
-      - name: Comment plan on PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const plan = fs.readFileSync('infra/plan_output_trimmed.txt', 'utf8');
-            const outcome = "${{ steps.plan.outcome }}";
-            const marker = "<!-- terraform-plan-comment -->";
-            const body = `${marker}\n### Terraform Plan (\`infra/\`) - ${outcome === 'success' ? '✅' : '❌ failed'}\n\n<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`;
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-
-      - name: Fail job if plan failed
-        if: steps.plan.outcome == 'failure'
-        run: exit 1
+      - name: Plan production
+        run: terraform plan -no-color -input=false

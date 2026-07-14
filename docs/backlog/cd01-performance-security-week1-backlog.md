@@ -96,6 +96,7 @@ Image supply chain:
 | 12 | #12 | Datastore backpressure: Postgres/Valkey/Kafka connection và queue pressure | Performance / Reliability | Scaling app có thể làm datastore nghẹt nếu không có pool/backpressure/connection ceiling — **đáng cân nhắc nâng hạng** khi có thời gian rà lại kỹ hơn theo đúng công thức (chưa làm rigorous như Rank 1-7) |
 | 13 | #13 | Topology spread/anti-affinity cho service critical | Performance / Reliability | Khi tăng replica, cần đảm bảo pod critical không dồn cùng node/AZ — hiện hầu hết service còn 1 replica nên giá trị mục này chưa hiện rõ |
 | 14 | #14 | Rollout evidence cho Security/Performance changes | Auditability | NetworkPolicy, HPA, quota, securityContext đều có thể làm gãy app nếu thiếu smoke test/rollback evidence — là quy trình áp dụng cho mọi mục khác, không phải 1 fix riêng |
+| 15 | #15 | Chuẩn hóa private access UX cho internal tools | Security / Auditability / Operations | SSM bastion + port-forward đạt least-exposure nhanh nhưng onboarding nhiều bước, khó vận hành cho nhiều team; cần backlog đánh giá VPN/Zero Trust và private domain |
 
 ---
 
@@ -952,6 +953,80 @@ Không tốn chi phí AWS/hạ tầng — là quy trình làm việc (process), 
 
 ---
 
+### 15. Chuẩn hóa private access UX cho internal tools
+
+**Trụ:** Security / Auditability / Operations
+**Priority:** P2
+
+**Evidence thật**
+
+Mandate #1 hiện đã khóa Grafana, Jaeger và ArgoCD khỏi internet public. Cách truy cập tạm thời là IAM role + SSM bastion + Kubernetes port-forward theo `docs/runbooks/private-access-to-ops-uis.md`.
+
+Luồng này an toàn ở mức least-exposure nhưng khó vận hành khi mở rộng cho nhiều người/team:
+
+```text
+nhận bootstrap credential -> assume role -> mở SSM tunnel -> sửa kubeconfig localhost
+-> chạy từng port-forward -> nhớ nhiều localhost port -> offboard/thu hồi thủ công
+```
+
+Mentor feedback: SSM là tactical fallback tốt để khóa gấp bề mặt tấn công, nhưng UX vận hành "củ chuối" nếu dùng lâu dài. Team cần đưa vào backlog tìm solution private access tốt hơn, ví dụ OpenVPN, Tailscale, NetBird hoặc Cloudflare Zero Trust.
+
+**Ảnh hưởng khách hàng**
+
+Không tác động trực tiếp storefront. Ảnh hưởng gián tiếp tới MTTR và auditability: khi sự cố xảy ra, người có quyền cần vào Grafana/Jaeger/ArgoCD nhanh, đúng quyền, có log truy cập, không phải copy nhiều lệnh thủ công.
+
+**Risk**
+
+- Onboarding/offboarding thủ công dễ cấp dư quyền hoặc quên thu hồi.
+- Nhiều bước port-forward làm mentor/operator dễ thao tác sai, nhất là khi cần xử lý sự cố nhanh.
+- Dùng localhost port rời rạc khó chuẩn hóa hướng dẫn, khó audit "ai vào tool nào lúc nào".
+- Nếu cố đơn giản hóa bằng cách public lại ALB/Ingress cho ops UI thì vi phạm Mandate #1.
+
+**Business impact**
+
+- Giữ nguyên security posture: internal tools không public internet.
+- Giảm thời gian cấp quyền cho mentor/team khác.
+- Tăng khả năng audit truy cập vận hành.
+- Cải thiện trải nghiệm vận hành mà không đánh đổi bằng public exposure.
+
+**Chi phí/khả thi**
+
+Cần spike so sánh chi phí/độ phức tạp:
+
+- **Cloudflare Zero Trust:** UX tốt, access policy theo identity, domain dễ nhớ; cần kiểm tra free/paid limit, connector/tunnel placement và audit log.
+- **Tailscale / NetBird:** mesh VPN nhanh, ACL tốt, private DNS/MagicDNS; cần quản lý identity/team và thiết bị.
+- **OpenVPN:** quen thuộc, tự chủ cao; ops overhead lớn hơn, phải tự quản server/cert/user.
+- **Giữ SSM nhưng wrap script:** rẻ nhất, cải thiện nhanh nhưng vẫn không giải quyết triệt để private domain/audit UX.
+
+**Đề xuất làm**
+
+1. Viết decision spike ngắn so sánh 3-4 option theo: security, audit, onboarding/offboarding, private DNS/domain, cost, effort, rollback.
+2. Chọn một target architecture cho internal tools:
+   - domain nội bộ dễ nhớ như `grafana.<private-zone>`, `jaeger.<private-zone>`, `argocd.<private-zone>`;
+   - chỉ truy cập qua VPN/Zero Trust/tunnel được kiểm soát;
+   - không tạo public LoadBalancer/Ingress cho ops UI.
+3. Chuẩn hóa onboarding:
+   - ai được request quyền;
+   - ai approve;
+   - quyền theo nhóm/role;
+   - thời hạn quyền;
+   - cách offboard và audit.
+4. Giữ runbook SSM hiện tại làm break-glass/private fallback cho tới khi solution mới được verify.
+
+**Acceptance criteria**
+
+- Có ADR hoặc runbook lựa chọn solution private access dài hạn.
+- Người được cấp quyền vào được Grafana/Jaeger/ArgoCD bằng domain dễ nhớ qua đường private.
+- Người ngoài internet không resolve/truy cập được các internal tools.
+- Có checklist onboarding/offboarding và log/audit truy cập.
+- Không dùng lại public ALB/CloudFront path cho Grafana/Jaeger/ArgoCD.
+
+**Rollback / nếu làm sai**
+
+Không gỡ ngay SSM bastion hiện tại. Nếu VPN/Zero Trust/private domain lỗi, disable connector/access policy mới và quay về runbook SSM + port-forward. Storefront không bị ảnh hưởng vì các thay đổi chỉ nằm ở đường truy cập ops UI riêng tư.
+
+---
+
 ## 5. Thứ tự triển khai đề xuất
 
 ### Trong 24-48h trước/sau pitch
@@ -976,6 +1051,7 @@ Không tốn chi phí AWS/hạ tầng — là quy trình làm việc (process), 
 12. **P2-10 Workload identity:** tách serviceAccount theo nhóm.
 13. **P2-13 Topology spread:** phân tán replicas critical theo node/zone.
 14. **P2-14 Rollout evidence:** chuẩn hóa evidence/rollback cho mọi thay đổi.
+15. **P2-15 Private access UX:** spike VPN/Zero Trust/private domain thay cho SSM-only vận hành dài hạn.
 
 ---
 
@@ -988,6 +1064,7 @@ Không tốn chi phí AWS/hạ tầng — là quy trình làm việc (process), 
 | WAF đầy đủ | Có giá trị security nhưng cần cost estimate; trước mắt chốt public boundary và giảm bypass path trước |
 | Enforce NetworkPolicy deny-all toàn bộ ngay | Đúng hướng nhưng phải có allowlist và smoke test, nếu không tự làm gãy app |
 | Enforce Pod Security `restricted` ngay | Có thể làm gãy workload legacy/polyglot; nên bắt đầu bằng `audit/warn` |
+| Thay SSM bastion ngay lập tức | SSM hiện vẫn là break-glass/private fallback an toàn; cần spike VPN/Zero Trust/private domain trước khi cắt sang solution vận hành dài hạn |
 | CPU limits cứng cho mọi service | Có thể gây throttling nếu chưa có số liệu |
 | Scale tất cả service lên 2 replicas | Tốn cost và có thể scale nhầm bottleneck; ưu tiên checkout path và datastore backpressure trước |
 
