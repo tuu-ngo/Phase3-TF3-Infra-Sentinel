@@ -422,6 +422,26 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 - *Rollback / nếu làm sai:*
   `helm upgrade` trả memory limit về 700Mi. Phát hiện qua `kubectl get pods` restart count tăng — vài phút. **Lưu ý:** mỗi lần Kafka pod restart (kể cả do rollback) vẫn mất toàn bộ message đang lưu (chưa vá REL-10) — cân nhắc thời điểm ít traffic nếu phải restart thủ công.
 
+## REL-17 — Thay/bổ sung SSM bastion bằng access theo SSO (đề xuất: Cloudflare Zero Trust)
+*Trụ:* Reliability / Operational Excellence (liên quan Security — cần phối hợp CDO01) · *Ưu tiên đề xuất:* P2 · *Owner:* Chưa gán
+
+- *Evidence:*
+  Xác nhận thật trong lúc vận hành 14/07 (không phải suy đoán): tunnel `aws ssm start-session --document-name AWS-StartPortForwardingSessionToRemoteHost` tự đóng sau ~10-20 phút idle, phải dò lại `bastion_instance_id`/`cluster_endpoint` qua `terraform output` và chạy lại lệnh full tham số mỗi lần cần `kubectl`. Không có cơ chế giữ phiên hay tự reconnect. Ngoài ra danh tính vẫn là **IAM user tĩnh**, không qua SSO — khớp đúng rủi ro đã ghi trong `CLAUDE.md` mục "Rủi ro chưa xử lý": cả 4 IAM user (`arthur`, `CDO01`, `CDO02`, `AIO02`) + `mentor` đều `AdministratorAccess`, trái nguyên tắc least-privilege đang áp dụng ở IRSA/ECR CI role.
+- *Ảnh hưởng khách hàng:*
+  Không trực tiếp — đây là công cụ vận hành nội bộ, không phải đường traffic khách hàng. Ảnh hưởng gián tiếp: mỗi lần tunnel chết giữa lúc xử lý sự cố làm chậm MTTR (mất vài phút dựng lại tunnel đúng lúc cần phản ứng nhanh).
+- *Rủi ro (khả năng × mức nghiêm trọng):*
+  Khả năng cao (đã xảy ra lặp lại nhiều lần trong 1 phiên làm việc) × nghiêm trọng trung bình (làm chậm thao tác, không gây outage trực tiếp, nhưng cộng dồn với rủi ro `AdministratorAccess` sprawl đã biết) = **P2**.
+- *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
+  Không đụng SLO khách hàng trực tiếp, nhưng thuộc đúng trụ Operational Excellence (RULES.md mục 4) và góp phần đóng rủi ro Security đã tự gắn cờ — hội đồng nhiều khả năng hỏi tới vì đã ghi rõ trong CLAUDE.md là "chưa xử lý".
+- *Giải pháp đề xuất:*
+  Đánh giá 4 lựa chọn thị trường (SSM bastion hiện tại / OpenVPN / Tailscale / NetBird / **Cloudflare Zero Trust**) trên 3 tiêu chí: ops overhead, bề mặt lộ ra (inbound port), và mô hình cấp quyền. Khuyến nghị **Cloudflare Zero Trust** (`cloudflared` tunnel, outbound-only, giữ nguyên posture 0 inbound port như SSM hiện tại) + Access policy theo SSO/MFA — giải quyết đồng thời cả 2 vấn đề: (1) hết cảnh tunnel chết giữa chừng (Access session theo policy, không phải port-forward tay per-session), (2) thay dần IAM user tĩnh bằng danh tính SSO có thể revoke/audit theo từng người, thu hẹp trực tiếp bề mặt `AdministratorAccess` sprawl. Cấp quyền theo từng app (ai vào Grafana, ai vào kubectl-proxy...) thay vì mesh VPN kiểu Tailscale/NetBird (vào 1 node coi như vào cả mạng trừ khi tự cấu hình ACL kỹ) — khớp least-privilege hơn. Loại OpenVPN vì tự quản PKI/revoke cert là thêm việc, ngược hướng đang cần giảm ops overhead.
+- *Chi phí / effort:*
+  Free tier Cloudflare Zero Trust đủ cho quy mô team (≤50 user). Effort trung bình: cần tài khoản Cloudflare (BTC/CDO02 tự tạo, ngoài phạm vi Claude Code có thể tự làm — tạo tài khoản/nhập thông tin xác thực nằm trong danh sách hành động cấm), liên kết SSO (Google Workspace hoặc GitHub org hiện có), dựng `cloudflared` như 1 Deployment nhỏ trong cluster (outbound tunnel tới Cloudflare edge), viết Access policy cho từng app (kubectl-proxy, Grafana, ArgoCD). Không cần đổi domain hiện có — Access có sẵn domain miễn phí dạng `<team>.cloudflareaccess.com`.
+- *Acceptance criteria:*
+  Truy cập `kubectl`/Grafana/ArgoCD qua Cloudflare Access thành công với SSO, không cần lệnh `aws ssm start-session` tay nữa; audit log Access ghi được đúng người/thời điểm truy cập; SSM bastion giữ lại làm fallback cho tới khi migration verify ổn định qua ≥1 tuần vận hành thật (không tắt ngay).
+- *Rollback / nếu làm sai:*
+  Đây là bổ sung song song, không thay thế ngay — SSM bastion giữ nguyên hoạt động trong suốt quá trình đánh giá/triển khai thử. Nếu Cloudflare Access gây vấn đề (không vào được, chi phí phát sinh ngoài dự kiến), gỡ `cloudflared` Deployment + Access app, quay lại 100% SSM bastion — không có state nào bị khoá vào Cloudflare (EKS API vẫn private-only, không đổi cấu hình mạng cluster).
+
 ---
 
 ## COST OPTIMIZATION

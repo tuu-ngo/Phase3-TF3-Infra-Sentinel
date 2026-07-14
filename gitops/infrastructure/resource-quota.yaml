@@ -7,4 +7,4 @@ spec:
   hard:
     requests.memory: 16Gi
     limits.memory: 24Gi
-    pods: "90"
+    pods: "100"

@@ -113,3 +113,49 @@ variable "cloudfront_staging_selector" {
   default     = ""
   sensitive   = true
 }
+
+# REL-17 (docs/backlog/cdo02-reliability-cost-backlog.md) - SSO-based access to the
+# private EKS API via Cloudflare Zero Trust, as an addition to (not replacement of) the
+# SSM bastion. Defaults keep this entirely inert until someone deliberately opts in -
+# see docs/runbooks/cloudflare-zero-trust-access.md before setting enable = true.
+variable "enable_cloudflare_access" {
+  description = "Provision the Cloudflare Tunnel + Access application for SSO-based EKS API access. Requires CLOUDFLARE_API_TOKEN env var and the other cloudflare_* variables set."
+  type        = bool
+  default     = false
+}
+
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID. Required when enable_cloudflare_access = true."
+  type        = string
+  default     = ""
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for the domain hosting the tunnel hostname. Required when enable_cloudflare_access = true."
+  type        = string
+  default     = ""
+}
+
+variable "cloudflare_zone_name" {
+  description = "Domain name matching cloudflare_zone_id, e.g. techx-tf3-ops.com."
+  type        = string
+  default     = ""
+}
+
+variable "cloudflare_tunnel_hostname" {
+  description = "Public hostname proxying to the EKS API, e.g. kubectl.techx-tf3-ops.com. Required when enable_cloudflare_access = true."
+  type        = string
+  default     = ""
+}
+
+variable "cloudflare_allowed_email_domain" {
+  description = "Email domain allowed to authenticate via SSO (Access policy). Leave empty and use cloudflare_allowed_emails for a short allowlist instead."
+  type        = string
+  default     = ""
+}
+
+variable "cloudflare_allowed_emails" {
+  description = "Explicit allowlist of emails permitted to authenticate, used when cloudflare_allowed_email_domain is empty."
+  type        = list(string)
+  default     = []
+}

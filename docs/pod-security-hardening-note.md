@@ -294,3 +294,41 @@ Các nhóm chưa harden đầy đủ gồm:
 - Mốc `>=80% container app` có đủ baseline securityContext: chưa đạt, hiện là `5/28 = 17.9%`.
 
 Vì vậy thay đổi hiện tại nên được xem là **Phase 1 hardening an toàn**, chưa phải hoàn tất toàn bộ runtime hardening.
+
+---
+
+## Phase 2: Kyverno Admission Controller & GitOps Enforcement
+
+**Ngày:** 14/07/2026
+**Phạm vi:** Bổ sung Policy Engine as Code (Kyverno) theo chuẩn T6/PM-92 và Mandate #5.
+
+### 1. Đã làm gì
+
+Để hoàn thiện yêu cầu ngăn chặn tự động từ Mandate #5 mà không làm gián đoạn hệ thống, tôi đã triển khai Kyverno thông qua kiến trúc GitOps:
+
+- **Cài đặt Kyverno Core:** Tạo file `gitops/apps/kyverno-app.yaml` định nghĩa ArgoCD Application triển khai Kyverno (kèm tính năng ServerSideApply để sửa lỗi CRD lớn của Helm).
+- **Cấu hình Policy-as-Code:** 
+  - Tạo `baseline-security-context.yaml` để Audit bắt buộc `allowPrivilegeEscalation: false`, rớt quyền `capabilities.drop: ALL`, và `seccompProfile: RuntimeDefault`. Đã áp dụng `exclude` (whitelist) cho 3 service legacy: `currency`, `llm`, `product-reviews`.
+  - Tạo `require-resource-requests.yaml` để Audit bắt buộc khai báo CPU/Memory Requests và Memory Limits cho toàn bộ container.
+  - Quản lý các Policy bằng `gitops/apps/kyverno-policies-app.yaml`.
+
+### 2. Trạng thái hiện tại (Audit Mode)
+
+- Toàn bộ các Policies đang được chạy ở chế độ **Audit** (`validationFailureAction: Audit`). Do đó, không có bất kỳ workload nào bị chặn (Reject) trong quá trình rollout ở hiện tại, đảm bảo an toàn 100% cho production.
+- Hệ thống Kyverno Background Controller liên tục quét các resource cũ và tạo ra các **PolicyReports**.
+
+### 3. Kết quả Audit & Tính đúng đắn của Exception
+
+Kết quả trích xuất thực tế từ PolicyReport xác nhận cơ chế Exception hoạt động đúng như thiết kế ở Phase 1:
+
+- **Nhóm Low-Risk (đã harden ở Phase 1):** Không phát sinh lỗi liên quan đến SecurityContext, chỉ thiếu khai báo Limits/Requests.
+- **Nhóm Legacy (được exclude):** Các Pod như `llm-7fb4cdbdfd-kcjfj` hay `currency` **KHÔNG** bị tính là vi phạm SecurityContext (không có 3 lỗi drop-all-capabilities, privilege-escalation, seccomp). Bằng chứng là PolicyReport của chúng chỉ báo `failures: 2` (thuộc về lỗi Resource Requests).
+- **Nhóm Stateful/Observability (chưa exclude, chưa harden):** Bị Kyverno đánh giá là Fail toàn tập với cả 3 quy tắc SecurityContext (ví dụ: `jaeger`, `opensearch-0`, `frontend-proxy`).
+
+### 4. Tiêu chí chuyển sang Enforce (Phase 3)
+
+Để hoàn tất Mandate #5 và kích hoạt tính năng **Reject** manifest rác, cần đạt các tiêu chí sau:
+
+1. Đội ngũ DEV/SRE xử lý dứt điểm các lỗi trong PolicyReport hiện tại (thêm resource requests/limits cho mọi dịch vụ, và fix security context cho nhóm Stateful/Observability).
+2. Khi `kubectl get polr -n techx-tf3` cho ra số lượng Fail = 0 (ngoại trừ các exception hợp lệ).
+3. Sửa cờ `validationFailureAction: Audit` thành `Enforce` trong file GitOps policy và push lên repo. ArgoCD sẽ lập tức biến Kyverno thành lớp khiên bảo vệ chủ động.

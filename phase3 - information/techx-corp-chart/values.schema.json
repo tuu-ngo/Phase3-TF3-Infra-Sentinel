@@ -478,6 +478,9 @@
         },
         "annotations": {
           "type": "object"
+        },
+        "publishNotReadyAddresses": {
+          "type": "boolean"
         }
       },
       "title": "Service"
@@ -556,6 +559,10 @@
           "type": "object"
         },
         "tolerations": {
+          "type": "array",
+          "items": {}
+        },
+        "topologySpreadConstraints": {
           "type": "array",
           "items": {}
         }
