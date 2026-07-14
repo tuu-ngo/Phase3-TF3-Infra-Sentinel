@@ -60,6 +60,19 @@ locals {
   )
 }
 
+resource "aws_ecr_repository" "techx_corp" {
+  name                 = local.techx_ecr_repository_name
+  image_tag_mutability = "IMMUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "aws_ecr_lifecycle_policy" "techx_corp" {
   repository = local.techx_ecr_repository_name
 

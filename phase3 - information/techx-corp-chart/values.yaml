@@ -22,6 +22,8 @@ default:
     # Overrides the image tag whose default is the chart appVersion.
     # The service's name will be applied to the end of this value.
     tag: "1.0"
+    # Optional image digest for tag+digest pinning, e.g. sha256:...
+    digest: ""
     pullPolicy: IfNotPresent
     pullSecrets: []
   # Default # of replicas for all components

@@ -473,6 +473,9 @@
         "nodePort": {
           "type": "integer"
         },
+        "publishNotReadyAddresses": {
+          "type": "boolean"
+        },
         "annotations": {
           "type": "object"
         },

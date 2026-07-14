@@ -1,6 +1,19 @@
 {{/*
 Demo component Deployment template
 */}}
+{{- define "techx-corp.imageRef" -}}
+{{- $defaultImage := .defaultValues.image -}}
+{{- $imageOverride := .imageOverride | default dict -}}
+{{- $repository := ($imageOverride.repository | default $defaultImage.repository) -}}
+{{- $tag := ($imageOverride.tag | default (printf "%s-%s" (default .Chart.AppVersion $defaultImage.tag) .name)) -}}
+{{- $digest := ($imageOverride.digest | default $defaultImage.digest) -}}
+{{- if $digest -}}
+{{- printf "%s:%s@%s" $repository $tag $digest -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "techx-corp.deployment" }}
 ---
 apiVersion: apps/v1
@@ -60,12 +73,7 @@ spec:
       {{- end}}
       containers:
         - name: {{ .name }}
-          {{- $repo := ((.imageOverride).repository) | default .defaultValues.image.repository }}
-          {{- if ((.imageOverride).digest) }}
-          image: '{{ $repo }}@{{ .imageOverride.digest }}'
-          {{- else }}
-          image: '{{ $repo }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
-          {{- end }}
+          image: '{{ include "techx-corp.imageRef" . }}'
           imagePullPolicy: {{ ((.imageOverride).pullPolicy) | default .defaultValues.image.pullPolicy }}
           {{- if .command }}
           command:
@@ -119,12 +127,7 @@ spec:
         {{- $sidecar := set . "Release" $.Release }}
         {{- $sidecar := set . "defaultValues" $.defaultValues }}
         - name: {{ .name   }}
-          {{- $repo := ((.imageOverride).repository) | default .defaultValues.image.repository }}
-          {{- if ((.imageOverride).digest) }}
-          image: '{{ $repo }}@{{ .imageOverride.digest }}'
-          {{- else }}
-          image: '{{ $repo }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
-          {{- end }}
+          image: '{{ include "techx-corp.imageRef" . }}'
           imagePullPolicy: {{ ((.imageOverride).pullPolicy) | default .defaultValues.image.pullPolicy }}
           {{- if .command }}
           command:
