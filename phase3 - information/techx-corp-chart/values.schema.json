@@ -202,6 +202,12 @@
         "strategy": {
           "type": "object"
         },
+        "terminationGracePeriodSeconds": {
+          "type": "integer"
+        },
+        "lifecycle": {
+          "type": "object"
+        },
         "service": {
           "$ref": "#/definitions/Service"
         },
