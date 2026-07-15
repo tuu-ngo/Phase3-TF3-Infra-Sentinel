@@ -7,9 +7,11 @@ metadata:
   labels:
     {{- include "techx-corp.labels" (dict "Chart" .Chart "Release" .Release "name" "checkout") | nindent 4 }}
 spec:
+  {{- if not .Values.rollouts.checkout.replicasManagedExternally }}
   # HPA owns this value after the initial sync. Keep it at REL-01's baseline
   # until metrics-server/HPA calculate another desired replica count.
   replicas: {{ .Values.rollouts.checkout.replicas }}
+  {{- end }}
   revisionHistoryLimit: {{ .Values.components.checkout.revisionHistoryLimit | default .Values.default.revisionHistoryLimit }}
   workloadRef:
     apiVersion: apps/v1
