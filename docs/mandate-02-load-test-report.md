@@ -60,7 +60,7 @@ Nếu có bất kỳ ngưỡng nào KHÔNG đạt: ghi rõ nguyên nhân, đã f
 Nếu sau 10 phút vẫn chưa co xuống về gần baseline: ghi rõ lý do (Karpenter `consolidateAfter` đang set 1h cho cửa sổ test — nhắc đã đổi lại `2m` chưa, xem runbook Bước 3) và thời điểm co xuống thực tế.
 
 - [ ] **Đã đổi `consolidateAfter` về lại `2m`** sau khi xác nhận co xuống (bắt buộc — để lâu tốn thêm chi phí, đi ngược mục tiêu cost của chính mandate này).
-- [ ] **Đã gỡ `podAnnotations.karpenter.sh/do-not-disrupt`** khỏi cả 5 component (`cart`, `checkout`, `payment`, `shipping`, `quote`) trong `values-prod.yaml` — xem `docs/mandate-02-load-test-remediation-plan.md` mục 0 để đối chiếu danh sách đầy đủ.
+- [ ] **Đã gỡ `podAnnotations.karpenter.sh/do-not-disrupt`** khỏi cả 7 component (`cart`, `checkout`, `payment`, `shipping`, `quote`, `postgresql`, `valkey-cart`) trong `values-prod.yaml` — xem `docs/mandate-02-load-test-remediation-plan.md` mục 0 để đối chiếu danh sách đầy đủ.
 
 ## 5. Điểm nghẽn tự phát hiện và đã xử (yêu cầu #3 của mandate — "tự tìm và xử điểm nghẽn")
 

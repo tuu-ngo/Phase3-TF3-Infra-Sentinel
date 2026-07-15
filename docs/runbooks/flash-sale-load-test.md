@@ -120,8 +120,9 @@ kubectl get nodeclaim              # Spot NodeClaim được consolidate/xóa kh
 - **Đổi lại `consolidateAfter: 3m → 2m`** trong `gitops/karpenter/spot-nodepool.yaml` sau khi Mandate 2
   xong hẳn (giá trị gốc trước Mandate 2 là `2m`) — không gấp bằng việc gỡ `do-not-disrupt` (mục dưới),
   nhưng vẫn nên làm để về đúng baseline.
-- **Gỡ `podAnnotations.karpenter.sh/do-not-disrupt`** khỏi `cart`/`checkout`/`payment`/`shipping`/`quote`
-  trong `values-prod.yaml` ngay sau khi xác nhận co xuống xong — đây mới là cái đang thật sự chặn
+- **Gỡ `podAnnotations.karpenter.sh/do-not-disrupt`** khỏi `cart`/`checkout`/`payment`/`shipping`/`quote`/
+  `postgresql`/`valkey-cart` (7 component — 2 cái sau do PR #112 Mandate #3 thêm khi merge) trong
+  `values-prod.yaml` ngay sau khi xác nhận co xuống xong — đây mới là cái đang thật sự chặn
   Karpenter tối ưu chi phí node (PDB không thay thế được, xem `mandate-02-load-test-remediation-plan.md`
   mục 0). Không quên bước này.
 
