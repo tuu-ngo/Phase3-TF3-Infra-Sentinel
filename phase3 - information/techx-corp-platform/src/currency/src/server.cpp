@@ -192,13 +192,29 @@ class CurrencyService final : public oteldemo::CurrencyService::Service
       // Do the conversion work
       Money from = request->from();
       string from_code = from.currency_code();
-      double rate = currency_conversion[from_code];
-      double one_euro = getDouble(from) / rate ;
+      auto from_it = currency_conversion.find(from_code);
+      if (from_it == currency_conversion.end() || from_it->second == 0.0) {
+        span->AddEvent("Unsupported source currency code");
+        span->SetAttribute("app.currency.conversion.from", from_code);
+        span->SetStatus(StatusCode::kError, "unsupported source currency code");
+        logger->Warn(std::string(__func__) + " unsupported source currency code: " + from_code);
+        span->End();
+        return Status(grpc::StatusCode::INVALID_ARGUMENT, "unsupported source currency code");
+      }
+      double one_euro = getDouble(from) / from_it->second;
 
       string to_code = request->to_code();
-      double to_rate = currency_conversion[to_code];
+      auto to_it = currency_conversion.find(to_code);
+      if (to_it == currency_conversion.end() || to_it->second == 0.0) {
+        span->AddEvent("Unsupported target currency code");
+        span->SetAttribute("app.currency.conversion.to", to_code);
+        span->SetStatus(StatusCode::kError, "unsupported target currency code");
+        logger->Warn(std::string(__func__) + " unsupported target currency code: " + to_code);
+        span->End();
+        return Status(grpc::StatusCode::INVALID_ARGUMENT, "unsupported target currency code");
+      }
 
-      double final = one_euro * to_rate;
+      double final = one_euro * to_it->second;
       getUnitsAndNanos(*response, final);
       response->set_currency_code(to_code);
 
