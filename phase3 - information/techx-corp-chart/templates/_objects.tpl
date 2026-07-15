@@ -37,6 +37,9 @@ spec:
         {{- ((.imageOverride).pullSecrets) | default .defaultValues.image.pullSecrets | toYaml | nindent 8}}
       {{- end }}
       serviceAccountName: {{ include "techx-corp.serviceAccountName" .}}
+      {{- if .terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .terminationGracePeriodSeconds }}
+      {{- end }}
       {{- $schedulingRules := .schedulingRules | default dict }}
       {{- if or .defaultValues.schedulingRules.nodeSelector $schedulingRules.nodeSelector}}
       nodeSelector:
@@ -94,6 +97,10 @@ spec:
           {{- if .startupProbe }}
           startupProbe:
             {{- .startupProbe | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .lifecycle }}
+          lifecycle:
+            {{- .lifecycle | toYaml | nindent 12 }}
           {{- end }}
           volumeMounts:
             {{- if .additionalVolumeMounts }}
