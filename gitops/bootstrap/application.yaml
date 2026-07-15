@@ -21,9 +21,7 @@ spec:
         - /spec/source/helm/parameters
   syncPolicy:
     automated:
-      # Keep app-of-apps pruning disabled during the branch cutover. Re-enable
-      # only after every child app is verified Synced/Healthy on main.
-      prune: false
+      prune: true
       selfHeal: true
     syncOptions:
       - RespectIgnoreDifferences=true
