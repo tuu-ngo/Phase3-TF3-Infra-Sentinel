@@ -25,8 +25,8 @@ Trigger plan:
 
 ```sh
 gh workflow run terraform-apply.yml \
-  --ref deploy/account-migration-gitops -f action=plan
-gh run list --workflow terraform-apply.yml --branch deploy/account-migration-gitops --limit 1
+  --ref main -f action=plan
+gh run list --workflow terraform-apply.yml --branch main --limit 1
 ```
 
 Chỉ apply khi plan có đúng đặc điểm:
@@ -42,7 +42,7 @@ Apply saved plan:
 
 ```sh
 gh workflow run terraform-apply.yml \
-  --ref deploy/account-migration-gitops -f action=apply
+  --ref main -f action=apply
 ```
 
 Chờ workflow hoàn tất rồi kiểm tra:
