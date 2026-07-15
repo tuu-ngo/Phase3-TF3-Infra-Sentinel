@@ -121,6 +121,28 @@ components:
         cpu: 500m
         memory: 512Mi
   frontend:
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: frontend
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: frontend
     imageOverride:
       digest: sha256:047faed92fe4ecf8b2bb7d3d99c191a2d495f41024abc44c204fe94a9ae019a3
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
@@ -148,6 +170,28 @@ components:
         cpu: 500m
         memory: 250Mi
   product-catalog:
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: product-catalog
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: product-catalog
     replicas: 2        # backend traffic cao nhất + có crash history (REL-14)
     imageOverride: # CDO02 fix main.go - xem comment imageOverride đầu components:
       digest: sha256:412f75faac8b02fc48676c1fe2d3bc695e39b9cf6c0fbd6bb941c1fbea80f83f
@@ -174,6 +218,28 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   cart:
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: cart
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: cart
     # Mandate 2 (TẠM, chỉ trong cửa sổ load test): karpenter.sh/do-not-disrupt - lần test trước
     # Karpenter consolidate 1 node đang chạy payment/quote/shipping ngay giữa lúc test, gây 503/500
     # oan (đồng hồ consolidateAfter là per-node, node đó đã "rảnh" từ trước khi test bắt đầu nên
@@ -257,6 +323,28 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   payment:
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: payment
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: payment
     imageOverride:
       digest: sha256:839b9cb5e5c50ba9a03acea8a4b15e29be724089e30cf18904530a1bc07bede5
     # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
@@ -292,6 +380,28 @@ components:
         cpu: 300m
         memory: 300Mi
   currency:
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: currency
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: currency
     imageOverride:
       digest: sha256:e4e4c76b27fea4d82bbc25aa2f2d6c2163450a223f89c71e7ae4985fb6c0203a
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
@@ -319,6 +429,28 @@ components:
         cpu: 300m
         memory: 20Mi
   shipping:
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: shipping
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: shipping
     imageOverride:
       digest: sha256:4952c73703cca38ec8afe934a3571f5f0a5f5e8e2adeb4af3eafc5cfa5ddb3ec
     # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
@@ -350,6 +482,28 @@ components:
         cpu: 150m
         memory: 64Mi
   quote:
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: quote
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: quote
     imageOverride:
       digest: sha256:97fbf36ede49bb20218b75bfe0f2c9e90ed976114813091abb11ca789f567df3
     # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
@@ -381,6 +535,28 @@ components:
         cpu: 150m
         memory: 80Mi
   product-reviews:
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: product-reviews
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: product-reviews
     replicas: 2        # đứng sau tính năng AI tóm tắt review
     imageOverride: # CDO02 fix database.py + product_reviews_server.py - xem comment imageOverride đầu components:
       digest: sha256:4d5403f3b7beda840dad76b406e1a25f4d1dd90248638930ed4327bdb1517439
@@ -746,6 +922,28 @@ components:
       - '[{"uri":"https://122.248.223.194.sslip.io/flags.json","provider":"http","authHeader":"Bearer $(FLAGD_SYNC_TOKEN)"}]'
     sidecarContainers: []
   frontend-proxy:
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: frontend-proxy
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: frontend-proxy
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
