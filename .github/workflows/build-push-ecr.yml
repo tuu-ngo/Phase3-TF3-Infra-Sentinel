@@ -11,6 +11,10 @@ on:
         description: "Build platforms"
         required: false
         default: "linux/amd64,linux/arm64"
+      services:
+        description: "Optional space-separated service list; empty means all"
+        required: false
+        default: ""
 
   push:
     branches: [main]
@@ -46,43 +50,72 @@ jobs:
         with:
           fetch-depth: 0 # need full history to diff against github.event.before
 
-      - name: Resolve image tag
-        id: vars
+      - name: Validate and Resolve Inputs
+        id: inputs
+        env:
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+          INPUT_PLATFORMS: ${{ inputs.platforms }}
+          INPUT_SERVICES: ${{ inputs.services }}
         run: |
-          if [ -n "${{ inputs.image_tag }}" ]; then
-            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          # 1. Validate and resolve image_tag
+          TAG="$INPUT_IMAGE_TAG"
+          if [ -n "$TAG" ] && ! [[ "$TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "Invalid image_tag format" >&2
+            exit 1
           fi
+          if [ -z "$TAG" ]; then
+            TAG="$(git rev-parse --short HEAD)"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          
+          # 2. Validate and resolve platforms
+          PLATFORMS="${INPUT_PLATFORMS:-linux/amd64,linux/arm64}"
+          IFS=',' read -ra PLATS <<< "$PLATFORMS"
+          for p in "${PLATS[@]}"; do
+            if [ "$p" != "linux/amd64" ] && [ "$p" != "linux/arm64" ]; then
+              echo "Invalid platform: $p" >&2
+              exit 1
+            fi
+          done
+          echo "platforms=$PLATFORMS" >> "$GITHUB_OUTPUT"
 
-      # workflow_dispatch = manual "build everything" escape hatch. push = scoped to
-      # whichever src/<service>/ dirs actually changed, so touching one service (e.g.
-      # frontend-proxy for a route change) doesn't pay for a full 18-image rebuild.
-      # Anything outside a recognized src/<service>/ dir (docker-compose.yml, pb/,
-      # Makefile, shared Dockerfile snippets, ...) falls back to a full build since more
-      # than one image's Dockerfile can depend on it (see pb/ COPY in a few services).
-      - name: Detect which services changed
-        id: scope
-        run: |
+          # 3. Resolve scope
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-            echo "Manual trigger -> full build of all services."
+            if [ -n "$INPUT_SERVICES" ]; then
+              REQUESTED_SERVICES="$INPUT_SERVICES"
+              for svc in $REQUESTED_SERVICES; do
+                if ! grep -qw "$svc" <<< "$ALL_SERVICES"; then
+                  echo "Unsupported service: $svc" >&2
+                  exit 1
+                fi
+              done
+              UNIQ=$(echo "$REQUESTED_SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+              echo "mode=scoped" >> "$GITHUB_OUTPUT"
+              echo "services=$UNIQ" >> "$GITHUB_OUTPUT"
+              echo "Manual trigger -> scoped build for $UNIQ"
+            else
+              echo "mode=full" >> "$GITHUB_OUTPUT"
+              echo "Manual trigger -> full build of all services."
+            fi
             exit 0
           fi
 
           BEFORE="${{ github.event.before }}"
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+          CURRENT="${{ github.sha }}"
+
+          if [ -z "$BEFORE" ] || \
+             [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || \
+             ! git -C "$GITHUB_WORKSPACE" cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
             echo "mode=full" >> "$GITHUB_OUTPUT"
-            echo "No previous commit to diff against (new branch/force-push) -> full build."
+            echo "Previous commit unavailable -> full build."
             exit 0
           fi
 
-          # -C "$GITHUB_WORKSPACE": this step's cwd is already the working-directory default
-          # (phase3 - information/techx-corp-platform), and a bare `-- <pathspec>` resolves
-          # relative to cwd, not repo root - without -C this pathspec silently matched nothing
-          # (git treats a non-matching pathspec as "no changes", not an error) and every build
-          # step below got skipped regardless of what actually changed.
-          CHANGED=$(git -C "$GITHUB_WORKSPACE" diff --name-only "$BEFORE" "${{ github.sha }}" -- "phase3 - information/techx-corp-platform")
+          if ! CHANGED=$(git -C "$GITHUB_WORKSPACE" diff --name-only "$BEFORE" "$CURRENT" -- "phase3 - information/techx-corp-platform"); then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "Diff failed -> full build."
+            exit 0
+          fi
           echo "Changed files under techx-corp-platform:"
           echo "$CHANGED"
 
@@ -120,71 +153,181 @@ jobs:
           fi
 
       - name: Configure AWS credentials (OIDC)
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.inputs.outputs.mode != 'none'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.inputs.outputs.mode != 'none'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up QEMU
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.inputs.outputs.mode != 'none'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.inputs.outputs.mode != 'none'
         uses: docker/setup-buildx-action@v3
 
       - name: Point registry at TF3 ECR repo (runtime-only, not committed)
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.inputs.outputs.mode != 'none'
         run: |
           cat > .env.override <<EOF
           IMAGE_NAME=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
-          IMAGE_VERSION=${{ steps.vars.outputs.tag }}
-          DEMO_VERSION=${{ steps.vars.outputs.tag }}
+          IMAGE_VERSION=${{ steps.inputs.outputs.tag }}
+          DEMO_VERSION=${{ steps.inputs.outputs.tag }}
           EOF
 
       - name: Smoke build checkout (fail fast, single-arch, no push)
-        if: steps.scope.outputs.mode == 'full'
+        if: steps.inputs.outputs.mode == 'full'
         run: docker compose build checkout
 
       - name: Create multiplatform builder
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.inputs.outputs.mode != 'none'
         run: make create-multiplatform-builder || true
 
-      - name: Build & push all app images
-        if: steps.scope.outputs.mode == 'full'
+      - name: Filter existing images
+        id: filter_existing
+        if: steps.inputs.outputs.mode != 'none'
         run: |
           set -a; . ./.env.override; set +a
-          docker buildx bake -f docker-compose.yml --push \
-            --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
-            $ALL_SERVICES
+          SERVICES_TO_CHECK=""
+          if [ "${{ steps.inputs.outputs.mode }}" = "scoped" ]; then
+             SERVICES_TO_CHECK="${{ steps.inputs.outputs.services }}"
+          else
+             SERVICES_TO_CHECK="$ALL_SERVICES"
+          fi
+          
+          SERVICES_TO_BUILD=""
+          for svc in $SERVICES_TO_CHECK; do
+            if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=${IMAGE_VERSION}-${svc}" >/dev/null 2>&1; then
+              echo "Tag ${IMAGE_VERSION}-${svc} already exists in ECR. Skipping push."
+            else
+              SERVICES_TO_BUILD="$SERVICES_TO_BUILD $svc"
+            fi
+          done
+          
+          SERVICES_TO_BUILD=$(echo "$SERVICES_TO_BUILD" | tr -s ' ' | xargs)
+          echo "services_to_build=$SERVICES_TO_BUILD" >> "$GITHUB_OUTPUT"
 
-      - name: Build & push changed service images only
-        if: steps.scope.outputs.mode == 'scoped'
+      - name: Build & push required images
+        if: steps.inputs.outputs.mode != 'none' && steps.filter_existing.outputs.services_to_build != ''
         run: |
           set -a; . ./.env.override; set +a
-          echo "Building: ${{ steps.scope.outputs.services }}"
+          echo "Building: ${{ steps.filter_existing.outputs.services_to_build }}"
           docker buildx bake -f docker-compose.yml --push \
-            --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
-            ${{ steps.scope.outputs.services }}
+            --set "*.platform=${{ steps.inputs.outputs.platforms }}" \
+            ${{ steps.filter_existing.outputs.services_to_build }}
+
+      - name: Set up Trivy
+        if: steps.inputs.outputs.mode != 'none'
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # master
+        with:
+          version: v0.72.0
+          cache: true
+
+      - name: Trivy version
+        if: steps.inputs.outputs.mode != 'none'
+        run: trivy --version
 
       - name: Scan pushed images with Trivy (Security Gate)
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.inputs.outputs.mode != 'none'
+        env:
+          INPUT_PLATFORMS: ${{ steps.inputs.outputs.platforms }}
         run: |
           set -a; . ./.env.override; set +a
+          
           SERVICES="$ALL_SERVICES"
-          if [ "${{ steps.scope.outputs.mode }}" = "scoped" ]; then
-            SERVICES="${{ steps.scope.outputs.services }}"
+          if [ "${{ steps.inputs.outputs.mode }}" = "scoped" ]; then
+            SERVICES="${{ steps.inputs.outputs.services }}"
           fi
-          echo "Installing Trivy..."
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          
+          mkdir -p reports
+          echo -e "service\ttag\tecr_digest\tplatform\tstatus" > image-digests.tsv
+          
+          IFS=',' read -ra PLATFORMS <<< "${INPUT_PLATFORMS:-linux/amd64,linux/arm64}"
           
           for svc in $SERVICES; do
-            IMAGE="${IMAGE_NAME}:${IMAGE_VERSION}-${svc}"
-            echo "Scanning $IMAGE for HIGH/CRITICAL vulnerabilities..."
-            trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --no-progress "$IMAGE"
+            TAG="${IMAGE_VERSION}-${svc}"
+            DIGEST="$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=${TAG}" --query 'imageDetails[0].imageDigest' --output text || true)"
+            
+            case "$DIGEST" in
+              sha256:*) ;;
+              *)
+                echo "Unable to resolve digest for $svc (tag: $TAG)" >&2
+                # Ghi nhận lỗi nhưng không exit 1 để scan loop tiếp tục
+                echo -e "${svc}\t${TAG}\tERR\tALL\tERR" >> image-digests.tsv
+                continue
+                ;;
+            esac
+            
+            IMAGE_REF="${IMAGE_NAME}@${DIGEST}"
+            
+            for plat in "${PLATFORMS[@]}"; do
+              plat_safe=$(echo "$plat" | tr '/' '-')
+              report_file="reports/${svc}-${plat_safe}.json"
+              
+              echo "Scanning $IMAGE_REF for $plat..."
+              set +e
+              trivy image \
+                --platform "$plat" \
+                --scanners vuln \
+                --severity HIGH,CRITICAL \
+                --ignore-unfixed \
+                --format json \
+                --output "$report_file" \
+                --exit-code 0 \
+                "$IMAGE_REF"
+              TRIVY_EXIT=$?
+              set -e
+              
+              if [ $TRIVY_EXIT -ne 0 ]; then
+                echo "Trivy scanner failed with exit code $TRIVY_EXIT" >&2
+                echo -e "${svc}\t${TAG}\t${DIGEST}\t${plat}\tERR" >> image-digests.tsv
+              else
+                # Also validate JSON is well formed using jq -e
+                if jq -e . "$report_file" >/dev/null 2>&1; then
+                  echo -e "${svc}\t${TAG}\t${DIGEST}\t${plat}\tOK" >> image-digests.tsv
+                else
+                  echo "Trivy report is malformed or empty" >&2
+                  echo -e "${svc}\t${TAG}\t${DIGEST}\t${plat}\tERR" >> image-digests.tsv
+                fi
+              fi
+            done
           done
+
+      - name: Run Evaluator Test Fixtures
+        if: always() && steps.inputs.outputs.mode != 'none'
+        run: |
+          chmod +x ../../scripts/ci/test-evaluate-trivy-report.sh
+          bash ../../scripts/ci/test-evaluate-trivy-report.sh
+
+      - name: Evaluate Trivy Reports
+        if: always() && steps.inputs.outputs.mode != 'none'
+        env:
+          TRIVY_WORK_DIR: ${{ github.workspace }}/phase3 - information/techx-corp-platform
+        run: |
+          chmod +x ../../scripts/ci/evaluate-trivy-report.sh
+          ../../scripts/ci/evaluate-trivy-report.sh
+          
+      - name: Upload Trivy artifacts
+        if: always() && steps.inputs.outputs.mode != 'none'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: trivy-${{ steps.inputs.outputs.tag }}-${{ github.run_id }}
+          path: |
+            phase3 - information/techx-corp-platform/reports/**
+            phase3 - information/techx-corp-platform/image-digests.tsv
+            phase3 - information/techx-corp-platform/summary.md
+          if-no-files-found: error
+          
+      - name: Write Job Summary
+        if: always()
+        run: |
+          if [ -f "summary.md" ]; then
+            cat "summary.md" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Workflow finished without summary.md" >> $GITHUB_STEP_SUMMARY
+          fi
