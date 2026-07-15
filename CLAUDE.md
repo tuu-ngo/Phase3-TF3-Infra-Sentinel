@@ -71,9 +71,18 @@ Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"tea
   đang audit).
 
 ### Truy cập cluster — 2 đường song song
-- **SSM bastion** (mặc định): `i-02a8d3e39b87180ce`. `aws ssm start-session ... AWS-StartPortForwardingSessionToRemoteHost`
-  → `localhost:8443` → `kubectl config set-cluster ... --server=https://localhost:8443 --insecure-skip-tls-verify`.
-  EKS API private-only. **Tunnel hay tự đóng sau ~10-20 phút idle** — mở lại khi cần.
+- **⚠️ PHẢI dùng `export AWS_PROFILE=techx-new`** cho mọi lệnh AWS/kubectl. Profile `default` trỏ
+  account CŨ `012619468490` (không còn dùng) — quên set là truy cập nhầm account, mọi thứ fail.
+- **SSM bastion** (mặc định): bastion `i-02a8d3e39b87180ce`, cluster endpoint
+  `ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com`. Mở tunnel:
+  ```sh
+  export AWS_PROFILE=techx-new; export MSYS_NO_PATHCONV=1   # Windows git-bash
+  aws ssm start-session --target i-02a8d3e39b87180ce --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters host="ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com",portNumber="443",localPortNumber="8443" --region ap-southeast-1
+  # terminal khác:
+  kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx-corp-tf3 --server=https://localhost:8443 --insecure-skip-tls-verify=true
+  ```
+  EKS API private-only. **Tunnel hay tự đóng sau ~10-20 phút idle** — mở lại khi cần (chạy background).
 - **Cloudflare Zero Trust (REL-17, phiên 14-15/07)**: domain `arthur-ngo.org` (cá nhân, tạm).
   `grafana.arthur-ngo.org` / `jaeger.arthur-ngo.org/jaeger/ui/` / `argocd.arthur-ngo.org` — vào thẳng
   UI qua SSO, **không cần kubectl/IAM**. `kubectl.arthur-ngo.org` cho kubectl (vẫn cần IAM). `cloudflared`
