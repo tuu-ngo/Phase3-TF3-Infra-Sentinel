@@ -34,6 +34,10 @@ FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine3.22
 
 WORKDIR /usr/src/app/
 COPY --from=builder /cart/ ./
+RUN addgroup -S -g 65532 nonroot \
+    && adduser -S -u 65532 -G nonroot nonroot \
+    && chown -R 65532:65532 /usr/src/app
+USER 65532:65532
 
 ENV DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false
 

@@ -29,6 +29,10 @@ WORKDIR /usr/src/app/
 
 COPY --from=builder /usr/src/app/ ./
 ADD --chmod=644 https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v$OTEL_JAVA_AGENT_VERSION/opentelemetry-javaagent.jar /usr/src/app/opentelemetry-javaagent.jar
+RUN groupadd --system --gid 65532 nonroot \
+    && useradd --system --uid 65532 --gid 65532 --home-dir /nonexistent --shell /usr/sbin/nologin nonroot \
+    && chown -R 65532:65532 /usr/src/app
+USER 65532:65532
 ENV JAVA_TOOL_OPTIONS=-javaagent:/usr/src/app/opentelemetry-javaagent.jar
 
 EXPOSE ${AD_PORT}

@@ -191,6 +191,23 @@ components:
       - name: wait-for-kafka
         image: busybox:latest
         command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+    securityContext:
+      runAsUser: 1654  # app
+      runAsGroup: 1654
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   ad:
     enabled: true
@@ -214,6 +231,16 @@ components:
     resources:
       limits:
         memory: 300Mi
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   cart:
     enabled: true
@@ -243,7 +270,17 @@ components:
       - name: wait-for-valkey-cart
         image: busybox:latest
         command: ["sh", "-c", "until nc -z -v -w30 valkey-cart 6379; do echo waiting for valkey-cart; sleep 2; done;"]
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
     securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
       allowPrivilegeEscalation: false
       capabilities:
         drop: ["ALL"]
@@ -323,6 +360,16 @@ components:
     resources:
       limits:
         memory: 20Mi
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   email:
     enabled: true
@@ -346,6 +393,16 @@ components:
     resources:
       limits:
         memory: 100Mi
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   fraud-detection:
     enabled: true
@@ -373,6 +430,23 @@ components:
       - name: wait-for-kafka
         image: busybox:latest
         command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+    securityContext:
+      runAsUser: 65532  # nonroot
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   frontend:
     enabled: true
@@ -575,6 +649,16 @@ components:
     resources:
       limits:
         memory: 1500Mi
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   payment:
     enabled: true
@@ -636,6 +720,16 @@ components:
     resources:
       limits:
         memory: 20Mi
+    securityContext:
+      runAsUser: 65532  # nonroot
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   product-reviews:
     enabled: true
@@ -677,6 +771,16 @@ components:
     resources:
       limits:
         memory: 100Mi
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   quote:
     enabled: true
@@ -737,6 +841,16 @@ components:
     resources:
       limits:
         memory: 500Mi            # This is high to enable supporting the recommendationCache feature flag use case
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   shipping:
     enabled: true
@@ -897,6 +1011,16 @@ components:
         value: flagd
       - name: FLAGD_PORT
         value: "8013"
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   postgresql:
     enabled: true
