@@ -13,11 +13,7 @@ on:
         default: "linux/amd64,linux/arm64"
 
   push:
-    # TEMP: deploy/account-migration-gitops added so CI builds while we push there
-    # instead of main during the account migration. Remove that branch (leave only
-    # main) once this work merges back - keeping it around after that just means
-    # every future push to a stale branch silently rebuilds images.
-    branches: [main, deploy/account-migration-gitops]
+    branches: [main]
     paths:
       - "phase3 - information/techx-corp-platform/**"
 
