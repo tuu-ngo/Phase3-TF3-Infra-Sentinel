@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: 'https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git'
-    targetRevision: deploy/account-migration-gitops # Temporary Mandate #2 validation branch
+    targetRevision: main
     path: gitops/apps
   destination:
     server: 'https://kubernetes.default.svc'
@@ -21,7 +21,9 @@ spec:
         - /spec/source/helm/parameters
   syncPolicy:
     automated:
-      prune: true
+      # Keep app-of-apps pruning disabled during the branch cutover. Re-enable
+      # only after every child app is verified Synced/Healthy on main.
+      prune: false
       selfHeal: true
     syncOptions:
       - RespectIgnoreDifferences=true

@@ -1,9 +1,9 @@
-name: Terraform Plan (migration branch)
+name: Terraform Plan (production)
 
 on:
   push:
     branches:
-      - deploy/account-migration-gitops
+      - main
     paths:
       - "infra/live/production/**"
       - "infra/modules/**"
@@ -25,7 +25,7 @@ concurrency:
 jobs:
   plan:
     name: Plan production
-    if: github.ref == 'refs/heads/deploy/account-migration-gitops'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}
