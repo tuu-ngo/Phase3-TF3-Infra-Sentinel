@@ -994,15 +994,17 @@ components:
       - '[{"uri":"https://122.248.223.194.sslip.io/flags.json","provider":"http","authHeader":"Bearer $(FLAGD_SYNC_TOKEN)"}]'
     sidecarContainers: []
   frontend-proxy:
-    # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
-    # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
-    # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
-    # in-flight hoan tat sau SIGTERM.
-    terminationGracePeriodSeconds: 30
+    # Mandate 3: graceful shutdown - RIENG frontend-proxy dai hon cac service khac (5s) vi day la
+    # ALB target (type=ip), khong phai chi Service noi bo cluster. Endpoint noi bo propagate nhanh
+    # (~vai giay) nhung ALB deregistration cham hon: sau DeregisterTargets, ALB can ~chuc giay de
+    # ngung route connection moi toi target dang draining. preStop 20s giu pod phuc vu suot cua so
+    # do (khop deregistration_delay=30s dat o gitops/edge/frontend-proxy-internal-ingress.yaml).
+    # grace 40s = 20s preStop + 20s cho Envoy drain in-flight sau SIGTERM.
+    terminationGracePeriodSeconds: 40
     lifecycle:
       preStop:
         sleep:
-          seconds: 5
+          seconds: 20
     # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
     # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
     # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.

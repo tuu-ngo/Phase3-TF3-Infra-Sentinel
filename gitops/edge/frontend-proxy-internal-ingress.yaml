@@ -11,6 +11,12 @@ metadata:
     alb.ingress.kubernetes.io/healthcheck-path: /
     alb.ingress.kubernetes.io/security-groups: techx-corp-tf3-internal-alb
     alb.ingress.kubernetes.io/manage-backend-security-group-rules: "true"
+    # Mandate 3: target-type=ip nghia la pod IP dang ky truc tiep vao ALB target group.
+    # Khi pod frontend-proxy tat (drain/rollout), controller goi DeregisterTargets; deregistration_delay
+    # mac dinh 300s giu target "draining" qua lau. Ha xuong 30s de ALB go target nhanh, khop voi preStop
+    # 20s cua pod (values-prod.yaml) -> ALB ngung gui connection moi truoc khi pod thuc su tat -> khong
+    # con race "ALB van route toi pod dang terminate".
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
 spec:
   ingressClassName: alb
   rules:
