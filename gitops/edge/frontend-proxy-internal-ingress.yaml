@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-proxy-internal
+  namespace: techx-tf3
+  annotations:
+    alb.ingress.kubernetes.io/load-balancer-name: techx-tf3-frontend-internal
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/security-groups: techx-corp-tf3-internal-alb
+    alb.ingress.kubernetes.io/manage-backend-security-group-rules: "true"
+    # Mandate 3: target-type=ip nghia la pod IP dang ky truc tiep vao ALB target group.
+    # Khi pod frontend-proxy tat (drain/rollout), controller goi DeregisterTargets; deregistration_delay
+    # mac dinh 300s giu target "draining" qua lau. Ha xuong 30s de ALB go target nhanh, khop voi preStop
+    # 20s cua pod (values-prod.yaml) -> ALB ngung gui connection moi truoc khi pod thuc su tat -> khong
+    # con race "ALB van route toi pod dang terminate".
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-proxy
+                port:
+                  number: 8080

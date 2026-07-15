@@ -1,5 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
+// rebuild-sync (retry after checkout main.go fix): touch to build alongside frontend-proxy/accounting/cart/checkout/product-reviews/recommendation under one CI tag
 package main
 
 //go:generate go install google.golang.org/protobuf/cmd/protoc-gen-go
@@ -152,6 +153,14 @@ func initDatabase() error {
 		return fmt.Errorf("failed to open database connection: %w", err)
 	}
 
+	// REL-05 (INC-1 root cause): bound the client-side connection pool. Without
+	// this, database/sql defaults to unlimited open connections, so under load
+	// product-catalog can exhaust Postgres max_connections - and Postgres here is
+	// shared with product-reviews + accounting, so leave headroom for them too.
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	reg, err = otelsql.RegisterDBStatsMetrics(db, otelsql.WithAttributes(semconv.DBSystemNamePostgreSQL))
 	if err != nil {
 		return fmt.Errorf("failed to register database metrics: %w", err)
@@ -166,7 +175,41 @@ func initDatabase() error {
 	return nil
 }
 
+func initDatabaseWithRetry(ctx context.Context, attempts int, delay time.Duration) error {
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := initDatabase(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			logger.Warn(
+				fmt.Sprintf(
+					"Database init failed on startup attempt %d/%d: %v",
+					attempt,
+					attempts,
+					err,
+				),
+			)
+		}
+
+		if attempt == attempts {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("database init canceled while waiting to retry: %w", ctx.Err())
+		case <-time.After(delay):
+		}
+	}
+
+	return fmt.Errorf("database init failed after %d attempts: %w", attempts, lastErr)
+}
+
 func main() {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
+	defer cancel()
+
 	lp := initLoggerProvider()
 	defer func() {
 		if err := lp.Shutdown(context.Background()); err != nil {
@@ -191,8 +234,9 @@ func main() {
 		logger.Info("Shutdown meter provider")
 	}()
 
-	// Initialize database connection
-	if err := initDatabase(); err != nil {
+	// REL-14: product-catalog historically crashes a few times during startup.
+	// Retry DB init so a brief Postgres warm-up window doesn't force pod restarts.
+	if err := initDatabaseWithRetry(ctx, 15, 2*time.Second); err != nil {
 		logger.Error(fmt.Sprintf("Error initializing database: %v", err))
 		os.Exit(1)
 	}
@@ -250,8 +294,31 @@ func main() {
 	healthcheck := health.NewServer()
 	healthpb.RegisterHealthServer(srv, healthcheck)
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
-	defer cancel()
+	// REL-02: make the health check reflect the real dependency instead of a
+	// static SERVING. Postgres is this service's hard dependency, so poll it and
+	// flip the gRPC serving status. Once readiness/liveness probes are wired
+	// (REL-03), K8s will stop routing traffic to a pod whose DB is unreachable.
+	// (This is the reference pattern for the other services' Check() functions.)
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			serving := healthpb.HealthCheckResponse_SERVING
+			if db == nil {
+				serving = healthpb.HealthCheckResponse_NOT_SERVING
+			} else if err := db.PingContext(ctx); err != nil {
+				serving = healthpb.HealthCheckResponse_NOT_SERVING
+				logger.Warn(fmt.Sprintf("health: database ping failed: %v", err))
+			}
+			// Empty service name = overall server health (what K8s probes check).
+			healthcheck.SetServingStatus("", serving)
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 
 	go func() {
 		if err := srv.Serve(ln); err != nil {

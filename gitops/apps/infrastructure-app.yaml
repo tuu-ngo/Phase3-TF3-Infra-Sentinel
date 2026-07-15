@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: 'https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git'
-    targetRevision: main
+    targetRevision: deploy/account-migration-gitops
     path: gitops/infrastructure
   destination:
     server: 'https://kubernetes.default.svc'

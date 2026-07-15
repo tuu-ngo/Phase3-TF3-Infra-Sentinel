@@ -1,0 +1,35 @@
+# Progressive delivery controller. This Application is discovered by the
+# techx-corp-bootstrap app-of-apps; never install the controller imperatively.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-rollouts
+  namespace: argocd
+  annotations:
+    # App-of-apps must establish CRDs before techx-corp renders a Rollout.
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-rollouts
+    # Chart 2.41.0 packages Argo Rollouts v1.9.0.
+    targetRevision: 2.41.0
+    helm:
+      values: |
+        controller:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo-rollouts
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

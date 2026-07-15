@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: techx-edge
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git
+    targetRevision: deploy/account-migration-gitops
+    path: gitops/edge
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: techx-tf3
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

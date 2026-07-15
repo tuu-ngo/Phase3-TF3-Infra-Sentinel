@@ -35,6 +35,9 @@
     "components": {
       "$ref": "#/definitions/Components"
     },
+    "rollouts": {
+      "$ref": "#/definitions/Rollouts"
+    },
     "opentelemetry-collector": {
       "type": "object"
     },
@@ -56,6 +59,44 @@
     "serviceAccount"
   ],
   "definitions": {
+    "Rollouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prometheusAddress": {
+          "type": "string"
+        },
+        "checkout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "rolloutName": {
+              "type": "string"
+            },
+            "analysisTemplateName": {
+              "type": "string"
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 2
+            }
+          },
+          "required": [
+            "enabled",
+            "rolloutName",
+            "analysisTemplateName",
+            "replicas"
+          ]
+        }
+      },
+      "required": [
+        "prometheusAddress",
+        "checkout"
+      ]
+    },
     "Components": {
       "type": "object",
       "additionalProperties": false,
@@ -158,6 +199,15 @@
         "revisionHistoryLimit": {
           "type": "integer"
         },
+        "strategy": {
+          "type": "object"
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer"
+        },
+        "lifecycle": {
+          "type": "object"
+        },
         "service": {
           "$ref": "#/definitions/Service"
         },
@@ -207,6 +257,9 @@
         "readinessProbe": {
           "$ref": "#/definitions/ReadinessProbe"
         },
+        "startupProbe": {
+          "$ref": "#/definitions/LivenessProbe"
+        },
         "schedulingRules": {
           "$ref": "#/definitions/SchedulingRules"
         },
@@ -236,6 +289,21 @@
         },
         "additionalVolumes": {
           "type": "array"
+        },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "size": {
+              "type": "string"
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          }
         }
       },
       "required": [
@@ -302,6 +370,9 @@
         },
         "revisionHistoryLimit": {
           "type": "integer"
+        },
+        "strategy": {
+          "type": "object"
         },
         "image": {
           "$ref": "#/definitions/Image"
@@ -410,6 +481,9 @@
         },
         "annotations": {
           "type": "object"
+        },
+        "publishNotReadyAddresses": {
+          "type": "boolean"
         }
       },
       "title": "Service"
@@ -439,6 +513,9 @@
           "type": "string"
         },
         "tag": {
+          "type": "string"
+        },
+        "digest": {
           "type": "string"
         },
         "pullPolicy": {
@@ -485,6 +562,10 @@
           "type": "object"
         },
         "tolerations": {
+          "type": "array",
+          "items": {}
+        },
+        "topologySpreadConstraints": {
           "type": "array",
           "items": {}
         }
@@ -654,9 +735,6 @@
     "LivenessProbe": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "httpGet"
-      ],
       "properties": {
         "httpGet": {
           "type": "object",
@@ -697,6 +775,36 @@
             }
           }
         },
+        "tcpSocket": {
+          "type": "object",
+          "required": [
+            "port"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            }
+          }
+        },
+        "grpc": {
+          "type": "object",
+          "required": [
+            "port"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer"
+            },
+            "service": {
+              "type": "string"
+            }
+          }
+        },
         "initialDelaySeconds": {
           "type": "integer"
         },
@@ -712,14 +820,28 @@
         "failureThreshold": {
           "type": "integer"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "httpGet"
+          ]
+        },
+        {
+          "required": [
+            "tcpSocket"
+          ]
+        },
+        {
+          "required": [
+            "grpc"
+          ]
+        }
+      ]
     },
     "ReadinessProbe": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "httpGet"
-      ],
       "properties": {
         "httpGet": {
           "type": "object",
@@ -760,6 +882,36 @@
             }
           }
         },
+        "tcpSocket": {
+          "type": "object",
+          "required": [
+            "port"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            }
+          }
+        },
+        "grpc": {
+          "type": "object",
+          "required": [
+            "port"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer"
+            },
+            "service": {
+              "type": "string"
+            }
+          }
+        },
         "initialDelaySeconds": {
           "type": "integer"
         },
@@ -775,7 +927,24 @@
         "failureThreshold": {
           "type": "integer"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "httpGet"
+          ]
+        },
+        {
+          "required": [
+            "tcpSocket"
+          ]
+        },
+        {
+          "required": [
+            "grpc"
+          ]
+        }
+      ]
     },
     "MountedConfigMap": {
       "type": "object",

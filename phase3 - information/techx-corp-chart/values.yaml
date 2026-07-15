@@ -243,6 +243,13 @@ components:
       - name: wait-for-valkey-cart
         image: busybox:latest
         command: ["sh", "-c", "until nc -z -v -w30 valkey-cart 6379; do echo waiting for valkey-cart; sleep 2; done;"]
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   checkout:
     enabled: true
@@ -284,6 +291,17 @@ components:
       - name: wait-for-kafka
         image: busybox:latest
         command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      readOnlyRootFilesystem: true
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   currency:
     enabled: true
@@ -408,6 +426,13 @@ components:
       runAsUser: 1001  # nextjs
       runAsGroup: 1001
       runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      readOnlyRootFilesystem: true
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   frontend-proxy:
     enabled: true
@@ -561,6 +586,13 @@ components:
       runAsUser: 1000  # node
       runAsGroup: 1000
       runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      readOnlyRootFilesystem: true
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   product-catalog:
     enabled: true
@@ -704,6 +736,17 @@ components:
     resources:
       limits:
         memory: 20Mi
+    securityContext:
+      runAsUser: 65532  # nonroot
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      readOnlyRootFilesystem: true
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   flagd:
     enabled: true
@@ -904,6 +947,18 @@ components:
       runAsGroup: 1000
       runAsNonRoot: true
 
+# Progressive delivery is deliberately opt-in and starts with checkout only.
+# Its Deployment remains the workload template during migration; see
+# templates/checkout-rollout.yaml.
+rollouts:
+  prometheusAddress: http://prometheus.techx-tf3.svc.cluster.local:9090
+  checkout:
+    enabled: true
+    rolloutName: checkout-rollout
+    analysisTemplateName: checkout-slo
+    # Must not fall below REL-01 / checkout-hpa minReplicas.
+    replicas: 2
+
 opentelemetry-collector:
   enabled: true
   image:
@@ -975,6 +1030,15 @@ opentelemetry-collector:
         check_interval: 5s
         limit_percentage: 80
         spike_limit_percentage: 25
+      # Expose the Argo Rollouts revision as a low-cardinality dimension on
+      # span metrics. AnalysisRuns use this to compare the canary with stable,
+      # rather than judging a blended service-wide metric.
+      k8sattributes:
+        extract:
+          labels:
+            - tag_name: rollouts_pod_template_hash
+              key: rollouts-pod-template-hash
+              from: pod
       resourcedetection:
         detectors: [env, system]
       transform:
@@ -1006,12 +1070,14 @@ opentelemetry-collector:
           action: insert
 
     connectors:
-      spanmetrics: {}
+      spanmetrics:
+        dimensions:
+          - name: rollouts_pod_template_hash
 
     service:
       pipelines:
         traces:
-          processors: [memory_limiter, resourcedetection, resource, transform, batch]
+          processors: [memory_limiter, k8sattributes, resourcedetection, resource, transform, batch]
           exporters: [otlp/jaeger, debug, spanmetrics]
         metrics:
           receivers: [otlp, kafkametrics, spanmetrics]
