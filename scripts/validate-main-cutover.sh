@@ -40,6 +40,14 @@ for workflow in .github/workflows/terraform-plan.yml .github/workflows/terraform
   grep -Fq 'TF_VAR_cloudflare_allowed_emails: ${{ vars.CLOUDFLARE_ALLOWED_EMAILS_JSON }}' "$workflow"
 done
 
+grep -Fq 'variable "terraform_plan_subjects"' infra/bootstrap/github-oidc/variables.tf
+grep -Fq 'repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:ref:refs/heads/main' infra/bootstrap/github-oidc/variables.tf
+grep -Fq 'repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:pull_request' infra/bootstrap/github-oidc/variables.tf
+grep -Fq 'repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:environment:production' infra/bootstrap/github-oidc/variables.tf
+grep -Fq '"token.actions.githubusercontent.com:sub" = var.terraform_plan_subjects' infra/bootstrap/github-oidc/main.tf
+grep -Fq '"token.actions.githubusercontent.com:sub" = var.terraform_apply_subject' infra/bootstrap/github-oidc/main.tf
+grep -Eq '^[[:space:]]+environment:[[:space:]]+production$' .github/workflows/terraform-apply.yml
+
 if rg -n '012619468490' .github infra gitops 'phase3 - information/deploy/values-prod.yaml'; then
   echo 'old AWS account found in an active production path' >&2
   exit 1
