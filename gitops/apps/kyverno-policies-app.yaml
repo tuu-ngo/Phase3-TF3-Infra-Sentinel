@@ -9,7 +9,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git
-    targetRevision: deploy/account-migration-gitops
+    targetRevision: main
     path: gitops/policies/kyverno
   destination:
     server: https://kubernetes.default.svc
