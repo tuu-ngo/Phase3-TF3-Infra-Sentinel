@@ -37,11 +37,14 @@ spec:
     memory: 48Gi
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
-    # TẠM tăng từ 2m lên 1h cho cửa sổ load test Mandate 2 (200 users) - 2m quá nhạy,
-    # Karpenter đã evict pod checkout/otel-collector giữa lúc canary analysis đang đo,
-    # gây latency spike giả làm rollout fail oan (xem docs/mandate-02-load-test-remediation-plan.md).
-    # PHẢI đổi lại 2m ngay sau khi test xong, để lâu sẽ tốn thêm chi phí node không được tối ưu.
-    consolidateAfter: 1h
+    # Hạ về 3m (từ 1h) để "co xuống" sau load test hiện rõ nhanh cho report, thay vì đợi tới 1h.
+    # An toàn vì 5 pod checkout-critical (cart/checkout/payment/shipping/quote) đã có
+    # karpenter.sh/do-not-disrupt riêng (xem values-prod.yaml) - bảo vệ đúng nhóm đó bất kể
+    # giá trị này, không phụ thuộc PDB (PDB chỉ đảm bảo còn ít nhất 1 pod sống, KHÔNG chặn
+    # Karpenter evict 1/2 pod - đã xác nhận DISruptionsAllowed=1 trên cả 3 PDB payment/quote/
+    # shipping ngay lúc đang 2/2 khỏe, đúng kiểu disruption đã gây 503/500 lần test trước).
+    # Giá trị gốc trước Mandate 2 là 2m - đổi lại 2m sau khi xong, không cần giữ 3m vĩnh viễn.
+    consolidateAfter: 3m
 ---
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
