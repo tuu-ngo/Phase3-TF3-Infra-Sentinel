@@ -13,9 +13,18 @@ variable "github_repository" {
   default = "tuu-ngo/Phase3-TF3-Infra-Sentinel"
 }
 
-variable "deployment_branch" {
+variable "terraform_plan_subjects" {
+  type = set(string)
+  default = [
+    "repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:ref:refs/heads/deploy/account-migration-gitops",
+    "repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:ref:refs/heads/main",
+    "repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:pull_request",
+  ]
+}
+
+variable "terraform_apply_subject" {
   type    = string
-  default = "deploy/account-migration-gitops"
+  default = "repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:environment:production"
 }
 
 variable "state_bucket_name" {

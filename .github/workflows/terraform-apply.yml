@@ -32,6 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      TF_VAR_cloudflare_allowed_emails: ${{ vars.CLOUDFLARE_ALLOWED_EMAILS_JSON }}
     defaults:
       run:
         working-directory: infra/live/production
@@ -85,8 +89,13 @@ jobs:
     needs: plan
     if: github.ref == 'refs/heads/deploy/account-migration-gitops' && inputs.action == 'apply'
     runs-on: ubuntu-latest
+    environment: production
     env:
       TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      TF_VAR_cloudflare_allowed_emails: ${{ vars.CLOUDFLARE_ALLOWED_EMAILS_JSON }}
     defaults:
       run:
         working-directory: infra/live/production
