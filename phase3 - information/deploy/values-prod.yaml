@@ -67,6 +67,11 @@ prometheus:
         cpu: 800m
         memory: 1200Mi
 
+opentelemetry-collector:
+  resources:
+    limits:
+      memory: 350Mi
+
 components:
   # imageOverride (per-component) - dùng khi build/deploy lại 1 service riêng lẻ mà
   # KHÔNG bump default.image.tag dùng chung ở trên. build-push-ecr.yml giờ build scoped
@@ -488,7 +493,7 @@ components:
         memory: 650Mi
       limits:
         cpu: 500m
-        memory: 1Gi
+        memory: 1.5Gi
     # REL-10: PVC persistence cho Kafka (KRaft). image apache/kafka 3.9.1, chay uid/gid 1000,
     # CLUSTER_ID co dinh qua env -> format KRaft idempotent (launch script skip "already formatted").
     envOverrides:
