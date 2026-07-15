@@ -302,6 +302,14 @@ components:
         cpu: 500m
         memory: 160Mi
   checkout:
+    # Mandate 3: checkout is managed by Argo Rollouts, but the Rollout still reuses this
+    # pod template through workloadRef. Keep the same graceful shutdown contract as the
+    # other revenue services so drain/rollout does not cut an in-flight PlaceOrder.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
       digest: sha256:a774cb69f27795406f768881a7c575ba882f024f8e99ca928413047f3b3eb532
