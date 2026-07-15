@@ -956,6 +956,7 @@ rollouts:
     enabled: true
     rolloutName: checkout-rollout
     analysisTemplateName: checkout-slo
+    replicasManagedExternally: false
     # Must not fall below REL-01 / checkout-hpa minReplicas.
     replicas: 2
 

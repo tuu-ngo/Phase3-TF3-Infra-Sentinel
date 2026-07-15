@@ -95,6 +95,7 @@ components:
   # của HPA sau. LƯU Ý: KHÔNG thêm replicas cho postgresql/kafka/valkey (stateful singleton
   # — sẽ hỏng dữ liệu; HA datastore đi qua RDS/ElastiCache, xem ADR 0002).
   ad:
+    replicasManagedExternally: true
     imageOverride:
       digest: sha256:a45fdb96972c11c4b75261ef1205f96c92f5c23fb5edbc47f3b6bb95eb3f27bb
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
@@ -121,6 +122,7 @@ components:
         cpu: 500m
         memory: 512Mi
   frontend:
+    replicasManagedExternally: true
     # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
     # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
     # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
@@ -179,6 +181,7 @@ components:
         cpu: 500m
         memory: 250Mi
   product-catalog:
+    replicasManagedExternally: true
     # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
     # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
     # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
@@ -236,6 +239,7 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   cart:
+    replicasManagedExternally: true
     # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
     # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
     # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
@@ -416,6 +420,7 @@ components:
         cpu: 300m
         memory: 300Mi
   currency:
+    replicasManagedExternally: true
     # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
     # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
     # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
@@ -598,6 +603,7 @@ components:
         cpu: 150m
         memory: 80Mi
   product-reviews:
+    replicasManagedExternally: true
     # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
     # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
     # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
@@ -655,6 +661,7 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   recommendation:
+    replicasManagedExternally: true
     imageOverride: # CDO02 fix recommendation_server.py - xem comment imageOverride đầu components:
       digest: sha256:7b1246d011356a0e6d2b0b94b854b2bc3eb0ee06a502d02d9a79a3163b447b78
       tag: 6a3fe95-recommendation
@@ -994,6 +1001,7 @@ components:
       - '[{"uri":"https://122.248.223.194.sslip.io/flags.json","provider":"http","authHeader":"Bearer $(FLAGD_SYNC_TOKEN)"}]'
     sidecarContainers: []
   frontend-proxy:
+    replicasManagedExternally: true
     # Mandate 3: graceful shutdown - RIENG frontend-proxy dai hon cac service khac (5s) vi day la
     # ALB target (type=ip), khong phai chi Service noi bo cluster. Endpoint noi bo propagate nhanh
     # (~vai giay) nhung ALB deregistration cham hon: sau DeregisterTargets, ALB can ~chuc giay de
@@ -1068,3 +1076,7 @@ components:
               pathType: Prefix
               port: 8080
       ingressClassName: alb
+
+rollouts:
+  checkout:
+    replicasManagedExternally: true
