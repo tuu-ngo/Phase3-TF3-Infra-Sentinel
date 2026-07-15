@@ -214,19 +214,23 @@ jobs:
       - name: Build & push all pre-scanned app images
         if: steps.scope.outputs.mode == 'full'
         run: |
+          set -euo pipefail
           set -a; . ./.env.override; set +a
+          read -r -a SERVICES <<< "$ALL_SERVICES"
           docker buildx bake -f docker-compose.yml --push \
             --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
-            $ALL_SERVICES
+            "${SERVICES[@]}"
 
       - name: Build & push pre-scanned changed service images only
         if: steps.scope.outputs.mode == 'scoped'
         run: |
+          set -euo pipefail
           set -a; . ./.env.override; set +a
           echo "Building: ${{ steps.scope.outputs.services }}"
+          read -r -a SERVICES <<< "${{ steps.scope.outputs.services }}"
           docker buildx bake -f docker-compose.yml --push \
             --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
-            ${{ steps.scope.outputs.services }}
+            "${SERVICES[@]}"
 
       # Cosign uses GitHub Actions' short-lived OIDC token (id-token: write), so
       # there is no static private signing key in the repository or its secrets.
