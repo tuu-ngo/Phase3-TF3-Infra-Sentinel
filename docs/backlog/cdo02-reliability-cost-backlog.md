@@ -102,7 +102,17 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
   `helm upgrade --install techx-corp ... --set <service>.replicas=1` để trả lại giá trị cũ (kèm lại `-f values-flagd-sync.yaml`, bắt buộc theo GETTING_STARTED.md). Nếu replicas mới gây thiếu tài nguyên node (Pending), phát hiện ngay qua `kubectl get pods` (vài phút) do pod không schedule được.
 
 ## REL-02 — Sửa health check giả thành kiểm tra dependency thật
-*Trụ:* Reliability · *Ưu tiên đề xuất:* P0 · *Owner:* Chưa gán
+*Trụ:* Reliability · *Ưu tiên đề xuất:* P0 · *Owner:* CDO02 · **✅ ĐÃ LÀM + DEPLOYED (verify 15/07)**
+
+> **Cập nhật 15/07:** Đã hoàn thành, code đã merge + nằm trong image đang chạy (commit `8ce45af`
+> "make product-catalog health check reflect its DB dependency", `e6a3717` "extend real health checks";
+> image `6a3fe95-product-catalog`, `7527509-checkout`). Service có dependency stateful đã dùng gRPC
+> readiness → Health service dependency-aware: **product-catalog** (`db.PingContext` mỗi 5s → NOT_SERVING),
+> **product-reviews** (`Check()` kiểm DB, grpc:3551), **checkout** (`dependencyHealthStatus()`, grpc:8080).
+> Service **stateless** (currency/ad/payment/recommendation → không có DB/Kafka/Redis ngoài) giữ static
+> SERVING là **đúng** — không có dependency để check, đánh dấu NOT_SERVING sẽ sai. Còn lại chỉ
+> **acceptance test live** (chặn Postgres tạm → health flip NOT_SERVING ≤1 chu kỳ probe) — gộp vào phần
+> demo/live-test Mandate #3.
 
 - *Evidence:*
   Đọc code xác nhận `checkout`, `product-catalog`, `recommendation`, `currency`, `product-reviews`, `ad`, `payment` đều có handler gRPC health check trả `SERVING` cố định, không gọi thử dependency thật (DB/Kafka/Redis). *(Cần bổ sung số dòng file chính xác cho từng service trước khi đưa vào slide chính thức — chưa ghi lại lúc đọc code lần đầu.)*

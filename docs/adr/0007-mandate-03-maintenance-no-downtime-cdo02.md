@@ -55,8 +55,12 @@ vài chục giây), bất kể số node. Fix thật = replication (RDS/ElastiCa
 ro cao trước hạn (xem ADR 0002). Quyết định:
 - Giữ datastore trên node `stateful_1a` chuyên dụng (on-demand, tainted, không bị Karpenter đụng).
 - **Demo drain 1 node APP tier** để chứng minh luồng ra tiền zero-impact — không drain node stateful.
-- Client retry/connection-pool (đã có: product-catalog pool, checkout Kafka `WaitForAll`) hấp thụ blip
-  nếu node stateful phải bảo trì ngoài kịch bản demo.
+- **Bảo trì chính node stateful KHÔNG bị né** — có quy trình planned-failover có kiểm soát:
+  [`docs/runbooks/stateful-node-planned-maintenance.md`](../runbooks/stateful-node-planned-maintenance.md).
+  Nói thẳng con số: downtime **~30-60s/datastore** (detach/reattach PVC + restart), trong cửa sổ off-peak,
+  giảm thiểu bằng client retry. Đây là bản chất single-replica RWO, không phải bỏ sót — zero-downtime tầng
+  data cần replication (RDS Multi-AZ / ElastiCache / operator), là **quyết định ngân sách có ý thức**, không
+  phải "không biết cách". Đo downtime thật trong dry-run/demo, báo cáo số thật vào ADR này.
 - Ghi nhận đường HA thật là roadmap (RDS/ElastiCache) khi có ngân sách lớn hơn.
 
 ## Đánh đổi đã cân
@@ -66,6 +70,21 @@ ro cao trước hạn (xem ADR 0002). Quyết định:
   rớt lúc drain/rollout.
 - **Datastore không HA**: residual risk có ý thức, đã ghi rõ + có đường roadmap, thay vì tiêu tiền/thời
   gian gấp cho giải pháp nửa vời (2 node stateful vẫn không chống được blip single-replica).
+
+## Giới hạn đã biết (nói thẳng với mentor, không giấu)
+- **frontend-proxy là ALB target** (`target-type=ip`): endpoint nội bộ propagate nhanh nhưng ALB
+  deregistration chậm hơn → preStop riêng cho tier này dài hơn (20s) + `deregistration_delay=30s` trên
+  target group (xem PR ALB graceful drain). Backend gRPC giữ preStop 5s.
+- **readinessProbe theo bản chất service (đính chính so với bản đầu):** service **có dependency stateful**
+  (`product-catalog`/`product-reviews` → Postgres, `checkout` → dependency) đã dùng **gRPC readiness →
+  Health service dependency-aware** (poll `db.Ping`/kiểm dependency, flip `NOT_SERVING` khi hỏng) —
+  REL-02 đã làm + deployed (commit `8ce45af`, `e6a3717`; image `6a3fe95`/`7527509`). Service **stateless**
+  (currency/ad/payment/frontend/... → không có DB/Kafka/Redis ngoài) dùng `tcpSocket`, **đúng** vì không có
+  dependency để check. Còn lại chỉ **acceptance test live** của REL-02 (chặn Postgres tạm → health flip
+  NOT_SERVING) — gộp vào phần demo/live-test.
+- **topologySpread zone-hard có thể kẹt rollout** nếu 1 AZ cạn node lúc deploy — fail-safe (không downtime,
+  rollout chờ) nhưng cần biết. Chọn zone-hard để đổi lấy đảm bảo tách node + AZ-resilience; chấp nhận đánh
+  đổi này thay vì hostname-hard (tách node nhưng không có AZ-resilience).
 
 ## Ràng buộc đã tôn trọng
 - Trong ngân sách — thay đổi $0 chi phí cố định (chỉ đổi vị trí + config, không thêm pod/node).

@@ -5,6 +5,8 @@ File này được Claude Code tự động đọc ở đầu mỗi phiên làm 
 là để **không phải giải thích lại bối cảnh dự án từ đầu mỗi lần mở chat mới**. Giữ file này
 cập nhật; nó có giá trị bằng đúng mức nó phản ánh đúng thực tế hiện tại.
 
+> **Cập nhật gần nhất: 15/07/2026** (sau khi hoàn tất Mandate #3 core + đính chính trạng thái backlog).
+
 ## Bối cảnh (không đổi trong suốt 3 tuần)
 
 Phase 3 không phát brief. TF3 tiếp quản một storefront thương mại điện tử microservice
@@ -24,124 +26,148 @@ Chi tiết đầy đủ: [`phase3 - information/RULES.md`](phase3%20-%20informat
 - **Không** gỡ, đổi hướng, hay refactor để service ngừng đọc flag từ `flagd` — đây là cách
   BTC bơm sự cố. Xử lý sự cố bằng fallback/retry/containment, không phải tắt cơ chế.
 - **Không** đổi TOKEN/URI trong `values-flagd-sync.yaml` sang nguồn khác, không bỏ nó ra
-  khỏi lệnh `helm upgrade`.
-- flagd sync token/AWS creds/LLM API key: **không bao giờ** commit giá trị thật vào file
-  tracked. Xem quy tắc chi tiết ở [README.md](README.md#quy-tắc-khi-làm-việc-với-secret-thật-aws-creds-flagd-sync-token-llm-api-key).
+  khỏi lệnh deploy (giờ đi qua GitOps/ArgoCD — xem dưới). `/flagservice` trong Envoy là kênh
+  đọc flag runtime, **không được gỡ**; chỉ `/feature` (flagd-ui) là được gỡ (Mandate #1).
+- flagd sync token/AWS creds/LLM API key/Cloudflare token: **không bao giờ** commit giá trị thật
+  vào file tracked. Secret vào cluster qua ephemeral `kubectl create secret` hoặc external-secrets,
+  không qua file. Xem [README.md](README.md).
+- Filter `envoy.filters.http.fault` trong `frontend-proxy` (delay injection, `max_active_faults`)
+  là hạ tầng BTC bơm sự cố — **không gỡ** khi tối ưu Envoy.
 
 ## Cấu trúc TF3
 
-| Nhóm | Vai trò | Trụ (cập nhật sau khi draft chính thức chốt) |
+| Nhóm | Vai trò | Trụ |
 |---|---|---|
-| AIO02 | Tầng AI: AIOps (vận hành bằng AI) + AIE (AI trong sản phẩm) | ngoài 4 trụ core |
-| CDO01 | Platform/hạ tầng | Performance Efficiency + Security |
-| CDO02 | Platform/hạ tầng | **Reliability + Cost Optimization** (chốt chính thức 08/07) |
+| AIO02 | Tầng AI: AIOps + AIE (AI trong sản phẩm) | ngoài 4 trụ core |
+| CDO01 | Platform/hạ tầng | **Performance Efficiency + Security** |
+| CDO02 | Platform/hạ tầng | **Reliability + Cost Optimization** |
 
-Auditability là trụ chung, luân phiên theo tuần giữa CDO01/CDO02 — cập nhật ai cầm chính
-tuần nào ở mục Trạng thái bên dưới.
+Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"team mình" → ngầm hiểu **CDO02**.
 
-## Trạng thái hiện tại
+---
 
-> Cập nhật mục này mỗi tuần (gợi ý: người cầm Auditability tuần đó chịu trách nhiệm cập nhật).
+## Trạng thái hiện tại (15/07/2026)
 
-- **Baseline deploy**: ✅ Đã deploy 07/07 — VPC + EKS (`techx-corp-tf3`, `ap-southeast-1`) dựng bằng
-  Terraform (`infra/`), image build/push bởi CDO01 lên ECR `techx-corp` (tag `d2bc367`), Helm
-  release `techx-corp` trong namespace `techx-tf3`. 28/28 pod Running, storefront + AI review
-  verify OK, flagd sync token đã kết nối nguồn trung tâm BTC.
-  - Lưu ý triển khai: **không dùng** `values-observability.yaml` + `values-app-stamp.yaml` cùng lúc
-    (2 file này dành cho 2 lần deploy tách namespace riêng — dùng chung sẽ tắt hết pod). Deploy
-    baseline chỉ cần chart mặc định (đã tự bật cả app + observability) + `values-flagd-sync.yaml`.
-- **Backlog ưu tiên (CDO02)**: ✅ Đã dựng — xem
-  [`docs/backlog/cdo02-reliability-cost-backlog.md`](docs/backlog/cdo02-reliability-cost-backlog.md).
-  Top ưu tiên: sửa health check giả + thêm probe (vá INC-3), tăng replicas nhóm checkout (vá INC-2),
-  connection pool product-catalog/product-reviews (vá INC-1), rollback logic checkout, CPU
-  requests/limits toàn hệ thống, cluster-autoscaler thật, sửa lại ECR lifecycle policy đúng cách.
-- **Hạ tầng**: Terraform state ở S3 `techx-corp-tf3-terraform-state` (lock: DynamoDB
-  `techx-corp-tf3-terraform-lock`). `infra/terraform.tfvars` (gitignored, không commit) cần điền
-  IP + IAM ARN của từng thành viên TF3 muốn `kubectl` — hiện chỉ có của arthur (CDO02).
-- **CI/CD**: secret-scanning đã bật (gitleaks pre-commit hook + GitHub Actions gate trên
-  `push`/`PR` vào `main`) — xem [README.md](README.md). Branch protection cho `main`
-  (require PR + status check `gitleaks`) **đã đề xuất, cần bật thủ công trên GitHub**.
-- **Mandates đang mở**: xem [`phase3 - information/mandates/`](phase3%20-%20information/mandates/) — trống lúc đầu, BTC thả vào khi có hiệu lực.
-- **Truy cập cluster**: mặc định dùng `kubectl port-forward svc/frontend-proxy 8080:8080` (namespace
-  `techx-tf3`), **không** để public 24/7 (Grafana anonymous-admin mặc định trong chart — public =
-  ai cũng vào Grafana admin được). Chỉ patch `Service` sang `LoadBalancer` tạm thời khi cần demo
-  cho người ngoài, nhớ patch lại `ClusterIP` ngay sau đó.
-- **✅ ĐÃ SỬA (09/07) — EKS API giờ private-only, không còn CIDR allowlist nữa.** Sau khi bị đè
-  mất IP allowlist **2 lần** (CloudTrail xác nhận phần lớn lệnh `UpdateClusterConfig` gây ra đến
-  từ IAM user `CDO02`, không phải `arthur` — nghi có người khác trong nhóm CDO02 tự cầm key đó
-  song song, chưa xác minh danh tính), đã tắt hẳn `cluster_endpoint_public_access` và dựng
-  **SSM bastion** (`infra/bastion.tf`) làm đường vào duy nhất. Không ai cần allowlist IP nữa —
-  xác thực hoàn toàn bằng IAM, không phải theo địa chỉ mạng. Cách dùng: xem
-  [`infra/README.md`](infra/README.md#2-sau-khi-apply-xong--truy-cập-cluster-qua-ssm-bastion-bắt-buộc-từ-0907).
-  Biến `allowed_admin_cidrs` trong `terraform.tfvars` giờ **không còn tác dụng gì** (đã đánh dấu
-  deprecated trong `variables.tf`) — không cần thêm IP vào đó nữa dù nó vẫn còn trong file.
-- **⚠️ Rủi ro chưa xử lý**: cả 4 IAM user (`arthur`, `CDO01`, `CDO02`, `AIO02`) + user `mentor` mới
-  tạo đều có `AdministratorAccess` (toàn quyền account) — trái ngược hoàn toàn với thiết kế
-  least-privilege ở phần còn lại (IRSA, ECR CI role...). Chưa thu hẹp vì ưu tiên tốc độ lúc gấp
-  deadline; nên xử lý trước khi hội đồng hỏi tới ở trụ Security (CDO01).
-- **ECR lifecycle policy**: đã xoá do gây sự cố (xem postmortem 0001) — **hiện KHÔNG có cơ chế dọn
-  image cũ nào**, cần viết lại đúng (scoped theo từng service qua `tagPrefixList`) trước khi bật lại.
+### Hạ tầng & deploy — ĐÃ CHUYỂN SANG ACCOUNT MỚI + GITOPS
+- **Account production giờ là `197826770971`** (không phải account BTC `012619468490` cũ — account
+  cũ bị block, team chốt migrate). EKS `techx-corp-tf3`, `ap-southeast-1`, **version 1.35**. ECR
+  `197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp`.
+- **Deploy bằng GitOps/ArgoCD (App-of-Apps), KHÔNG còn `helm upgrade` tay.** Nguồn deploy thật là
+  **nhánh `deploy/account-migration-gitops`** (KHÔNG phải `main` — `gitops/apps/*.yaml` trên main còn
+  ghi `targetRevision: main` là lỗi thời). ArgoCD apps: `techx-corp` (chart chính), `techx-edge`,
+  `techx-infrastructure-app` (`gitops/infrastructure/`), `karpenter`, `karpenter-nodepool`, `kyverno`,
+  `kyverno-policies`, `external-secrets`, `flagd-secret-sync`, `argo-rollouts`. Auto-sync + selfHeal + prune.
+- **Terraform** ở `infra/live/production/` (root duy nhất), state S3 `techx-tf3-197826770971-tfstate`,
+  lock DynamoDB `techx-tf3-terraform-lock`. Module: `network`, `eks-platform`, `access` (SSM bastion),
+  `edge` (CloudFront), `cloudflare-access` (REL-17). CI: `terraform-plan.yml` chạy trên push nhánh
+  migration; `terraform-apply.yml` thủ công. **Luôn `terraform plan -out=tfplan` rồi `apply tfplan`**,
+  không `apply -auto-approve`.
+- **Edge**: CloudFront `https://d2tn71186d7ilz.cloudfront.net` (storefront public) → internal ALB
+  (VPC Origin, `frontend-proxy-internal` ingress ở `gitops/edge/`) → `frontend-proxy` (Envoy).
+- **Node**: managed node group thường (3 AZ) + **node group stateful riêng `stateful_1a`** (1 node,
+  AZ 1a, taint `techx.io/workload=stateful`) cho postgres+valkey. Karpenter (`flash-sale-spot`) cho
+  burst. metrics-server (EKS addon). Kyverno (baseline security context + require-resource-requests,
+  đang audit).
 
-## Phát hiện kỹ thuật đã xác nhận qua đọc code (không phải suy đoán)
+### Truy cập cluster — 2 đường song song
+- **SSM bastion** (mặc định): `i-02a8d3e39b87180ce`. `aws ssm start-session ... AWS-StartPortForwardingSessionToRemoteHost`
+  → `localhost:8443` → `kubectl config set-cluster ... --server=https://localhost:8443 --insecure-skip-tls-verify`.
+  EKS API private-only. **Tunnel hay tự đóng sau ~10-20 phút idle** — mở lại khi cần.
+- **Cloudflare Zero Trust (REL-17, phiên 14-15/07)**: domain `arthur-ngo.org` (cá nhân, tạm).
+  `grafana.arthur-ngo.org` / `jaeger.arthur-ngo.org/jaeger/ui/` / `argocd.arthur-ngo.org` — vào thẳng
+  UI qua SSO, **không cần kubectl/IAM**. `kubectl.arthur-ngo.org` cho kubectl (vẫn cần IAM). `cloudflared`
+  Deployment chạy trong cluster. Xem [`docs/runbooks/cloudflare-zero-trust-access.md`](docs/runbooks/cloudflare-zero-trust-access.md).
+- **Branch protection** trên `deploy/account-migration-gitops`: **đã bật, chặn force-push + xoá nhánh**
+  (sau khi VietSory force-push 5 lần/1 ngày gây rối). Làm nhánh + PR, base là nhánh migration này.
 
-Đây là những điểm yếu cụ thể đã soi trực tiếp trong `techx-corp-chart/values.yaml` và code
-service dưới `techx-corp-platform/src/`, dùng làm bằng chứng cho backlog Reliability/Performance:
+### Mandates
+- **Mandate #1 (network exposure)** — ✅ Đạt: route ops (`/grafana`,`/jaeger`,`/feature`,`/loadgen`) đã
+  gỡ khỏi Envoy → CloudFront trả `403`; ops riêng tư qua SSM/Cloudflare; `/flagservice` giữ nguyên.
+  ADR `docs/adr/0004-mandate-01-cdo01-envoy-least-exposure.md` (CDO01).
+- **Mandate #2 (scale under budget / flash sale 200 user)** — 🟡 Nền xong (Karpenter Spot + HPA hot-path
+  + metrics-server + ResourceQuota `pods:90`), **chờ CDO01 chạy load test 200 user**. ADR
+  `docs/adr/0004-mandate-02-flash-sale-cdo02.md`. Phân tích capacity: `docs/mandate-02-load-test-capacity-analysis.md`.
+- **Mandate #3 (bảo trì không downtime)** — 🟢 Core xong, **chờ demo** (bạn sẽ chạy sau khi CDO01 test
+  xong Mandate 2). ADR `docs/adr/0007-...`. Đã làm: topologySpread (zone-hard ép replica ra 2 AZ/node) +
+  `maxUnavailable:0` (PR #112), graceful shutdown preStop/grace (PR #114), ALB graceful drain cho
+  frontend-proxy (PR #116), quy trình planned-failover datastore (PR #117). Đã **test thử drain 1 node
+  app: 100% success, p95 205ms**. Runbook demo: `docs/runbooks/mandate-03-drain-node-demo.md`. Service
+  phụ trợ (ad/recommendation/llm/accounting/fraud/email/image-provider) **cố ý giữ 1 replica** (degrade
+  gọn/async, không nhân đôi — đúng ràng buộc mandate).
 
-- **`default.replicas: 1` áp dụng cho toàn bộ ~18 service**, không service nào override —
-  mọi service là SPOF ở tầng pod, không riêng `cart` (khớp INC-2 trong lịch sử sự cố).
-- **Không có `readinessProbe`/`livenessProbe` nào được cấu hình** cho bất kỳ component nào
-  trong chart (khớp INC-3).
-- **Đính chính (08/07, xác minh trên pod thật):** Helm chart tự mirror `requests = limits` cho
-  memory (mọi pod QoS `Guaranteed` cho memory) — nhận định "không có requests" ban đầu chỉ đúng
-  một phần. Cái thật sự thiếu là **CPU**: 28/32 container hoàn toàn không có `requests`/`limits`
-  CPU nào (xác minh qua `kubectl get pods -o json`). Một số memory limit rất thấp (`checkout`,
-  `product-catalog`, `currency`, `shipping`: 20Mi) — `accounting` (120Mi) đã thật sự OOMKilled
-  44 lần/19h do quá thấp, xem `docs/postmortem/0001-...md`.
-- **Health check giả trên toàn hệ thống**: `checkout`, `product-catalog`, `recommendation`,
-  `currency`, `product-reviews`, `ad`, `payment` đều trả "SERVING" cố định, không kiểm tra
-  dependency (DB/Kafka/Redis) thật. Thêm probe vô nghĩa cho tới khi sửa các hàm `Check()` này.
-- **`product-catalog` (Go)**: mở DB qua `database/sql` nhưng không set
-  `MaxOpenConns`/`MaxIdleConns` — mặc định unlimited, có thể làm cạn `max_connections` của
-  Postgres khi tải cao (khớp INC-1, góc nhìn khác: thiếu trần phía client thay vì pool nhỏ).
-- **`product-reviews` (Python)**: `psycopg2.connect()` mở mới cho **mỗi request**, không hề
-  có connection pool — đây là service đứng sau tính năng AI chủ lực (tóm tắt review).
-- **`checkout.PlaceOrder`**: charge thẻ (`chargeCard`) xảy ra **trước** khi gọi
-  `shipOrder`; nếu `shipOrder` lỗi sau khi đã charge thành công, hàm trả lỗi ngay,
-  **không có logic hoàn tiền/rollback** — khách bị trừ tiền nhưng đơn coi như thất bại.
-- **Envoy (`frontend-proxy`) có filter `envoy.filters.http.fault`** cấu hình sẵn
-  (delay injection qua header, `max_active_faults: 100`) — coi đây là hạ tầng nhạy cảm
-  tương tự flagd, đừng gỡ khi tối ưu Envoy.
-- 3 service dùng chung 1 Postgres instance (`product-catalog`, `product-reviews`,
-  `accounting`), 1 Valkey instance (`cart`), 1 Kafka broker (`checkout` producer →
-  `accounting` + `fraud-detection` consumer) — không có datastore nào có replica.
-- **Bổ sung (09/07, đọc sâu code từng service — đã đưa vào backlog CDO02 mục R9-R12):**
-  `checkout` publish Kafka bằng Sarama async producer với `RequiredAcks = NoResponse`
-  (fire-and-forget) **+** `accounting` (`Consumer.cs`) dùng `EnableAutoCommit = true` và
-  bỏ message lặng lẽ nếu parse/DB lỗi → **có thể mất đơn hàng hoàn toàn âm thầm** sau khi
-  khách đã bị charge (nặng hơn thiếu-rollback đã biết, vì mất luôn dấu vết). `valkey-cart`
-  không có bất kỳ cấu hình persistence nào (không RDB/AOF/PVC) — restart pod mất sạch giỏ
-  hàng đang hoạt động. `currency` (C++) không validate currency code, code lạ → chia cho 0
-  → NaN/Inf âm thầm thay vì lỗi rõ ràng. `quote` (PHP) nuốt exception khi thiếu
-  `numberOfItems`, trả `0.0` thay vì lỗi. **`llm` service xác nhận là mock hoàn toàn**
-  (tóm tắt/trả lời từ JSON tĩnh định sẵn, không gọi LLM thật nào) — cắm LLM thật là việc
-  của AIO02 qua `values-aio-llm.yaml`, không phải backlog CDO02.
+### Rủi ro / việc còn mở
+- **⚠️ 4 IAM user** (`arthur`, `CDO01`, `CDO02`, `AIO02`) + `mentor` đều `AdministratorAccess` — trái
+  least-privilege. Chưa thu hẹp (trụ Security/CDO01).
+- **🔑 Secret cần rotate sau bài tập**: flagd sync token (đã dùng trong `kubectl create secret`),
+  **Cloudflare API token** (đã dùng phiên 14/07, file `~/Downloads/tokencloudflare.txt` cần xoá).
+- **Datastore không HA**: postgres/valkey/kafka single-replica trên 1 node stateful. Residual risk có
+  ý thức (ADR 0007); HA thật = RDS/ElastiCache là roadmap ngoài ngân sách (ADR 0002, 0005).
 
-## Quy ước làm việc trong repo này
+---
 
-- Không push thẳng `main` — làm nhánh + PR (`gitleaks` status check phải xanh).
-- Cài hook secret-scanning sau khi clone: `bash scripts/setup-hooks.sh`.
-- ADR cho mọi quyết định hạ tầng lớn, postmortem ký tên sau mỗi sự cố. Đã có sẵn:
-  [`docs/postmortem/`](docs/postmortem/) (sự cố `accounting` OOMKilled + ECR lifecycle),
-  [`docs/backlog/`](docs/backlog/) (backlog ưu tiên CDO02). Chưa có `docs/adr/` — tạo khi có
-  quyết định kiến trúc lớn đầu tiên cần ghi lại.
+## Backlog CDO02 — trạng thái thật (verify 15/07 qua code + cluster)
+
+Nguồn: [`docs/backlog/cdo02-reliability-cost-backlog.md`](docs/backlog/cdo02-reliability-cost-backlog.md).
+
+**✅ ĐÃ LÀM + deployed:** REL-01 (replicas 2 + PDB), REL-02 (health dependency-aware cho
+product-catalog/product-reviews/checkout qua gRPC readiness; service stateless giữ static SERVING là
+đúng), REL-03 (probe toàn service), REL-04 (đảo ship-before-charge vì payment không có Refund RPC),
+REL-05 (connection pool trong code — **KHÔNG dùng PgBouncer**, nhánh đó bị bỏ), REL-07 (CPU
+requests/limits 0/53 thiếu), REL-09 (Kafka `WaitForAll` + accounting manual commit), REL-10 (PVC cho
+cả postgres/valkey/kafka), REL-12 (quote throw khi thiếu field), REL-13 (Grafana OOM — mem 1Gi),
+REL-16 (Kafka OOM — mem 1536Mi), REL-17 (Cloudflare access). COST-01 (ECR lifecycle `tagPatternList`),
+COST-02 (Karpenter thay cluster-autoscaler), COST-03 (Spot), COST-06 (ResourceQuota), COST-07 (NAT đơn).
+
+**❌ CÒN BUG / cần làm:**
+- **REL-11 (currency)** 🟢 — bug thật còn nguyên: `currency_conversion[from_code]` với code lạ → chia 0
+  → NaN âm thầm. Cần validate + trả `INVALID_ARGUMENT`. Fix nhỏ, rebuild 1 image.
+
+**🟡 MỘT PHẦN / verify:** REL-06 (resource đã set, chưa load test đầy đủ), REL-14 (đã có
+`fix(rel-14) retry product-catalog DB init` — cần verify crash hết), REL-15 (có `grafana-alerting` cm,
+chưa rõ phủ đủ restart/OOM/readiness), COST-04 (right-size đang tiếp diễn), COST-05 (load-gen OOM —
+config hardened, root cause chưa chốt).
+
+**📌 THEO DÕI (đúng thiết kế):** REL-08 (datastore đơn lẻ → managed HA là roadmap).
+
+---
+
+## Phát hiện code — bản chất service (giữ để tham chiếu, đã cập nhật trạng thái fix)
+
+- 3 service dùng chung 1 Postgres (`product-catalog`, `product-reviews`, `accounting`), 1 Valkey
+  (`cart`), 1 Kafka broker (`checkout`→`accounting`/`fraud-detection`). **Giờ đã có PVC cả 3** (REL-10).
+- `checkout` charge trước ship → **đã fix REL-04** (đảo thứ tự ship-before-charge).
+- Health check giả → **đã fix REL-02** cho service có DB (còn currency/ad/payment stateless giữ static
+  SERVING là đúng).
+- `checkout` Kafka fire-and-forget + `accounting` auto-commit mất đơn → **đã fix REL-09**.
+- `valkey-cart` không persistence → **đã fix** (PVC + AOF).
+- `currency` không validate code → **CHƯA fix (REL-11)**.
+- `quote` nuốt exception → **đã fix REL-12**.
+- **`llm` là mock hoàn toàn** (JSON tĩnh) — cắm LLM thật là việc AIO02, không phải CDO02.
+
+---
+
+## Quy ước làm việc
+
+- **KHÔNG push thẳng `main` hay `deploy/account-migration-gitops`** — làm nhánh + PR, base là
+  `deploy/account-migration-gitops`. **Luôn branch từ `origin/deploy/account-migration-gitops` sau khi
+  `git fetch`** (branch từ local ref cũ đã 2 lần gây conflict). Branch protection chặn force-push.
+- **Verify chart change bằng `helm template`** (đúng flags ArgoCD dùng) trước khi commit — schema
+  `values.schema.json` là `additionalProperties:false`, thêm field mà quên update schema sẽ làm ArgoCD
+  `ComparisonError` chết cả pipeline (đã xảy ra với `digest`).
+- Đổi app-code cần **rebuild image** (CI `build-push-ecr.yml`, digest-pinned) rồi cập nhật
+  `imageOverride` trong `values-prod.yaml`. `default.image.tag` **không** tự nối tên service cho
+  `imageOverride.tag` (phải ghi FULL `<sha>-<service>`).
+- ADR ký tên cho quyết định lớn (`docs/adr/`), postmortem sau sự cố (`docs/postmortem/`), runbook
+  (`docs/runbooks/`). Đã có nhiều — đọc trước khi làm lại.
+- Secret không bao giờ vào file tracked. Với thao tác hủy hoại/live (drain, delete pod datastore),
+  xác nhận với user + làm trong giờ ít traffic.
 
 ## Hướng dẫn cho Claude Code ở các phiên sau
 
-- Luôn ưu tiên đọc file này trước, sau đó mới đọc sâu vào `phase3 - information/` nếu cần
-  chi tiết luật/kiến trúc/SLO.
-- Nếu người dùng nói "trụ của mình", "team mình", ngầm hiểu là CDO02 trừ khi họ nói khác.
-- Khi thực hiện thay đổi hạ tầng thật (Helm, K8s, CI), luôn nhắc nhở về luật flagd/secret ở
-  trên trước khi hành động — vi phạm là disqualify cho cả TF, không chỉ 1 nhóm.
-- Cập nhật mục "Trạng thái hiện tại" mỗi khi có tiến triển lớn (deploy xong, backlog chốt,
-  pillar draft chốt chính thức, mandate mới xuất hiện) — đừng để file này lạc hậu so với
-  thực tế, vì đây là nguồn thông tin đầu tiên mọi phiên chat mới sẽ đọc.
+- Đọc file này trước, rồi mới đọc sâu `phase3 - information/` nếu cần.
+- "Trụ của mình"/"team mình" = CDO02.
+- Trước mọi thay đổi hạ tầng thật (GitOps/K8s/Terraform/CI), nhắc luật flagd/secret ở trên — vi phạm
+  là disqualify cho cả TF.
+- **Nguồn deploy thật = nhánh `deploy/account-migration-gitops`, account `197826770971`** — không nhầm
+  với `main`/account cũ.
+- Cập nhật mục "Trạng thái hiện tại" + trạng thái backlog mỗi khi có tiến triển lớn — đừng để file lạc hậu.
