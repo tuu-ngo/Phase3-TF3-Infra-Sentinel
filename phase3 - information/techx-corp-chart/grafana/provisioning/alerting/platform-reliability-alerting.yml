@@ -1,0 +1,259 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+---
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: techx-platform-reliability
+    folder: platform-reliability
+    interval: 1m
+    rules:
+      - uid: techx-pod-restarts
+        title: TechXPodRestartsIncreasing
+        condition: restart_threshold
+        data:
+          - refId: restart_rate
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: webstore-metrics
+            model:
+              editorMode: code
+              expr: |-
+                sum by (namespace, pod) (
+                  increase(kube_pod_container_status_restarts_total{namespace="techx-tf3"}[10m])
+                )
+              instant: true
+              interval: ""
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: restart_rate
+          - refId: restart_threshold
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: restart_rate
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: restart_threshold
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "Pod restart count is increasing in techx-tf3"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} restarted in the last 10 minutes. Current value: {{ $values.restart_rate.Value }}."
+        labels:
+          severity: warning
+          team_name: platform
+          category: restart
+        isPaused: false
+        notification_settings:
+          receiver: grafana-default-email
+
+      - uid: techx-oomkilled
+        title: TechXPodOOMKilled
+        condition: oom_threshold
+        data:
+          - refId: oom_events
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: webstore-metrics
+            model:
+              editorMode: code
+              expr: |-
+                sum by (namespace, pod, container) (
+                  max_over_time(kube_pod_container_status_last_terminated_reason{namespace="techx-tf3",reason="OOMKilled"}[10m])
+                )
+              instant: true
+              interval: ""
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: oom_events
+          - refId: oom_threshold
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: oom_events
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: oom_threshold
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "Pod hit OOMKilled in techx-tf3"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} container {{ $labels.container }} was OOMKilled within the last 10 minutes."
+        labels:
+          severity: critical
+          team_name: platform
+          category: oom
+        isPaused: false
+        notification_settings:
+          receiver: grafana-default-email
+
+      - uid: techx-readiness-failing
+        title: TechXPodReadinessFailing
+        condition: readiness_threshold
+        data:
+          - refId: readiness_ratio
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: webstore-metrics
+            model:
+              editorMode: code
+              expr: |-
+                max by (namespace, pod, container) (
+                  kube_pod_container_status_ready{namespace="techx-tf3"} == 0
+                )
+              instant: true
+              interval: ""
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: readiness_ratio
+          - refId: readiness_threshold
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: readiness_ratio
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: readiness_threshold
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Pod stayed NotReady in techx-tf3"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} container {{ $labels.container }} has remained NotReady for at least 5 minutes."
+        labels:
+          severity: warning
+          team_name: platform
+          category: readiness
+        isPaused: false
+        notification_settings:
+          receiver: grafana-default-email
+
+      - uid: techx-checkout-unavailable
+        title: TechXCheckoutPathUnavailable
+        condition: checkout_threshold
+        data:
+          - refId: checkout_availability
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: webstore-metrics
+            model:
+              editorMode: code
+              expr: |-
+                sum(
+                  rate(
+                    http_server_request_duration_seconds_count{
+                      service_namespace="techx-corp",
+                      service_name="checkout"
+                    }[5m]
+                  )
+                )
+              instant: true
+              interval: ""
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: checkout_availability
+          - refId: checkout_threshold
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: lte
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: checkout_availability
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: checkout_threshold
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Checkout service has no observed requests"
+          description: "Checkout service has had no server-side request traffic for 5 minutes. Verify whether this is a real outage or an idle environment before escalating."
+        labels:
+          severity: warning
+          team_name: platform
+          category: checkout
+        isPaused: false
+        notification_settings:
+          receiver: grafana-default-email
