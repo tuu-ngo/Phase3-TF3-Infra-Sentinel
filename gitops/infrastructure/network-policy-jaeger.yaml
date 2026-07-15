@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-access
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: jaeger
+  policyTypes:
+  - Ingress
+  ingress:
+  # Cho phép các pod trong namespace đẩy trace (Ingest)
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 14250
+    - protocol: TCP
+      port: 14268
+    - protocol: TCP
+      port: 4317
+    - protocol: TCP
+      port: 4318
+    - protocol: UDP
+      port: 6831
+    - protocol: UDP
+      port: 6832
+  # KHÔNG MỞ CỔNG UI (16686) CHO POD NỘI BỘ, CHỈ TRUY CẬP QUA PORT-FORWARD HOẶC INGRESS CỦA QUẢN TRỊ
