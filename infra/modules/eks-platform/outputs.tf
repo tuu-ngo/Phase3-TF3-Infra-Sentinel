@@ -38,6 +38,10 @@ output "external_secrets_role_arn" {
   value = aws_iam_role.external_secrets.arn
 }
 
+output "product_reviews_bedrock_role_arn" {
+  value = aws_iam_role.product_reviews_bedrock.arn
+}
+
 output "flagd_sync_secret_name" {
   value = aws_secretsmanager_secret.flagd_sync_token.name
 }

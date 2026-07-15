@@ -1,11 +1,28 @@
 # AIO: cắm LLM thật thay mock (envOverrides = upsert, không xoá env khác).
-# Secret llm-api-key tạo trước: kubectl -n techx-<aio> create secret generic llm-api-key --from-literal=key=<REAL_KEY>
+# Production-safe path: dùng IRSA riêng cho product-reviews để gọi Bedrock,
+# không cấp quyền Bedrock cho toàn bộ workload đang dùng serviceAccount chung.
 components:
   product-reviews:
+    serviceAccount:
+      create: true
+      name: product-reviews-bedrock
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::197826770971:role/techx-corp-tf3-product-reviews-bedrock
     envOverrides:
-      - name: LLM_BASE_URL
-        value: https://api.openai.com/v1        # hoặc Bedrock-compatible gateway
+      # Lựa chọn LLM Provider: 'openai' hoặc 'bedrock'
+      - name: LLM_PROVIDER
+        value: bedrock
+
+      # Model tóm tắt review chính.
       - name: LLM_MODEL
-        value: gpt-4o-mini
-      - name: OPENAI_API_KEY
-        valueFrom: { secretKeyRef: { name: llm-api-key, key: key } }
+        value: amazon.nova-lite-v1:0
+
+      # Judge model sẽ mặc định về amazon.nova-micro-v1:0 trong code nếu không override.
+      - name: AWS_REGION
+        value: us-east-1
+
+      # Nếu cần rollback sang OpenAI/LiteLLM, thêm lại các biến sau:
+      # - name: LLM_BASE_URL
+      #   value: https://api.openai.com/v1
+      # - name: OPENAI_API_KEY
+      #   valueFrom: { secretKeyRef: { name: llm-api-key, key: key } }
