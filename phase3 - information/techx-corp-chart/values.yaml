@@ -495,6 +495,12 @@ components:
       runAsUser: 101  # envoy
       runAsGroup: 101
       runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   image-provider:
     enabled: true
@@ -520,6 +526,16 @@ components:
     resources:
       limits:
         memory: 50Mi
+    securityContext:
+      runAsUser: 101  # nginx
+      runAsGroup: 101
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   load-generator:
     enabled: true
@@ -688,6 +704,12 @@ components:
       runAsUser: 33  # www-data
       runAsGroup: 33
       runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   recommendation:
     enabled: true
@@ -855,6 +877,12 @@ components:
       runAsUser: 1000  # appuser
       runAsGroup: 1000
       runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
   llm:
     enabled: true
@@ -946,6 +974,12 @@ components:
       runAsUser: 999  # valkey
       runAsGroup: 1000
       runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
 
 # Progressive delivery is deliberately opt-in and starts with checkout only.
 # Its Deployment remains the workload template during migration; see
