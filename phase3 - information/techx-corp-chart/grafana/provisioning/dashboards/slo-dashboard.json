@@ -133,7 +133,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
           "editorMode": "code",
-          "expr": "1 - (\n  (sum(rate(traces_span_metrics_calls_total{service_name=\"cart\", status_code=\"STATUS_CODE_ERROR\"}[24h])) or vector(0))\n  /\n  sum(rate(traces_span_metrics_calls_total{service_name=\"cart\"}[24h]))\n)",
+          "expr": "1 - (\n  (sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", span_kind=\"SPAN_KIND_SERVER\", span_name=~\"GET /api/cart|POST /api/cart\", status_code=\"STATUS_CODE_ERROR\"}[24h])) or vector(0))\n  /\n  sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", span_kind=\"SPAN_KIND_SERVER\", span_name=~\"GET /api/cart|POST /api/cart\"}[24h]))\n)",
           "legendFormat": "Cart Success Rate",
           "instant": true,
           "refId": "A"
@@ -364,7 +364,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
           "editorMode": "code",
-          "expr": "sum(rate(traces_span_metrics_calls_total{service_name=\"cart\"}[$__rate_interval]))",
+          "expr": "sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", span_kind=\"SPAN_KIND_SERVER\", span_name=~\"GET /api/cart|POST /api/cart\"}[$__rate_interval]))",
           "legendFormat": "Total req/s",
           "range": true,
           "refId": "A"
@@ -372,7 +372,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
           "editorMode": "code",
-          "expr": "sum(rate(traces_span_metrics_calls_total{service_name=\"cart\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval]))",
+          "expr": "sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", span_kind=\"SPAN_KIND_SERVER\", span_name=~\"GET /api/cart|POST /api/cart\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval]))",
           "legendFormat": "Error req/s",
           "range": true,
           "refId": "B"
@@ -411,7 +411,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
           "editorMode": "code",
-          "expr": "1 - ((sum(rate(traces_span_metrics_calls_total{service_name=\"cart\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"cart\"}[$__rate_interval])))",
+          "expr": "1 - ((sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", span_kind=\"SPAN_KIND_SERVER\", span_name=~\"GET /api/cart|POST /api/cart\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", span_kind=\"SPAN_KIND_SERVER\", span_name=~\"GET /api/cart|POST /api/cart\"}[$__rate_interval])))",
           "legendFormat": "Cart success rate",
           "range": true,
           "refId": "A"
@@ -596,7 +596,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
           "editorMode": "code",
-          "expr": "1 - (\n  ((sum(rate(traces_span_metrics_calls_total{service_name=\"cart\", status_code=\"STATUS_CODE_ERROR\"}[24h])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"cart\"}[24h])))\n  / (1 - 0.995)\n)",
+          "expr": "1 - (\n  ((sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", span_kind=\"SPAN_KIND_SERVER\", span_name=~\"GET /api/cart|POST /api/cart\", status_code=\"STATUS_CODE_ERROR\"}[24h])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\", span_kind=\"SPAN_KIND_SERVER\", span_name=~\"GET /api/cart|POST /api/cart\"}[24h])))\n  / (1 - 0.995)\n)",
           "legendFormat": "Budget remaining",
           "instant": true,
           "refId": "A"
