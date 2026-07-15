@@ -46,16 +46,12 @@ test/tracetesting/tracetesting-vars.yaml
 /src/fraud-detection/src/main/proto
 /src/payment/demo.proto
 /src/shipping/proto/
+/src/currency/proto
 /src/frontend/pb
 
 # Android
 *.apk
 
 !src/currency/build
-# rel/overlays/bin and assets/vendor are hand-vendored release/build assets
-# required by the flagd-ui Dockerfile, not generated build output - the
-# generic bin/ and vendor/ ignore rules above would otherwise drop them.
-!src/flagd-ui/rel/overlays/bin/
-!src/flagd-ui/assets/vendor/
 src/cart/src/Program.cs.bak
 src/flagd/demo.flagd.json.bak

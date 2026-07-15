@@ -492,7 +492,7 @@ services:
           memory: 20M
     restart: unless-stopped
     ports:
-      - "${PRODUCT_CATALOG_PORT}"
+      - "${PRODUCT_CATALOG_PORT}:${PRODUCT_CATALOG_PORT}"
     environment:
       - PRODUCT_CATALOG_PORT
       - FLAGD_HOST
@@ -528,7 +528,7 @@ services:
           memory: 100M
     restart: unless-stopped
     ports:
-      - "${PRODUCT_REVIEWS_PORT}"
+      - "3551:${PRODUCT_REVIEWS_PORT}"
     environment:
       - PRODUCT_REVIEWS_PORT
       - OTEL_PYTHON_LOG_CORRELATION=true
@@ -556,8 +556,6 @@ services:
         condition: service_started
       otel-collector:
         condition: service_started
-    env_file:
-      - .env.override
     logging: *logging
 
   # Quote service
@@ -679,7 +677,7 @@ services:
       "file:./etc/flagd/demo.flagd.json"
     ]
     ports:
-      - "${FLAGD_PORT}"
+      - "${FLAGD_PORT}:${FLAGD_PORT}"
       - "${FLAGD_OFREP_PORT}"
     volumes:
       - ./src/flagd:/etc/flagd
@@ -765,15 +763,13 @@ services:
     deploy:
       resources:
         limits:
-          memory: 250M
+          memory: 50M
     restart: unless-stopped
     environment:
       - FLAGD_HOST
       - FLAGD_PORT
     ports:
       - "${LLM_PORT}"
-    env_file:
-      - .env.override
     depends_on:
       flagd:
         condition: service_started

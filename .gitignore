@@ -37,3 +37,7 @@ infra/terraform.tfvars
 Thumbs.db
 .idea/
 .vscode/
+
+# --- Private docs with credentials ---
+/phase3 - information/docs/private/
+

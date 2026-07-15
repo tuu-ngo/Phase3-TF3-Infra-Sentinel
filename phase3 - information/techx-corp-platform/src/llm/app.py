@@ -12,7 +12,6 @@ import os
 import logging
 
 from openfeature import api
-from openai import OpenAI
 from openfeature.contrib.provider.flagd import FlagdProvider
 
 app = Flask(__name__)
@@ -23,15 +22,6 @@ product_review_summaries_file_path = "./product-review-summaries.json"
 
 inaccurate_product_review_summaries = None
 inaccurate_product_review_summaries_file_path = "./inaccurate-product-review-summaries.json"
-
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-client = OpenAI(
-    base_url=LLM_BASE_URL,
-    api_key=OPENAI_API_KEY if OPENAI_API_KEY else "dummy_key"
-)
 
 def load_product_review_summaries(file_path):
     try:
@@ -65,92 +55,115 @@ def load_product_review_summaries(file_path):
         app.logger.error(f"An unexpected error occurred: {e}")
 
 
-# def generate_response(product_id):
+def generate_response(product_id):
 
-#     """Generate a response by providing the pre-generated summary for the specified product"""
-#     product_review_summary = None
-
-#     llm_inaccurate_response = check_feature_flag("llmInaccurateResponse")
-#     app.logger.info(f"llmInaccurateResponse feature flag: {llm_inaccurate_response}")
-#     if llm_inaccurate_response and product_id == "L9ECAV7KIM":
-#         app.logger.info(f"Returning an inaccurate response for product_id: {product_id}")
-#         product_review_summary = inaccurate_product_review_summaries.get(product_id)
-#     else:
-#         product_review_summary = product_review_summaries.get(product_id)
-
-#     app.logger.info(f"product_review_summary is: {product_review_summary}")
-
-#     return product_review_summary
-
-def generate_response(product_id, messages):
+    """Generate a response by providing the pre-generated summary for the specified product"""
     product_review_summary = None
 
     llm_inaccurate_response = check_feature_flag("llmInaccurateResponse")
     app.logger.info(f"llmInaccurateResponse feature flag: {llm_inaccurate_response}")
-
     if llm_inaccurate_response and product_id == "L9ECAV7KIM":
         app.logger.info(f"Returning an inaccurate response for product_id: {product_id}")
         product_review_summary = inaccurate_product_review_summaries.get(product_id)
-        return product_review_summary
+    else:
+        product_review_summary = product_review_summaries.get(product_id)
 
-    import json
+    app.logger.info(f"product_review_summary is: {product_review_summary}")
 
-    # --- STEP 1: ĐƠN GIẢN HÓA - Dùng thẳng "this product" ---
-    display_name = "this product"
+    return product_review_summary
 
-    # --- STEP 2: Extract và format actual reviews ---
-    mock_context = None
-    for msg in messages:
-        if msg.get("role") == "tool" and msg.get("name") == "fetch_product_reviews":
-            raw = msg.get("content", "")
-            try:
-                reviews_list = json.loads(raw)
-                lines = []
-                for review in reviews_list:
-                    user, text, rating = review[0], review[1], review[2]
-                    lines.append(f"- @{user} ({rating}/5 stars): \"{text}\"")
-                mock_context = "\n".join(lines)
-                app.logger.info(f"Formatted {len(lines)} reviews for product '{display_name}'")
-            except Exception as e:
-                mock_context = raw
-                app.logger.warning(f"Could not parse reviews JSON, using raw: {e}")
-            break
+def parse_product_id(last_message):
+    match = re.search(r"product ID:([A-Z0-9]+)", last_message)
+    if match:
+        return match.group(1).strip()
 
-    if mock_context is None:
-        mock_context = product_review_summaries.get(product_id, "No review data available for this product.")
-        app.logger.info(f"Using static fallback summary for product_id: {product_id}")
+    match = re.search(r"product ID, but make the answer inaccurate:([A-Z0-9]+)", last_message)
+    if match:
+        return match.group(1).strip()
 
-    # --- STEP 3: Gọi Groq ---
-    if OPENAI_API_KEY and OPENAI_API_KEY != "dummy_key":
-        try:
-            app.logger.info(f"Calling LLM ({LLM_MODEL}) for product '{display_name}' (id: {product_id})")
+    raise ValueError("product ID not found in input message")
 
-            system_prompt = (
-                f"You are a professional product review analyst for TechX Corp.\n"
-                f"Analyze the customer reviews below and write a concise, well-structured summary paragraph in English.\n"
-                f"CRITICAL RULES:\n"
-                f"1. You MUST always refer to the item as 'this product' or 'the product'.\n"
-                f"2. NEVER reveal, mention, or print the raw tracking ID or code '{product_id}' anywhere in your response.\n\n"
-                f"--- CUSTOMER REVIEWS ---\n"
-                f"{mock_context}\n"
-                f"--- END OF REVIEWS ---"
-            )
+@app.route('/v1/chat/completions', methods=['POST'])
+def chat_completions():
+    data = request.json
+    messages = data.get('messages', [])
+    stream = data.get('stream', False)
+    model = data.get('model', 'techx-llm')
+    tools = data.get('tools', None)
 
-            clean_groq_messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": "Please summarize the reviews for this product."}
-            ]
+    app.logger.info(f"Received a chat completion request: '{messages}'")
 
-            response = client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=clean_groq_messages, 
-                temperature=0.1  # Nhiệt độ thấp để AI tuân thủ tuyệt đối rule thay chữ
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            app.logger.error(f"LLM call failed for product '{display_name}': {e}", exc_info=True)
+    last_message = messages[-1]["content"]
 
-    return mock_context
+    app.logger.info(f"last_message is: '{last_message}'")
+
+    if 'What age(s) is this recommended for?' in last_message:
+        response_text = 'This product is recommended for ages 7 and above.'
+        return build_response(model, messages, response_text)
+    elif 'Were there any negative reviews?' in last_message:
+        response_text = 'No, there were no reviews less than three stars for this product.'
+        return build_response(model, messages, response_text)
+    elif not ('Can you summarize the product reviews?' in last_message or 'Based on the tool results, answer the original question about product ID' in last_message):
+        response_text = 'Sorry, I\'m not able to answer that question.'
+        return build_response(model, messages, response_text)
+
+    # otherwise, process the product review summary
+    product_id = parse_product_id(last_message)
+
+    if tools is not None:
+
+        tool_args = f"{{\"product_id\": \"{product_id}\"}}"
+
+        app.logger.info(f"Processing a tool call with args: '{tool_args}'")
+
+        app.logger.info(f"The model is: {model}")
+        if model.endswith("rate-limit"):
+            app.logger.info(f"Returning a rate limit error")
+            response = {
+                "error": {
+                    "message": "Rate limit reached. Please try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": "null",
+                    "code": "null"
+                }
+            }
+            return jsonify(response), 429
+        else:
+            # Non-streaming response
+            response = {
+                "id": f"chatcmpl-mock-{int(time.time())}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "requesting a tool call",
+                        "tool_calls": [{
+                            "id": "call",
+                            "type": "function",
+                            "function": {
+                                "name": "fetch_product_reviews",
+                                "arguments": tool_args
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }],
+                "usage": {
+                    "prompt_tokens": sum(len(m.get("content", "").split()) for m in messages),
+                    "completion_tokens": "0",
+                    "total_tokens": sum(len(m.get("content", "").split()) for m in messages)
+                }
+            }
+            return jsonify(response)
+
+    else:
+        # Generate the response
+        response_text = generate_response(product_id)
+
+        return build_response(model, messages, response_text)
 
 def build_response(model, messages, response_text):
     app.logger.info(f"Processing a response: '{response_text}'")
@@ -206,4 +219,4 @@ if __name__ == '__main__':
 
     print("OpenAI API server starting on http://localhost:8000")
     print("Set your OpenAI base URL to: http://localhost:8000/v1")
-    app.run(host='0.0.0.0', port=8000, debug=False)
+    app.run(host='0.0.0.0', port=8000, debug=True)
