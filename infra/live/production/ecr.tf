@@ -60,8 +60,25 @@ locals {
   )
 }
 
+resource "aws_ecr_repository" "techx_corp" {
+  name                 = local.techx_ecr_repository_name
+  image_tag_mutability = "IMMUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "aws_ecr_lifecycle_policy" "techx_corp" {
-  repository = local.techx_ecr_repository_name
+  repository = aws_ecr_repository.techx_corp.name
 
   policy = jsonencode({
     rules = local.techx_ecr_lifecycle_rules

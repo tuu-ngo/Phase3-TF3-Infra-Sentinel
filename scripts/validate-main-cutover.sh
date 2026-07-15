@@ -26,6 +26,9 @@ grep -Fq -- '- ../deploy/values-flagd-sync.yaml' gitops/apps/techx-corp.yaml
 grep -Fq -- '- ../deploy/values-prod.yaml' gitops/apps/techx-corp.yaml
 grep -Fq '197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp' gitops/apps/techx-corp.yaml
 grep -Fq '197826770971.dkr.ecr.ap-southeast-1.amazonaws.com' .github/workflows/build-push-ecr.yml
+grep -Fq 'resource "aws_ecr_repository" "techx_corp"' infra/live/production/ecr.tf
+grep -Fq 'prevent_destroy = true' infra/live/production/ecr.tf
+grep -Fq 'repository = aws_ecr_repository.techx_corp.name' infra/live/production/ecr.tf
 
 if rg -n '012619468490' .github infra gitops 'phase3 - information/deploy/values-prod.yaml'; then
   echo 'old AWS account found in an active production path' >&2
