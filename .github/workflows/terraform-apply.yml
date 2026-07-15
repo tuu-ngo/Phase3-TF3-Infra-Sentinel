@@ -1,4 +1,4 @@
-name: Terraform Apply (migration branch)
+name: Terraform Apply (production)
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ concurrency:
 jobs:
   plan:
     name: Create saved plan
-    if: github.ref == 'refs/heads/deploy/account-migration-gitops'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}
@@ -87,7 +87,7 @@ jobs:
   apply:
     name: Apply saved plan
     needs: plan
-    if: github.ref == 'refs/heads/deploy/account-migration-gitops' && inputs.action == 'apply'
+    if: github.ref == 'refs/heads/main' && inputs.action == 'apply'
     runs-on: ubuntu-latest
     environment: production
     env:
