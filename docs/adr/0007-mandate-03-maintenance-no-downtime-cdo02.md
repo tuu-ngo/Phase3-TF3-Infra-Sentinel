@@ -75,11 +75,13 @@ ro cao trước hạn (xem ADR 0002). Quyết định:
 - **frontend-proxy là ALB target** (`target-type=ip`): endpoint nội bộ propagate nhanh nhưng ALB
   deregistration chậm hơn → preStop riêng cho tier này dài hơn (20s) + `deregistration_delay=30s` trên
   target group (xem PR ALB graceful drain). Backend gRPC giữ preStop 5s.
-- **readinessProbe phần lớn là `tcpSocket`** (chỉ "port mở", không kiểm dependency DB/Kafka/Redis thật —
-  các hàm `Check()` trả `SERVING` cố định, xem REL-02 backlog). Với kịch bản Mandate #3 (drain →
-  reschedule), **startup-gating đã đủ** (pod mới không nhận traffic tới khi server bind xong). Nhưng
-  runtime-dependency-gating (DB chết mà pod vẫn "ready") **chưa có** — là REL-02, việc app-code + rebuild
-  image, ngoài phạm vi mandate này.
+- **readinessProbe theo bản chất service (đính chính so với bản đầu):** service **có dependency stateful**
+  (`product-catalog`/`product-reviews` → Postgres, `checkout` → dependency) đã dùng **gRPC readiness →
+  Health service dependency-aware** (poll `db.Ping`/kiểm dependency, flip `NOT_SERVING` khi hỏng) —
+  REL-02 đã làm + deployed (commit `8ce45af`, `e6a3717`; image `6a3fe95`/`7527509`). Service **stateless**
+  (currency/ad/payment/frontend/... → không có DB/Kafka/Redis ngoài) dùng `tcpSocket`, **đúng** vì không có
+  dependency để check. Còn lại chỉ **acceptance test live** của REL-02 (chặn Postgres tạm → health flip
+  NOT_SERVING) — gộp vào phần demo/live-test.
 - **topologySpread zone-hard có thể kẹt rollout** nếu 1 AZ cạn node lúc deploy — fail-safe (không downtime,
   rollout chờ) nhưng cần biết. Chọn zone-hard để đổi lấy đảm bảo tách node + AZ-resilience; chấp nhận đánh
   đổi này thay vì hostname-hard (tách node nhưng không có AZ-resilience).
