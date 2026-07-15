@@ -48,12 +48,38 @@ function calculateQuote($jsonObject): float
     }
 }
 
+function validateQuoteRequest($jsonObject): void
+{
+    if (!is_array($jsonObject)) {
+        throw new \InvalidArgumentException('request body must be a JSON object');
+    }
+
+    if (!array_key_exists('numberOfItems', $jsonObject)) {
+        throw new \InvalidArgumentException('numberOfItems not provided');
+    }
+}
+
 return function (App $app) {
     $app->post('/getquote', function (Request $request, Response $response, LoggerInterface $logger) {
         $span = Span::getCurrent();
         $span->addEvent('Received get quote request, processing it');
 
         $jsonObject = $request->getParsedBody();
+        try {
+            validateQuoteRequest($jsonObject);
+        } catch (\InvalidArgumentException $exception) {
+            $span->recordException($exception);
+            $logger->warning('Invalid quote request', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            $payload = json_encode(['error' => $exception->getMessage()]);
+            $response->getBody()->write($payload);
+
+            return $response
+                ->withStatus(400)
+                ->withHeader('Content-Type', 'application/json');
+        }
 
         $data = calculateQuote($jsonObject);
 
