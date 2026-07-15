@@ -169,7 +169,15 @@ Catalog `src/flagd/demo.flagd.json` (bản seed cục bộ, tham khảo) định
 
    Có sẵn 1 dashboard tên `slo-dashboard` trong Grafana (ConfigMap `grafana-dashboard-slo-dashboard`) — chưa xác nhận được có show đúng số liệu payment/checkout success rate theo thời gian thực hay không, cần review riêng.
 
-   **Trạng thái:** chưa triển khai. **Kế hoạch triển khai:** trong ngày 15/07/2026 — thêm Grafana alert rule cho success rate `/api/checkout` < 99% trong 5 phút, dựa trên nền Prometheus/Grafana đã có sẵn.
+   **Trạng thái:** chưa triển khai — đang để ở dạng **phương án đề xuất** (không tracked như DoD của ticket incident này, sẽ làm riêng khi có ticket phù hợp). **Phương án đề xuất (15/07):**
+   - Alert rule thêm vào `platform-reliability-alerting.yml` (cùng nhóm 4 rule sẵn có: pod restart/OOMKilled/readiness/checkout-unavailable): fire khi checkout success rate < 99% trong 5 phút, dùng đúng query đang chạy ở panel SLO dashboard:
+     ```
+     1 - (
+       (sum(rate(traces_span_metrics_calls_total{service_name="checkout", status_code="STATUS_CODE_ERROR"}[5m])) or vector(0))
+       / sum(rate(traces_span_metrics_calls_total{service_name="checkout"}[5m]))
+     )
+     ```
+   - **Lưu ý quan trọng phát hiện được khi thử triển khai (nhưng chưa fix):** `techx-corp-chart/templates/grafana-config.yaml` đang glob `"grafana/provisioning/alerting/*.yaml"`, nhưng cả 2 file rule thật trong repo là đuôi `.yml` (`cart-service-alerting.yml`, `platform-reliability-alerting.yml`) — glob không khớp đuôi file, nên ConfigMap `grafana-alerting` trên cluster **rỗng dù code rule đã viết sẵn đúng cho cả 4 rule cũ**, không chỉ riêng checkout. Đây là root cause thật của việc "0 alert rule" nêu ở trên — cần fix glob (ví dụ đổi thành `*.y*ml`) **trước khi** bất kỳ rule nào ở đây thực sự chạy được trên cluster. Ghi lại ở đây để không mất phát hiện này, xử lý khi có ticket riêng cho hạng mục alerting.
 
 2. **Chưa có cách tra cứu nhanh "flag nào đang bật".** Lần này phải suy luận ngược từ log message + đọc code mới ra chính xác flag nào; nên có 1 lệnh/dashboard xem nhanh toàn bộ giá trị flag hiện tại (vd script `curl` OFREP cho từng flag trong catalog, hoặc dùng `flagd-ui` — hiện đã riêng tư theo Mandate #1, cần đi qua port-forward).
 
