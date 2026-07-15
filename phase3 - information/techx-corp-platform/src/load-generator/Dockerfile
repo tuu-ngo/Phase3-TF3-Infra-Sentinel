@@ -19,4 +19,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 RUN playwright install --with-deps chromium
 COPY ./src/load-generator/locustfile.py .
 COPY ./src/load-generator/people.json .
+RUN useradd --system --uid 65532 --user-group --create-home --home-dir /home/nonroot nonroot \
+    && chown -R 65532:65532 /usr/src/app /home/nonroot
+USER 65532:65532
 ENTRYPOINT ["locust", "--skip-log-setup"]

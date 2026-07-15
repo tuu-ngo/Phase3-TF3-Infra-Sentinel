@@ -17,6 +17,7 @@ RUN venv/bin/opentelemetry-bootstrap -a install
 FROM docker.io/library/python:3.12-alpine3.22
 
 COPY --from=build-venv /venv/ /venv/
+ENV PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
 
@@ -25,6 +26,10 @@ COPY ./src/recommendation/demo_pb2.py demo_pb2.py
 COPY ./src/recommendation/logger.py logger.py
 COPY ./src/recommendation/metrics.py metrics.py
 COPY ./src/recommendation/recommendation_server.py recommendation_server.py
+RUN addgroup -S -g 65532 nonroot \
+    && adduser -S -u 65532 -G nonroot nonroot \
+    && chown -R 65532:65532 /app
+USER 65532:65532
 
 EXPOSE ${RECOMMENDATION_PORT}
 ENTRYPOINT [ "/venv/bin/opentelemetry-instrument", "/venv/bin/python", "recommendation_server.py" ]
