@@ -40,13 +40,16 @@ grafana:
 
 jaeger:
   jaeger:
+    # Mandate 2: OOMKilled thật giữa lúc load test 200 user (Exit Code 137, xác nhận qua
+    # kubectl describe) - limit cũ 1Gi bị bỏ sót khi tăng Prometheus/OpenSearch/Kafka trước đó.
+    # Volume trace tăng mạnh dưới 200 user, tăng limit tương tự nhóm quan sát kia.
     resources:
       requests:
         cpu: 100m
-        memory: 500Mi
+        memory: 750Mi
       limits:
         cpu: 500m
-        memory: 1Gi
+        memory: 2Gi
 
 opensearch:
   resources:
@@ -171,6 +174,13 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   cart:
+    # Mandate 2 (TẠM, chỉ trong cửa sổ load test): karpenter.sh/do-not-disrupt - lần test trước
+    # Karpenter consolidate 1 node đang chạy payment/quote/shipping ngay giữa lúc test, gây 503/500
+    # oan (đồng hồ consolidateAfter là per-node, node đó đã "rảnh" từ trước khi test bắt đầu nên
+    # hết hạn giữa chừng dù đã tăng consolidateAfter lên 1h). Annotation này miễn nhiễm hoàn toàn
+    # với timer. NHỚ GỠ lại sau khi xong Mandate 2, để lâu sẽ chặn Karpenter tối ưu chi phí node.
+    podAnnotations:
+      karpenter.sh/do-not-disrupt: "true"
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -203,6 +213,9 @@ components:
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
       digest: sha256:a774cb69f27795406f768881a7c575ba882f024f8e99ca928413047f3b3eb532
       tag: 7527509-checkout
+    # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
+    podAnnotations:
+      karpenter.sh/do-not-disrupt: "true"
     # Mandate 2 remediation: 2 pod stable từng bị xếp chung 1 node (xác nhận qua
     # kubectl trước load test) - checkout là service chịu tải chính, mất cả node đó
     # là mất cả 2 pod dù có PDB. hostname dùng ScheduleAnyway (soft) để không chặn
@@ -246,6 +259,11 @@ components:
   payment:
     imageOverride:
       digest: sha256:839b9cb5e5c50ba9a03acea8a4b15e29be724089e30cf18904530a1bc07bede5
+    # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
+    # payment là 1 trong 3 service (cùng quote/shipping) thực sự bị Karpenter evict giữa lúc test
+    # trước, gây 500/503 oan cho checkout - ưu tiên cao nhất trong 3 cái.
+    podAnnotations:
+      karpenter.sh/do-not-disrupt: "true"
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -303,6 +321,9 @@ components:
   shipping:
     imageOverride:
       digest: sha256:4952c73703cca38ec8afe934a3571f5f0a5f5e8e2adeb4af3eafc5cfa5ddb3ec
+    # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
+    podAnnotations:
+      karpenter.sh/do-not-disrupt: "true"
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -331,6 +352,9 @@ components:
   quote:
     imageOverride:
       digest: sha256:97fbf36ede49bb20218b75bfe0f2c9e90ed976114813091abb11ca789f567df3
+    # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
+    podAnnotations:
+      karpenter.sh/do-not-disrupt: "true"
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
