@@ -37,14 +37,10 @@ spec:
     memory: 48Gi
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
-    # Hạ về 3m (từ 1h) để "co xuống" sau load test hiện rõ nhanh cho report, thay vì đợi tới 1h.
-    # An toàn vì 5 pod checkout-critical (cart/checkout/payment/shipping/quote) đã có
-    # karpenter.sh/do-not-disrupt riêng (xem values-prod.yaml) - bảo vệ đúng nhóm đó bất kể
-    # giá trị này, không phụ thuộc PDB (PDB chỉ đảm bảo còn ít nhất 1 pod sống, KHÔNG chặn
-    # Karpenter evict 1/2 pod - đã xác nhận DISruptionsAllowed=1 trên cả 3 PDB payment/quote/
-    # shipping ngay lúc đang 2/2 khỏe, đúng kiểu disruption đã gây 503/500 lần test trước).
-    # Giá trị gốc trước Mandate 2 là 2m - đổi lại 2m sau khi xong, không cần giữ 3m vĩnh viễn.
-    consolidateAfter: 3m
+    # PM-108 cleanup: trả về giá trị gốc trước Mandate 2 (2m) sau khi load test 200 user đã
+    # chạy xong + xác nhận co xuống ổn định + gỡ hết karpenter.sh/do-not-disrupt tạm thời khỏi
+    # 7 component (xem values-prod.yaml + mandate-02-load-test-remediation-plan.md mục 4).
+    consolidateAfter: 2m
 ---
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
