@@ -32,22 +32,23 @@ terraform validate
 terraform plan -lock=false
 ```
 
-`production.auto.tfvars` chứa principal EKS của account hiện tại. Trong giai đoạn migration,
-push vào nhánh `deploy/account-migration-gitops` sẽ chạy workflow plan; `main` không kích hoạt
-Terraform. Workflow apply chỉ chạy thủ công trên đúng migration branch:
+`production.auto.tfvars` chứa principal EKS của account hiện tại. Push thay đổi Terraform vào
+`main` sẽ chạy workflow plan. Workflow apply chỉ chạy thủ công trên protected `main` và phải qua
+GitHub Environment `production`:
 
 ```sh
 # Chỉ tạo và kiểm tra saved plan
 gh workflow run terraform-apply.yml \
-  --ref deploy/account-migration-gitops -f action=plan
+  --ref main -f action=plan
 
 # Tạo saved plan mới rồi apply chính plan đó
 gh workflow run terraform-apply.yml \
-  --ref deploy/account-migration-gitops -f action=apply
+  --ref main -f action=apply
 ```
 
-Chỉ chọn `action=apply` sau khi plan workflow gần nhất đã được review. Khôi phục trigger PR/main
-và thu hẹp quyền apply role trước khi kết thúc migration.
+Chỉ chọn `action=apply` sau khi saved plan trong chính run đó đã được review. Apply role hiện vẫn
+có `AdministratorAccess`; thu hẹp role là hardening còn mở, không được gộp vào một apply production
+không liên quan.
 
 ## CloudFront private origin migration
 

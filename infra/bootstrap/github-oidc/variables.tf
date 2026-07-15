@@ -16,7 +16,6 @@ variable "github_repository" {
 variable "terraform_plan_subjects" {
   type = set(string)
   default = [
-    "repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:ref:refs/heads/deploy/account-migration-gitops",
     "repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:ref:refs/heads/main",
     "repo:tuu-ngo/Phase3-TF3-Infra-Sentinel:pull_request",
   ]

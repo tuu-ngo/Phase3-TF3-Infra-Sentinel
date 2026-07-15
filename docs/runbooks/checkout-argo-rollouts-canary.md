@@ -61,7 +61,9 @@ Sau khi capture `AnalysisRun`, Rollout status, query Prometheus và checkout SLO
 
 ## Evidence thực thi ngày 2026-07-14
 
-GitOps target là `deploy/account-migration-gitops`. Controlled-failure được tạo bằng `PAYMENT_ADDR=payment.invalid:8085`; commit khôi phục steady state là `42cd109`.
+GitOps target hiện tại là `main`. Trong lần thực thi lịch sử ngày 2026-07-14, controlled-failure
+được tạo trên migration branch bằng `PAYMENT_ADDR=payment.invalid:8085`; commit khôi phục steady
+state là `42cd109`.
 
 Do checkout là gRPC nội bộ với connection lâu sống, frontend hiện hữu có thể tiếp tục bám stable endpoint dù canary pod đã được tạo. Để tạo tín hiệu canary xác định mà không đổi selector của production Service, bài test dùng pod `grpcurl` tạm thời gọi trực tiếp `PlaceOrder` vào canary hash `7f898c8f5d`. Pod test và ConfigMap proto đều được xóa sau khi chạy. Request thất bại đúng lỗi đã tiêm:
 
