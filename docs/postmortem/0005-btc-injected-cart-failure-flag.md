@@ -23,7 +23,9 @@
 
 ![Grafana checkout success rate%](<Screenshot 2026-07-15 190718.png>)
 
-> 📸 **CẦN HÌNH 2 (Grafana):** Panel *Checkout — Request Rate (req/s)* cùng khung giờ — đường **error rate (đỏ)** nhô lên đúng cửa sổ, trong khi **request rate tổng vẫn ổn định** (không sập lưu lượng, chỉ là span bị đánh error).
+![Grafana checkout request rate](image-1.png)
+
+Panel *Checkout — Request Rate (req/s)* cùng khung giờ — đường **error rate (đỏ)** nhô lên đúng cửa sổ, trong khi **request rate tổng vẫn ổn định** (không sập lưu lượng, chỉ là span bị đánh error).
 
 ## Where — Ở đâu
 
