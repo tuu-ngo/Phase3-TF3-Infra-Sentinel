@@ -45,3 +45,8 @@ output "product_reviews_bedrock_role_arn" {
 output "flagd_sync_secret_name" {
   value = aws_secretsmanager_secret.flagd_sync_token.name
 }
+
+output "node_security_group_id" {
+  description = "Security group ID attached to EKS worker nodes — used to grant managed datastores access from EKS."
+  value       = module.eks.node_security_group_id
+}

@@ -159,3 +159,71 @@ variable "cloudflare_allowed_emails" {
   type        = list(string)
   default     = []
 }
+
+# ── Mandate 08: AWS Managed Datastores ──────────────────────────────────────
+
+# ── RDS ──────────────────────────────────────────────────────────────────────
+
+variable "rds_instance_class" {
+  description = "RDS PostgreSQL instance class."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "rds_db_name" {
+  description = "Initial PostgreSQL database name."
+  type        = string
+  default     = "techxdb"
+}
+
+variable "rds_engine_version" {
+  description = "RDS PostgreSQL engine version."
+  type        = string
+  default     = "16.3"
+}
+
+variable "rds_multi_az" {
+  description = "Enable Multi-AZ for RDS. Set false only for cost reduction in non-prod."
+  type        = bool
+  default     = true
+}
+
+variable "rds_deletion_protection" {
+  description = "Enable RDS deletion protection."
+  type        = bool
+  default     = true
+}
+
+# ── ElastiCache ──────────────────────────────────────────────────────────────
+
+variable "elasticache_node_type" {
+  description = "ElastiCache Redis node type."
+  type        = string
+  default     = "cache.t4g.micro"
+}
+
+variable "elasticache_engine_version" {
+  description = "ElastiCache Redis engine version."
+  type        = string
+  default     = "7.1"
+}
+
+# ── MSK ──────────────────────────────────────────────────────────────────────
+
+variable "msk_instance_type" {
+  description = "MSK broker instance type."
+  type        = string
+  default     = "kafka.t3.small"
+}
+
+variable "msk_kafka_version" {
+  description = "MSK Kafka version."
+  type        = string
+  default     = "3.6.0"
+}
+
+variable "msk_number_of_broker_nodes" {
+  description = "Number of MSK broker nodes. Must be a multiple of the number of AZs (3)."
+  type        = number
+  default     = 3
+}
