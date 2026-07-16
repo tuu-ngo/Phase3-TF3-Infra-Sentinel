@@ -17,75 +17,76 @@ on:
     paths:
       - "phase3 - information/techx-corp-platform/**"
 
-permissions:
-  id-token: write # required for OIDC -> assume AWS role
-  contents: read
+concurrency:
+  group: build-push-ecr-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   AWS_REGION: ap-southeast-1
   ECR_REGISTRY: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com
   ECR_REPOSITORY: techx-corp
-  # Every bake target with its own src/<name> build context (see docker-compose.yml).
-  # opensearch is deliberately excluded - it has a `build:` stanza but no `image:` tag
-  # (pulled from the public registry per GETTING_STARTED.md, not pushed to the TF's
-  # ECR) - bake would fail on it with "tag is needed when pushing to registry".
   ALL_SERVICES: >-
     accounting ad cart checkout currency email fraud-detection frontend
     frontend-proxy image-provider kafka llm load-generator payment
     product-catalog product-reviews quote recommendation shipping flagd-ui
 
 jobs:
-  build-and-push:
+  build-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    permissions:
+      id-token: write
+      contents: read
     defaults:
       run:
         working-directory: "phase3 - information/techx-corp-platform"
+    outputs:
+      mode: ${{ steps.scope.outputs.mode }}
+      services: ${{ steps.scope.outputs.services }}
+      source_sha: ${{ steps.scope.outputs.source_sha }}
+      source_short_sha: ${{ steps.scope.outputs.source_short_sha }}
+      base_tag: ${{ steps.vars.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # need full history to diff against github.event.before
+          fetch-depth: 0
 
       - name: Resolve image tag
         id: vars
         run: |
-          if [ -n "${{ inputs.image_tag }}" ]; then
-            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          INPUT_IMAGE_TAG="${{ inputs.image_tag }}"
+          if [ -n "$INPUT_IMAGE_TAG" ]; then
+            if ! [[ "$INPUT_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+              echo "FAIL: invalid image tag" >&2
+              exit 1
+            fi
+            BASE_TAG="$INPUT_IMAGE_TAG"
           else
-            echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+            BASE_TAG="$(git rev-parse --short=7 HEAD)"
           fi
+          echo "tag=$BASE_TAG" >> "$GITHUB_OUTPUT"
 
-      # workflow_dispatch = manual "build everything" escape hatch. push = scoped to
-      # whichever src/<service>/ dirs actually changed, so touching one service (e.g.
-      # frontend-proxy for a route change) doesn't pay for a full 18-image rebuild.
-      # Anything outside a recognized src/<service>/ dir (docker-compose.yml, pb/,
-      # Makefile, shared Dockerfile snippets, ...) falls back to a full build since more
-      # than one image's Dockerfile can depend on it (see pb/ COPY in a few services).
       - name: Detect which services changed
         id: scope
         run: |
+          echo "source_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "source_short_sha=$(git rev-parse --short=7 ${{ github.sha }})" >> "$GITHUB_OUTPUT"
+          
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "mode=full" >> "$GITHUB_OUTPUT"
-            echo "Manual trigger -> full build of all services."
+            echo "services=$(echo $ALL_SERVICES | tr ' ' '\n' | sort -u | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           BEFORE="${{ github.event.before }}"
           if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
             echo "mode=full" >> "$GITHUB_OUTPUT"
-            echo "No previous commit to diff against (new branch/force-push) -> full build."
+            echo "services=$(echo $ALL_SERVICES | tr ' ' '\n' | sort -u | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # -C "$GITHUB_WORKSPACE": this step's cwd is already the working-directory default
-          # (phase3 - information/techx-corp-platform), and a bare `-- <pathspec>` resolves
-          # relative to cwd, not repo root - without -C this pathspec silently matched nothing
-          # (git treats a non-matching pathspec as "no changes", not an error) and every build
-          # step below got skipped regardless of what actually changed.
           CHANGED=$(git -C "$GITHUB_WORKSPACE" diff --name-only "$BEFORE" "${{ github.sha }}" -- "phase3 - information/techx-corp-platform")
-          echo "Changed files under techx-corp-platform:"
-          echo "$CHANGED"
-
+          
           PREFIX="phase3 - information/techx-corp-platform/src/"
           SERVICES=""
           FULL=false
@@ -108,15 +109,13 @@ jobs:
 
           if [ "$FULL" = true ]; then
             echo "mode=full" >> "$GITHUB_OUTPUT"
-            echo "Change touches shared/unrecognized paths -> full build."
+            echo "services=$(echo $ALL_SERVICES | tr ' ' '\n' | sort -u | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
           elif [ -z "$SERVICES" ]; then
             echo "mode=none" >> "$GITHUB_OUTPUT"
-            echo "No image-affecting changes under techx-corp-platform -> nothing to build."
           else
             UNIQ=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ')
             echo "mode=scoped" >> "$GITHUB_OUTPUT"
             echo "services=$UNIQ" >> "$GITHUB_OUTPUT"
-            echo "Scoped build -> $UNIQ"
           fi
 
       - name: Configure AWS credentials (OIDC)
@@ -138,7 +137,7 @@ jobs:
         if: steps.scope.outputs.mode != 'none'
         uses: docker/setup-buildx-action@v3
 
-      - name: Point registry at TF3 ECR repo (runtime-only, not committed)
+      - name: Point registry at TF3 ECR repo
         if: steps.scope.outputs.mode != 'none'
         run: |
           cat > .env.override <<EOF
@@ -147,7 +146,7 @@ jobs:
           DEMO_VERSION=${{ steps.vars.outputs.tag }}
           EOF
 
-      - name: Smoke build checkout (fail fast, single-arch, no push)
+      - name: Smoke build checkout
         if: steps.scope.outputs.mode == 'full'
         run: docker compose build checkout
 
@@ -167,24 +166,266 @@ jobs:
         if: steps.scope.outputs.mode == 'scoped'
         run: |
           set -a; . ./.env.override; set +a
-          echo "Building: ${{ steps.scope.outputs.services }}"
           docker buildx bake -f docker-compose.yml --push \
             --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
             ${{ steps.scope.outputs.services }}
 
+      - name: Resolve Pushed Image Metadata
+        if: steps.scope.outputs.mode != 'none'
+        run: |
+          SERVICES="${{ steps.scope.outputs.services }}"
+          BASE_TAG="${{ steps.vars.outputs.tag }}"
+          
+          # Initialize manifest
+          cat > approved-images.json <<EOF
+          {
+            "schemaVersion": 1,
+            "repository": "${{ env.ECR_REPOSITORY }}",
+            "registry": "${{ env.ECR_REGISTRY }}",
+            "sourceSha": "${{ github.sha }}",
+            "sourceShortSha": "${{ steps.scope.outputs.source_short_sha }}",
+            "workflowRunId": "${{ github.run_id }}",
+            "workflowRunAttempt": "${{ github.run_attempt }}",
+            "mode": "${{ steps.scope.outputs.mode }}",
+            "baseTag": "$BASE_TAG",
+            "services": []
+          }
+          EOF
+          
+          for svc in $SERVICES; do
+            FULL_TAG="${BASE_TAG}-${svc}"
+            
+            if [ "${#FULL_TAG}" -gt 128 ]; then
+              echo "FAIL: full image tag exceeds Docker tag limit" >&2
+              exit 1
+            fi
+            
+            success=false
+            for i in {1..12}; do
+              echo "Resolving digest for $FULL_TAG (attempt $i)..."
+              meta=$(aws ecr describe-images \
+                --repository-name "${{ env.ECR_REPOSITORY }}" \
+                --image-ids "imageTag=$FULL_TAG" \
+                --region "${{ env.AWS_REGION }}" \
+                --query 'imageDetails[0].{digest:imageDigest, mediaType:imageManifestMediaType}' \
+                --output json 2>/dev/null) || true
+              
+              if [ -n "$meta" ] && [ "$meta" != "null" ]; then
+                digest=$(echo "$meta" | jq -r .digest)
+                mediaType=$(echo "$meta" | jq -r .mediaType)
+                
+                if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                  # validate media type for multi-platform
+                  platforms="${{ inputs.platforms || 'linux/amd64,linux/arm64' }}"
+                  if [[ "$platforms" == *","* ]]; then
+                    if [[ "$mediaType" != "application/vnd.oci.image.index.v1+json" && "$mediaType" != "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
+                      echo "FAIL: invalid media type $mediaType for multi-platform build" >&2
+                      exit 1
+                    fi
+                  fi
+                  
+                  # Append to manifest
+                  jq --arg name "$svc" --arg tag "$FULL_TAG" --arg dig "$digest" --arg mt "$mediaType" \
+                    '.services += [{"name": $name, "tag": $tag, "digest": $dig, "manifestMediaType": $mt}]' \
+                    approved-images.json > tmp.json && mv tmp.json approved-images.json
+                    
+                  success=true
+                  break
+                fi
+              fi
+              sleep 5
+            done
+            
+            if [ "$success" = false ]; then
+              echo "FAIL: Could not resolve valid digest for $FULL_TAG after retries" >&2
+              exit 1
+            fi
+          done
+
       - name: Scan pushed images with Trivy (Security Gate)
         if: steps.scope.outputs.mode != 'none'
         run: |
-          set -a; . ./.env.override; set +a
-          SERVICES="$ALL_SERVICES"
-          if [ "${{ steps.scope.outputs.mode }}" = "scoped" ]; then
-            SERVICES="${{ steps.scope.outputs.services }}"
-          fi
           echo "Installing Trivy..."
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
           
-          for svc in $SERVICES; do
-            IMAGE="${IMAGE_NAME}:${IMAGE_VERSION}-${svc}"
-            echo "Scanning $IMAGE for HIGH/CRITICAL vulnerabilities..."
+          len=$(jq '.services | length' approved-images.json)
+          for (( i=0; i<$len; i++ )); do
+            tag=$(jq -r ".services[$i].tag" approved-images.json)
+            digest=$(jq -r ".services[$i].digest" approved-images.json)
+            
+            IMAGE="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}@${digest}"
+            echo "Scanning $IMAGE (tag: $tag) for HIGH/CRITICAL vulnerabilities..."
+            
             trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --no-progress "$IMAGE"
           done
+
+      - name: Upload approved image manifest
+        if: ${{ success() && steps.scope.outputs.mode != 'none' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: approved-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: phase3 - information/techx-corp-platform/approved-images.json
+          retention-days: 7
+          if-no-files-found: error
+
+  open-image-bump-pr:
+    needs: build-scan
+    if: >-
+      ${{ needs.build-scan.result == 'success'
+          && needs.build-scan.outputs.mode != 'none' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.build-scan.outputs.source_sha }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install ruamel.yaml==0.18.6
+
+      - name: Download approved image manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: approved-images-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Validate Artifact
+        run: |
+          if [ ! -f approved-images.json ]; then
+            echo "FAIL: Artifact not found"
+            exit 1
+          fi
+          
+          SHA=$(jq -r .sourceSha approved-images.json)
+          if [ "$SHA" != "${{ needs.build-scan.outputs.source_sha }}" ]; then
+            echo "FAIL: SHA mismatch in artifact"
+            exit 1
+          fi
+          
+          MODE=$(jq -r .mode approved-images.json)
+          if [ "$MODE" == "none" ]; then
+            echo "FAIL: Mode is none"
+            exit 1
+          fi
+
+      - name: Update values-prod.yaml
+        run: |
+          python3 scripts/ci/update-image-overrides.py \
+            --values "phase3 - information/deploy/values-prod.yaml" \
+            --manifest approved-images.json \
+            --excluded-service flagd-ui \
+            --summary-output image-bump-summary.json
+
+      - name: Validate diff exactness
+        run: |
+          CHANGES=$(git diff --name-only)
+          if [ -z "$CHANGES" ]; then
+            echo "NO_CHANGES"
+            echo "no_changes=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ "$CHANGES" != "phase3 - information/deploy/values-prod.yaml" ]; then
+            echo "FAIL: Unexpected files changed: $CHANGES"
+            exit 1
+          fi
+
+      - name: Helm lint and template
+        if: env.no_changes != 'true'
+        run: |
+          helm dependency build "phase3 - information/techx-corp-chart"
+          helm lint "phase3 - information/techx-corp-chart" \
+            -f "phase3 - information/techx-corp-chart/values.yaml" \
+            -f "phase3 - information/deploy/values-flagd-sync.yaml" \
+            -f "phase3 - information/deploy/values-prod.yaml"
+            
+          helm template techx-corp "phase3 - information/techx-corp-chart" \
+            --namespace techx-tf3 \
+            -f "phase3 - information/techx-corp-chart/values.yaml" \
+            -f "phase3 - information/deploy/values-flagd-sync.yaml" \
+            -f "phase3 - information/deploy/values-prod.yaml" > /tmp/rendered.yaml
+            
+          # Verify rendered digests (basic grep to ensure new digests are present)
+          len=$(jq '.services | length' approved-images.json)
+          for (( i=0; i<$len; i++ )); do
+            svc=$(jq -r ".services[$i].name" approved-images.json)
+            digest=$(jq -r ".services[$i].digest" approved-images.json)
+            if [ "$svc" != "flagd-ui" ]; then
+              if ! grep -q "$digest" /tmp/rendered.yaml; then
+                echo "FAIL: Rendered output does not contain digest $digest for $svc"
+                exit 1
+              fi
+            fi
+          done
+
+      - name: Create branch and commit
+        if: env.no_changes != 'true'
+        run: |
+          BRANCH_NAME="ci/bump-images-${{ github.run_id }}"
+          git config user.name "techx-image-bump[bot]"
+          git config user.email "techx-image-bump[bot]@users.noreply.github.com"
+          
+          git switch -c "$BRANCH_NAME"
+          git add "phase3 - information/deploy/values-prod.yaml"
+          git commit -m "chore(deploy): bump images from ${{ needs.build-scan.outputs.source_short_sha }}"
+          
+          git push origin "HEAD:$BRANCH_NAME" || true
+          
+          echo "BRANCH_NAME=$BRANCH_NAME" >> "$GITHUB_ENV"
+
+      - name: Open Pull Request
+        if: env.no_changes != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING_PR=$(gh pr list --state open --head "$BRANCH_NAME" --json url --jq '.[0].url')
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "PR already exists: $EXISTING_PR"
+            exit 0
+          fi
+          
+          # Generate PR Body
+          echo "## Automated image promotion" > pr_body.txt
+          echo "" >> pr_body.txt
+          echo "Source commit: \`${{ needs.build-scan.outputs.source_sha }}\`" >> pr_body.txt
+          echo "Source workflow run: \`https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\`" >> pr_body.txt
+          echo "Build mode: \`${{ needs.build-scan.outputs.mode }}\`" >> pr_body.txt
+          echo "Trivy gate: \`PASSED\`" >> pr_body.txt
+          echo "ECR repository: \`techx-corp\`" >> pr_body.txt
+          echo "" >> pr_body.txt
+          echo "| Service | Tag | Digest |" >> pr_body.txt
+          echo "|---|---|---|" >> pr_body.txt
+          
+          len=$(jq '.services | length' approved-images.json)
+          for (( i=0; i<$len; i++ )); do
+            svc=$(jq -r ".services[$i].name" approved-images.json)
+            tag=$(jq -r ".services[$i].tag" approved-images.json)
+            digest=$(jq -r ".services[$i].digest" approved-images.json)
+            echo "| $svc | $tag | $digest |" >> pr_body.txt
+          done
+          
+          echo "" >> pr_body.txt
+          echo "## Safety checks" >> pr_body.txt
+          echo "- [x] Images existed in ECR before this PR was created." >> pr_body.txt
+          echo "- [x] Trivy HIGH/CRITICAL gate passed." >> pr_body.txt
+          echo "- [x] Only services built by the source workflow were changed." >> pr_body.txt
+          echo "- [x] \`default.image.tag\` was not changed." >> pr_body.txt
+          echo "- [x] Helm lint and production render passed." >> pr_body.txt
+          echo "- [x] Runtime image references render as repository@digest." >> pr_body.txt
+          echo "" >> pr_body.txt
+          echo "## Review requirement" >> pr_body.txt
+          echo "This PR does not deploy automatically. Merge manually after review." >> pr_body.txt
+          
+          if [ "$len" -eq 1 ]; then
+            svc=$(jq -r ".services[0].name" approved-images.json)
+            TITLE="chore(deploy): bump $svc image to ${{ needs.build-scan.outputs.source_short_sha }}"
+          else
+            TITLE="chore(deploy): bump $len images from ${{ needs.build-scan.outputs.source_short_sha }}"
+          fi
+          
+          gh pr create --title "$TITLE" --body-file pr_body.txt --head "$BRANCH_NAME" --base main
