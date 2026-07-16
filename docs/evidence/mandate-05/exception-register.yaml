@@ -124,3 +124,20 @@ exceptions:
     reviewDate: 2026-07-24
     remediationPlan: "Apply chart-supported pod/container securityContext values in Audit, verify metrics/logs/traces, then remove exception."
     rollbackBehavior: "Revert OTel hardening if node telemetry or collector readiness regresses."
+
+  - id: m05-baseline-aiops-engine-runtime
+    policy: custom-baseline-security-context
+    rules:
+      - require-allow-privilege-escalation-false
+      - drop-all-capabilities
+      - require-seccomp-profile-runtime-default
+    selector:
+      matchLabels:
+        app: aiops-engine
+    observedViolation: "Live aiops-engine pods in techx-tf3 still run without the container-level baseline hardening required by Mandate #5."
+    reason: "The aiops-engine workload is currently managed outside this GitOps tree; record the live residual risk as a temporary Audit exception instead of mutating the cluster directly."
+    owner: AIO02 / TF3 AI
+    approval: pending mentor review
+    reviewDate: 2026-07-24
+    remediationPlan: "Bring the aiops-engine manifest under the same GitOps source of truth or apply equivalent chart-level securityContext hardening, then remove this exception before Enforce."
+    rollbackBehavior: "Revert the exception entry once the owning manifest is hardened; do not kubectl edit the live workload."
