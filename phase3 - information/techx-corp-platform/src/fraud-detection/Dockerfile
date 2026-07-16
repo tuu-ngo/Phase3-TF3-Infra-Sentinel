@@ -13,14 +13,13 @@ RUN gradle shadowJar
 
 # -----------------------------------------------------------------------------
 
-FROM eclipse-temurin:17.0.19_10-jre-alpine-3.23
+FROM eclipse-temurin:17.0.19_10-jre-noble
 
 ARG OTEL_JAVA_AGENT_VERSION
 WORKDIR /usr/src/app/
 
-RUN apk upgrade --no-cache \
-    && addgroup -S -g 10001 app \
-    && adduser -S -D -H -u 10001 -G app app
+RUN groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid app --home-dir /nonexistent --shell /usr/sbin/nologin --no-create-home app
 
 ADD --chown=10001:10001 --chmod=644 https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v$OTEL_JAVA_AGENT_VERSION/opentelemetry-javaagent.jar /usr/src/app/opentelemetry-javaagent.jar
 ENV JAVA_TOOL_OPTIONS=-javaagent:/usr/src/app/opentelemetry-javaagent.jar

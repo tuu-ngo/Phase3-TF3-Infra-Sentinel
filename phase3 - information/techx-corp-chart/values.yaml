@@ -920,6 +920,17 @@ components:
     resources:
       limits:
         memory: 75Mi
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
     command:
       - "/flagd-build"
       - "start"
@@ -953,6 +964,13 @@ components:
         resources:
           limits:
             memory: 250Mi
+        securityContext:
+          runAsUser: 65532
+          runAsGroup: 65532
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         volumeMounts:
           - name: config-rw
             mountPath: /app/data
@@ -960,6 +978,13 @@ components:
       - name: init-config
         image: busybox
         command: ["sh", "-c", "cp /config-ro/demo.flagd.json /config-rw/demo.flagd.json && cat /config-rw/demo.flagd.json"]
+        securityContext:
+          runAsUser: 65532
+          runAsGroup: 65532
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         volumeMounts:
           - mountPath: /config-ro
             name: config-ro
@@ -1083,6 +1108,17 @@ components:
     resources:
       limits:
         memory: 100Mi
+    securityContext:
+      runAsUser: 999
+      runAsGroup: 999
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      fsGroup: 999
+      seccompProfile:
+        type: RuntimeDefault
 
   valkey-cart:
     enabled: true
