@@ -35,8 +35,8 @@ WORKDIR /usr/src/app/
 COPY --from=builder --chown=65532:65532 \
   /usr/src/app/build/install/techx-corp-ad/ ./build/install/techx-corp-ad/
 ADD --chmod=644 https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v$OTEL_JAVA_AGENT_VERSION/opentelemetry-javaagent.jar /usr/src/app/opentelemetry-javaagent.jar
-RUN groupadd --system --gid 65532 nonroot \
-    && useradd --system --uid 65532 --gid 65532 --home-dir /nonexistent --shell /usr/sbin/nologin nonroot \
+RUN addgroup -S -g 65532 nonroot \
+    && adduser -S -D -H -u 65532 -G nonroot nonroot \
     && chown -R 65532:65532 /usr/src/app
 USER 65532:65532
 ENV JAVA_TOOL_OPTIONS=-javaagent:/usr/src/app/opentelemetry-javaagent.jar
