@@ -20,10 +20,15 @@ public class ValkeyCartStore : ICartStore
 
     private volatile ConnectionMultiplexer _redis;
     private volatile bool _isRedisConnectionOpened;
+    private volatile ConnectionMultiplexer _dualWriteRedis;
+    private volatile bool _isDualWriteConnectionOpened;
 
     private readonly object _locker = new();
+    private readonly object _dualWriteLocker = new();
     private readonly byte[] _emptyCartBytes;
     private readonly string _connectionString;
+    private readonly string _dualWriteConnectionString;
+    private readonly bool _isDualWriteEnabled;
 
     private static readonly ActivitySource CartActivitySource = new("OpenTelemetry.Demo.Cart");
     private static readonly Meter CartMeter = new Meter("OpenTelemetry.Demo.Cart");
@@ -42,22 +47,35 @@ public class ValkeyCartStore : ICartStore
             HistogramBucketBoundaries = [ 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10 ]
         });
     private readonly ConfigurationOptions _redisConnectionOptions;
+    private readonly ConfigurationOptions _dualWriteConnectionOptions;
 
-    public ValkeyCartStore(ILogger<ValkeyCartStore> logger, string valkeyAddress)
+    public ValkeyCartStore(
+        ILogger<ValkeyCartStore> logger,
+        string valkeyAddress,
+        bool valkeyTls = false,
+        string valkeyAuthToken = "",
+        string dualWriteAddress = "",
+        bool dualWriteTls = false,
+        string dualWriteAuthToken = "")
     {
         _logger = logger;
         // Serialize empty cart into byte array.
         var cart = new Oteldemo.Cart();
         _emptyCartBytes = cart.ToByteArray();
-        _connectionString = $"{valkeyAddress},ssl=false,allowAdmin=true,abortConnect=false";
+        _connectionString = BuildSafeConnectionString(valkeyAddress, valkeyTls, valkeyAuthToken);
+        _redisConnectionOptions = BuildConnectionOptions(valkeyAddress, valkeyTls, valkeyAuthToken);
 
-        _redisConnectionOptions = ConfigurationOptions.Parse(_connectionString);
-
-        // Try to reconnect multiple times if the first retry fails.
-        _redisConnectionOptions.ConnectRetry = RedisRetryNumber;
-        _redisConnectionOptions.ReconnectRetryPolicy = new ExponentialRetry(1000);
-
-        _redisConnectionOptions.KeepAlive = 180;
+        _isDualWriteEnabled = !string.IsNullOrWhiteSpace(dualWriteAddress);
+        if (_isDualWriteEnabled)
+        {
+            _dualWriteConnectionString = BuildSafeConnectionString(dualWriteAddress, dualWriteTls, dualWriteAuthToken);
+            _dualWriteConnectionOptions = BuildConnectionOptions(dualWriteAddress, dualWriteTls, dualWriteAuthToken);
+        }
+        else
+        {
+            _dualWriteConnectionString = "";
+            _dualWriteConnectionOptions = null;
+        }
     }
 
     public ConnectionMultiplexer GetConnection()
@@ -172,6 +190,7 @@ public class ValkeyCartStore : ICartStore
 
             await db.HashSetAsync(userId, new[]{ new HashEntry(CartFieldName, cart.ToByteArray()) });
             await db.KeyExpireAsync(userId, TimeSpan.FromMinutes(60));
+            await TryDualWriteCartAsync(userId, cart.ToByteArray());
         }
         catch (Exception ex)
         {
@@ -197,6 +216,7 @@ public class ValkeyCartStore : ICartStore
             // Update the cache with empty cart for given user
             await db.HashSetAsync(userId, new[] { new HashEntry(CartFieldName, _emptyCartBytes) });
             await db.KeyExpireAsync(userId, TimeSpan.FromMinutes(60));
+            await TryDualWriteCartAsync(userId, _emptyCartBytes);
         }
         catch (Exception ex)
         {
@@ -251,6 +271,102 @@ public class ValkeyCartStore : ICartStore
         catch (Exception)
         {
             return false;
+        }
+    }
+
+    private static ConfigurationOptions BuildConnectionOptions(string address, bool useTls, string authToken)
+    {
+        var options = ConfigurationOptions.Parse(BuildBaseConnectionString(address, useTls));
+
+        // Try to reconnect multiple times if the first retry fails.
+        options.ConnectRetry = RedisRetryNumber;
+        options.ReconnectRetryPolicy = new ExponentialRetry(1000);
+        options.KeepAlive = 180;
+
+        if (!string.IsNullOrWhiteSpace(authToken))
+        {
+            options.Password = authToken;
+        }
+
+        return options;
+    }
+
+    private static string BuildSafeConnectionString(string address, bool useTls, string authToken)
+    {
+        var connectionString = BuildBaseConnectionString(address, useTls);
+        if (!string.IsNullOrWhiteSpace(authToken))
+        {
+            connectionString += ",password=***";
+        }
+
+        return connectionString;
+    }
+
+    private static string BuildBaseConnectionString(string address, bool useTls)
+    {
+        return $"{address},ssl={useTls.ToString().ToLowerInvariant()},allowAdmin=true,abortConnect=false";
+    }
+
+    private async Task TryDualWriteCartAsync(string userId, byte[] cartBytes)
+    {
+        if (!_isDualWriteEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            EnsureDualWriteRedisConnected();
+            var db = _dualWriteRedis.GetDatabase();
+            await db.HashSetAsync(userId, new[] { new HashEntry(CartFieldName, cartBytes) });
+            await db.KeyExpireAsync(userId, TimeSpan.FromMinutes(60));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Dual-write to Valkey target failed for userId={userId}. Primary cart write already succeeded.", userId);
+        }
+    }
+
+    private void EnsureDualWriteRedisConnected()
+    {
+        if (_isDualWriteConnectionOpened)
+        {
+            return;
+        }
+
+        lock (_dualWriteLocker)
+        {
+            if (_isDualWriteConnectionOpened)
+            {
+                return;
+            }
+
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Connecting to dual-write Redis target: {connectionString}", _dualWriteConnectionString);
+            }
+
+            _dualWriteRedis = ConnectionMultiplexer.Connect(_dualWriteConnectionOptions);
+
+            if (_dualWriteRedis == null || !_dualWriteRedis.IsConnected)
+            {
+                throw new ApplicationException("Wasn't able to connect to dual-write redis target");
+            }
+
+            _dualWriteRedis.InternalError += (_, e) => { Console.WriteLine(e.Exception); };
+            _dualWriteRedis.ConnectionRestored += (_, _) =>
+            {
+                _isDualWriteConnectionOpened = true;
+                _logger.LogInformation("Connection to dual-write redis target was restored successfully.");
+            };
+            _dualWriteRedis.ConnectionFailed += (_, _) =>
+            {
+                _logger.LogWarning("Connection to dual-write redis target failed. Disposing the object");
+                _isDualWriteConnectionOpened = false;
+            };
+
+            _isDualWriteConnectionOpened = true;
+            _logger.LogInformation("Successfully connected to dual-write Redis target");
         }
     }
 }

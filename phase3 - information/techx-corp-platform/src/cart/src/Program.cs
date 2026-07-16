@@ -34,6 +34,11 @@ if (string.IsNullOrEmpty(valkeyAddress))
     Console.WriteLine("VALKEY_ADDR environment variable is required.");
     Environment.Exit(1);
 }
+bool valkeyTls = ReadBool(builder.Configuration["VALKEY_TLS"]);
+string valkeyAuthToken = builder.Configuration["VALKEY_AUTH_TOKEN"] ?? "";
+string valkeyDualWriteAddress = builder.Configuration["VALKEY_DUAL_WRITE_ADDR"] ?? "";
+bool valkeyDualWriteTls = ReadBool(builder.Configuration["VALKEY_DUAL_WRITE_TLS"]);
+string valkeyDualWriteAuthToken = builder.Configuration["VALKEY_DUAL_WRITE_AUTH_TOKEN"] ?? "";
 
 builder.Logging
     .AddOpenTelemetry(options => options.AddOtlpExporter())
@@ -41,7 +46,14 @@ builder.Logging
 
 builder.Services.AddSingleton<ICartStore>(x =>
 {
-    var store = new ValkeyCartStore(x.GetRequiredService<ILogger<ValkeyCartStore>>(), valkeyAddress);
+    var store = new ValkeyCartStore(
+        x.GetRequiredService<ILogger<ValkeyCartStore>>(),
+        valkeyAddress,
+        valkeyTls,
+        valkeyAuthToken,
+        valkeyDualWriteAddress,
+        valkeyDualWriteTls,
+        valkeyDualWriteAuthToken);
     store.Initialize();
     return store;
 });
@@ -108,4 +120,7 @@ app.MapGet("/", async context =>
 
 app.Run();
 
-
+static bool ReadBool(string value)
+{
+    return bool.TryParse(value, out var parsed) && parsed;
+}

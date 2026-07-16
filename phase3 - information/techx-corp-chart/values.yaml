@@ -236,6 +236,16 @@ components:
         value: http://*:$(CART_PORT)
       - name: VALKEY_ADDR
         value: valkey-cart:6379
+      - name: VALKEY_TLS
+        value: "false"
+      - name: VALKEY_AUTH_TOKEN
+        value: ""
+      - name: VALKEY_DUAL_WRITE_ADDR
+        value: ""
+      - name: VALKEY_DUAL_WRITE_TLS
+        value: "false"
+      - name: VALKEY_DUAL_WRITE_AUTH_TOKEN
+        value: ""
       - name: FLAGD_HOST
         value: flagd
       - name: FLAGD_PORT
