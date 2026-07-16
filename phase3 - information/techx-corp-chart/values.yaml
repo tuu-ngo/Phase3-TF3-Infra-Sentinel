@@ -75,6 +75,12 @@ components:
   ## Environment variables that upsert (append + merge) into the `env` specification for this component.
   ## A variable named OTEL_RESOURCE_ATTRIBUTES_EXTRA will have its value appended to the OTEL_RESOURCE_ATTRIBUTES value.
   #   envOverrides:
+  ## Optional per-component service account override (e.g. dedicated IRSA for one workload).
+  #   serviceAccount:
+  #     create: true
+  #     name: product-reviews-bedrock
+  #     annotations:
+  #       eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/<role-name>
   ## Pod Scheduling rules for nodeSelector, affinity, or tolerations.
   #   schedulingRules:
   #     nodeSelector: {}

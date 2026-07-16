@@ -131,6 +131,7 @@ kubectl -n techx-tf3 get hpa    # đợi ~5-10 phút, xem replicas co về min
 ```
 
 **Cách B — Xem lại bằng chứng đã lưu (nếu mentor không chạy được real-time):**
+- **Video demo:** [Mandate #2 — flash sale load test 200 user](https://www.youtube.com/watch?v=bgm2kezvKo4) — quay lại quá trình chạy test + theo dõi Grafana/HPA trực tiếp, dùng khi mentor không xem được real-time.
 - Ảnh chụp Grafana/HPA/Locust đính kèm ở mục 2 (7 ảnh, `docs/postmortem/Mandate02-image/`).
 - File này (`docs/mandate-02-load-test-report.md`) + `docs/mandate-02-load-test-remediation-plan.md` làm bằng chứng quá trình chuẩn bị.
 - Query Prometheus ở mục 3 có thể chạy lại nguyên văn (đổi `@<epoch>` sang cửa sổ khác) để mentor tự xác nhận số đơn, không cần tin theo số đã tính sẵn.
