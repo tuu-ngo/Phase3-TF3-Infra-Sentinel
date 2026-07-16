@@ -52,6 +52,25 @@ jaeger:
         memory: 2Gi
 
 opensearch:
+  podSecurityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  initResources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
   resources:
     requests:
       cpu: 250m
@@ -72,7 +91,11 @@ prometheus:
 
 opentelemetry-collector:
   resources:
+    requests:
+      cpu: 50m
+      memory: 180Mi
     limits:
+      cpu: 300m
       memory: 350Mi
 
 components:
@@ -749,6 +772,8 @@ components:
         cpu: 100m
         memory: 50Mi
   kafka:
+    imageOverride:
+      digest: sha256:afc05edcd00b7f56c8331d5e4a83c7ff6bf46182fd0667033529c964bccc2e68
     service:
       # REL-10: KRaft 1-node tu noi controller cua chinh no qua Service kafka:9093. Pod PHAI nam
       # trong Service endpoints NGAY khi chua ready, neu khong startupProbe/readinessProbe se loai pod
@@ -776,10 +801,17 @@ components:
       # Tao + chown subdir data truoc khi kafka chay. Chu dich thay vi subPath: subPath + fsGroup
       # co bug kubelet khong chown subpath dir -> uid 1000 khong ghi duoc. Mount thang + initContainer chown la chac an.
       - name: init-kafka-data
-        image: busybox:1.36
+        image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
         command: ["sh", "-c", "mkdir -p /var/lib/kafka/data && chown -R 1000:1000 /var/lib/kafka/data"]
         securityContext:
           runAsUser: 0
+        resources:
+          requests:
+            cpu: 5m
+            memory: 8Mi
+          limits:
+            cpu: 50m
+            memory: 32Mi
         volumeMounts:
           - name: kafka-data
             mountPath: /var/lib/kafka
