@@ -16,13 +16,34 @@ group = "io.opentelemetry"
 version = "1.0"
 
 
-val grpcVersion = "1.78.0"
+val grpcVersion = "1.81.0"
+val jacksonVersion = "2.21.4"
 val protobufVersion = "4.33.2"
 
 
 repositories {
     mavenCentral()
     gradlePluginPortal()
+}
+
+// gRPC 1.81.0 still resolves Netty 4.1.132.Final; force the patched June 2026
+// patch-level consistently across the fat jar for the PM-101 zero-HIGH gate.
+configurations.configureEach {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "io.netty" &&
+            requested.name != "netty-tcnative-boringssl-static" &&
+            requested.name != "netty-tcnative-classes"
+        ) {
+            useVersion("4.1.135.Final")
+            because("PM-101: remediate HIGH Netty CVEs before image release")
+        }
+        if (requested.group == "com.fasterxml.jackson.core" &&
+            (requested.name == "jackson-core" || requested.name == "jackson-databind")
+        ) {
+            useVersion(jacksonVersion)
+            because("PM-101: remediate HIGH Jackson databind CVEs before image release")
+        }
+    }
 }
 
 

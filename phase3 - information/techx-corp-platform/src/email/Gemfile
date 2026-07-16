@@ -4,9 +4,15 @@ source "https://rubygems.org"
 
 gem "net-smtp", "~> 0.5.1"
 gem "pony",     "~> 1.13"
-gem "puma",     "~> 7.1"
+gem "puma",     "~> 7.2.1"
 gem "sinatra",  "~> 4.2"
 gem "rackup",   "~> 2.2"
+
+# Explicitly pin transitive runtime gems to the fixed releases required by the
+# image gate. They are used by Sinatra/Mail and Ruby's default-gem set.
+gem "net-imap",     "~> 0.5.14"
+gem "rack",         "~> 3.1.21"
+gem "rack-session", "~> 2.1.2"
 
 gem "google-protobuf", "~> 4.33.0"
 

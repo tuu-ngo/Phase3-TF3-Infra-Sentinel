@@ -16,11 +16,25 @@ description = 'Ad Service'
 group = "ad"
 version = "0.1.0-SNAPSHOT"
 
-def opentelemetryVersion = "1.57.0"
-def opentelemetryInstrumentationVersion = "2.23.0"
-def grpcVersion = "1.78.0"
-def jacksonVersion = "2.20.1"
+def opentelemetryVersion = "1.62.0"
+def opentelemetryInstrumentationVersion = "2.28.1"
+def grpcVersion = "1.81.0"
+def jacksonVersion = "2.21.4"
 def protocVersion = "4.33.2"
+
+// gRPC 1.81.0 resolves Netty 4.1.132.Final.  Trivy's zero-HIGH gate requires
+// 4.1.135.Final for the June 2026 handler fixes.  Keep every Netty module on
+// one patched patch-level to avoid a mixed classpath.
+configurations.configureEach {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == "io.netty" &&
+                details.requested.name != "netty-tcnative-boringssl-static" &&
+                details.requested.name != "netty-tcnative-classes") {
+            details.useVersion "4.1.135.Final"
+            details.because "PM-101: remediate HIGH Netty CVEs before image release"
+        }
+    }
+}
 
 tasks.withType(JavaCompile).configureEach {
     sourceCompatibility = JavaVersion.VERSION_21

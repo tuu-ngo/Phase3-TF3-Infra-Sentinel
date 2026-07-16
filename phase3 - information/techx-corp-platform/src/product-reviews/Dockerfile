@@ -20,6 +20,7 @@ RUN apk update && \
     apk upgrade --no-cache libcrypto3 libssl3
 
 COPY --from=build-venv /venv/ /venv/
+ENV PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
 
@@ -29,6 +30,11 @@ COPY ./src/product-reviews/product_reviews_server.py product_reviews_server.py
 COPY ./src/product-reviews/database.py database.py
 COPY ./src/product-reviews/metrics.py metrics.py
 COPY ./src/product-reviews/guardrails guardrails
+RUN addgroup -S -g 65532 nonroot \
+    && adduser -S -u 65532 -G nonroot nonroot \
+    && chown -R 65532:65532 /app
+USER 65532:65532
+
 
 EXPOSE ${PRODUCT_REVIEWS_PORT}
 ENTRYPOINT [ "/venv/bin/opentelemetry-instrument", "/venv/bin/python", "product_reviews_server.py" ]
