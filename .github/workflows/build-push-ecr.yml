@@ -397,6 +397,7 @@ jobs:
             success=false
             for attempt in {1..12}; do
               echo "Resolving digest for $FULL_TAG (attempt $attempt)..."
+              describe_error="$(mktemp)"
 
               if metadata="$(
                 aws ecr describe-images \
@@ -404,7 +405,7 @@ jobs:
                   --image-ids "imageTag=$FULL_TAG" \
                   --region "$AWS_REGION" \
                   --query 'imageDetails[0].{digest:imageDigest,mediaType:imageManifestMediaType}' \
-                  --output json 2>/dev/null
+                  --output json 2>"$describe_error"
               )"; then
                 if [ -n "$metadata" ] && [ "$metadata" != "null" ]; then
                   digest="$(jq -r '.digest // empty' <<< "$metadata")"
@@ -437,11 +438,16 @@ jobs:
 
                     mv approved-images.tmp.json approved-images.json
                     success=true
+                    rm -f "$describe_error"
                     break
                   fi
                 fi
+              elif [ "$attempt" -eq 12 ]; then
+                echo "WARN: aws ecr describe-images failed for $FULL_TAG:" >&2
+                sed 's/^/  /' "$describe_error" >&2
               fi
 
+              rm -f "$describe_error"
               sleep 5
             done
 
