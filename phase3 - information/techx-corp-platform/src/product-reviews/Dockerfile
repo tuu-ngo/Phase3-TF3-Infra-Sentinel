@@ -26,6 +26,7 @@ COPY ./src/product-reviews/demo_pb2.py demo_pb2.py
 COPY ./src/product-reviews/product_reviews_server.py product_reviews_server.py
 COPY ./src/product-reviews/database.py database.py
 COPY ./src/product-reviews/metrics.py metrics.py
+COPY ./src/product-reviews/guardrails guardrails
 RUN addgroup -S -g 65532 nonroot \
     && adduser -S -u 65532 -G nonroot nonroot \
     && chown -R 65532:65532 /app
