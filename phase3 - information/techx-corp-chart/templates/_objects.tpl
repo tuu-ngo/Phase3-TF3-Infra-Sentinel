@@ -10,8 +10,14 @@ metadata:
   labels:
     {{- include "techx-corp.labels" . | nindent 4 }}
 spec:
+  {{- if not .replicasManagedExternally }}
   replicas: {{ .replicas | default .defaultValues.replicas }}
+  {{- end }}
   revisionHistoryLimit: {{ .revisionHistoryLimit | default .defaultValues.revisionHistoryLimit }}
+  {{- if .strategy }}
+  strategy:
+    {{- toYaml .strategy | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "techx-corp.selectorLabels" . | nindent 6 }}
@@ -33,6 +39,9 @@ spec:
         {{- ((.imageOverride).pullSecrets) | default .defaultValues.image.pullSecrets | toYaml | nindent 8}}
       {{- end }}
       serviceAccountName: {{ include "techx-corp.serviceAccountName" .}}
+      {{- if .terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .terminationGracePeriodSeconds }}
+      {{- end }}
       {{- $schedulingRules := .schedulingRules | default dict }}
       {{- if or .defaultValues.schedulingRules.nodeSelector $schedulingRules.nodeSelector}}
       nodeSelector:
@@ -46,13 +55,22 @@ spec:
       tolerations:
         {{- $schedulingRules.tolerations | default .defaultValues.schedulingRules.tolerations | toYaml | nindent 8 }}
       {{- end }}
+      {{- if or .defaultValues.schedulingRules.topologySpreadConstraints $schedulingRules.topologySpreadConstraints}}
+      topologySpreadConstraints:
+        {{- $schedulingRules.topologySpreadConstraints | default .defaultValues.schedulingRules.topologySpreadConstraints | toYaml | nindent 8 }}
+      {{- end }}
       {{- if or .defaultValues.podSecurityContext .podSecurityContext }}
       securityContext:
         {{- .podSecurityContext | default .defaultValues.podSecurityContext | toYaml | nindent 8 }}
       {{- end}}
       containers:
         - name: {{ .name }}
-          image: '{{ ((.imageOverride).repository) | default .defaultValues.image.repository }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
+          {{- $repo := ((.imageOverride).repository) | default .defaultValues.image.repository }}
+          {{- if ((.imageOverride).digest) }}
+          image: '{{ $repo }}@{{ .imageOverride.digest }}'
+          {{- else }}
+          image: '{{ $repo }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
+          {{- end }}
           imagePullPolicy: {{ ((.imageOverride).pullPolicy) | default .defaultValues.image.pullPolicy }}
           {{- if .command }}
           command:
@@ -78,6 +96,14 @@ spec:
           readinessProbe:
             {{- .readinessProbe | toYaml | nindent 12 }}
           {{- end }}
+          {{- if .startupProbe }}
+          startupProbe:
+            {{- .startupProbe | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .lifecycle }}
+          lifecycle:
+            {{- .lifecycle | toYaml | nindent 12 }}
+          {{- end }}
           volumeMounts:
             {{- if .additionalVolumeMounts }}
             {{- tpl (toYaml .additionalVolumeMounts) . | nindent 12 }}
@@ -102,7 +128,12 @@ spec:
         {{- $sidecar := set . "Release" $.Release }}
         {{- $sidecar := set . "defaultValues" $.defaultValues }}
         - name: {{ .name   }}
-          image: '{{ ((.imageOverride).repository) | default .defaultValues.image.repository }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
+          {{- $repo := ((.imageOverride).repository) | default .defaultValues.image.repository }}
+          {{- if ((.imageOverride).digest) }}
+          image: '{{ $repo }}@{{ .imageOverride.digest }}'
+          {{- else }}
+          image: '{{ $repo }}:{{ ((.imageOverride).tag) | default (printf "%s-%s" (default .Chart.AppVersion .defaultValues.image.tag) .name) }}'
+          {{- end }}
           imagePullPolicy: {{ ((.imageOverride).pullPolicy) | default .defaultValues.image.pullPolicy }}
           {{- if .command }}
           command:
@@ -129,6 +160,10 @@ spec:
           {{- if .readinessProbe }}
           readinessProbe:
             {{- .readinessProbe | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .startupProbe }}
+          startupProbe:
+            {{- .startupProbe | toYaml | nindent 12 }}
           {{- end }}
           {{- if .volumeMounts }}
           volumeMounts:
@@ -177,6 +212,9 @@ metadata:
   {{- end }}
 spec:
   type: {{ $service.type | default "ClusterIP" }}
+  {{- if $service.publishNotReadyAddresses }}
+  publishNotReadyAddresses: {{ $service.publishNotReadyAddresses }}
+  {{- end }}
   ports:
     {{- if .ports }}
     {{- range .ports }}

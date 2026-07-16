@@ -102,7 +102,17 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
   `helm upgrade --install techx-corp ... --set <service>.replicas=1` để trả lại giá trị cũ (kèm lại `-f values-flagd-sync.yaml`, bắt buộc theo GETTING_STARTED.md). Nếu replicas mới gây thiếu tài nguyên node (Pending), phát hiện ngay qua `kubectl get pods` (vài phút) do pod không schedule được.
 
 ## REL-02 — Sửa health check giả thành kiểm tra dependency thật
-*Trụ:* Reliability · *Ưu tiên đề xuất:* P0 · *Owner:* Chưa gán
+*Trụ:* Reliability · *Ưu tiên đề xuất:* P0 · *Owner:* CDO02 · **✅ ĐÃ LÀM + DEPLOYED (verify 15/07)**
+
+> **Cập nhật 15/07:** Đã hoàn thành, code đã merge + nằm trong image đang chạy (commit `8ce45af`
+> "make product-catalog health check reflect its DB dependency", `e6a3717` "extend real health checks";
+> image `6a3fe95-product-catalog`, `7527509-checkout`). Service có dependency stateful đã dùng gRPC
+> readiness → Health service dependency-aware: **product-catalog** (`db.PingContext` mỗi 5s → NOT_SERVING),
+> **product-reviews** (`Check()` kiểm DB, grpc:3551), **checkout** (`dependencyHealthStatus()`, grpc:8080).
+> Service **stateless** (currency/ad/payment/recommendation → không có DB/Kafka/Redis ngoài) giữ static
+> SERVING là **đúng** — không có dependency để check, đánh dấu NOT_SERVING sẽ sai. Còn lại chỉ
+> **acceptance test live** (chặn Postgres tạm → health flip NOT_SERVING ≤1 chu kỳ probe) — gộp vào phần
+> demo/live-test Mandate #3.
 
 - *Evidence:*
   Đọc code xác nhận `checkout`, `product-catalog`, `recommendation`, `currency`, `product-reviews`, `ad`, `payment` đều có handler gRPC health check trả `SERVING` cố định, không gọi thử dependency thật (DB/Kafka/Redis). *(Cần bổ sung số dòng file chính xác cho từng service trước khi đưa vào slide chính thức — chưa ghi lại lúc đọc code lần đầu.)*
@@ -126,6 +136,11 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 
 - *Evidence:*
   `techx-corp-chart/values.yaml` không có key `readinessProbe`/`livenessProbe` nào cho app component. Verify trực tiếp trên pod live (09/07): `kubectl -n techx-tf3 get pod payment-8447bf7668-zx4dj -o jsonpath='{.spec.containers[0].readinessProbe}'` → **rỗng hoàn toàn**, không có warning event nào cho `payment` tại thời điểm kiểm tra. (Đối chứng: Grafana có probe riêng nhưng đến từ subchart Bitnami, không liên quan app components — không mâu thuẫn với kết luận này.)
+- *Cập nhật hiện trạng (14/07 — audit live trên account mới `197826770971`):*
+  Đã có tiến triển một phần. **4 app service ĐÃ được thêm gRPC probe** qua `values-prod.yaml` (verify pod Ready, probe đang pass — **cơ chế health check hoạt động tốt**): `checkout`, `product-catalog`, `recommendation` (readiness `grpc:8080` / liveness `tcp:8080`); `product-reviews` (`grpc:3551` / `tcp:3551`).
+  **Còn THIẾU cả 2 probe — 14 app service + 3 datastore:** `accounting, ad, cart, currency, email, frontend, frontend-proxy, fraud-detection, image-provider, kafka, llm, payment, quote, shipping` + datastore `postgresql, valkey-cart, kafka`. (`load-generator`, `grafana` bỏ qua — tool/subchart.)
+  *Bằng chứng tươi:* `shipping` bị báo "có vẻ chết" (14/07) — điều tra ra pod vẫn Running và **serve đúng** ($8.99 phí ship, HTTP 200); "chết" chỉ vì **không có probe = không tín hiệu sống**. Đúng rủi ro mục này cảnh báo: thiếu liveness → service treo dưới tải 200 user không bị restart; thiếu readiness → vẫn route traffic vào pod hỏng.
+  *Probe type theo service khi triển khai nốt:* service gRPC → `grpc:<port>`; `frontend`/`frontend-proxy` (HTTP) → `httpGet /`; datastore → `tcpSocket` hoặc exec (`pg_isready` cho postgres, `valkey-cli ping` cho valkey, tcp cho kafka). Threshold + nguyên tắc liveness-lỏng-hơn-readiness giữ như phần *Giải pháp* bên dưới.
 - *Ảnh hưởng khách hàng:*
   Mỗi lần deploy/rollout, K8s route traffic vào pod mới trước khi pod thật sự sẵn sàng nhận request → khách gặp lỗi ngay lúc deploy (đúng kịch bản đã xảy ra ở INC-3, lỗi thanh toán lúc deploy).
 - *Rủi ro (khả năng × mức nghiêm trọng):*
@@ -416,6 +431,26 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
   Kafka chạy ổn định ≥48 giờ không OOM sau khi điều chỉnh; nếu vẫn OOM, có số liệu Prometheus xác nhận pattern tăng dần để loại trừ nguyên nhân traffic đột biến.
 - *Rollback / nếu làm sai:*
   `helm upgrade` trả memory limit về 700Mi. Phát hiện qua `kubectl get pods` restart count tăng — vài phút. **Lưu ý:** mỗi lần Kafka pod restart (kể cả do rollback) vẫn mất toàn bộ message đang lưu (chưa vá REL-10) — cân nhắc thời điểm ít traffic nếu phải restart thủ công.
+
+## REL-17 — Thay/bổ sung SSM bastion bằng access theo SSO (đề xuất: Cloudflare Zero Trust)
+*Trụ:* Reliability / Operational Excellence (liên quan Security — cần phối hợp CDO01) · *Ưu tiên đề xuất:* P2 · *Owner:* Chưa gán
+
+- *Evidence:*
+  Xác nhận thật trong lúc vận hành 14/07 (không phải suy đoán): tunnel `aws ssm start-session --document-name AWS-StartPortForwardingSessionToRemoteHost` tự đóng sau ~10-20 phút idle, phải dò lại `bastion_instance_id`/`cluster_endpoint` qua `terraform output` và chạy lại lệnh full tham số mỗi lần cần `kubectl`. Không có cơ chế giữ phiên hay tự reconnect. Ngoài ra danh tính vẫn là **IAM user tĩnh**, không qua SSO — khớp đúng rủi ro đã ghi trong `CLAUDE.md` mục "Rủi ro chưa xử lý": cả 4 IAM user (`arthur`, `CDO01`, `CDO02`, `AIO02`) + `mentor` đều `AdministratorAccess`, trái nguyên tắc least-privilege đang áp dụng ở IRSA/ECR CI role.
+- *Ảnh hưởng khách hàng:*
+  Không trực tiếp — đây là công cụ vận hành nội bộ, không phải đường traffic khách hàng. Ảnh hưởng gián tiếp: mỗi lần tunnel chết giữa lúc xử lý sự cố làm chậm MTTR (mất vài phút dựng lại tunnel đúng lúc cần phản ứng nhanh).
+- *Rủi ro (khả năng × mức nghiêm trọng):*
+  Khả năng cao (đã xảy ra lặp lại nhiều lần trong 1 phiên làm việc) × nghiêm trọng trung bình (làm chậm thao tác, không gây outage trực tiếp, nhưng cộng dồn với rủi ro `AdministratorAccess` sprawl đã biết) = **P2**.
+- *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
+  Không đụng SLO khách hàng trực tiếp, nhưng thuộc đúng trụ Operational Excellence (RULES.md mục 4) và góp phần đóng rủi ro Security đã tự gắn cờ — hội đồng nhiều khả năng hỏi tới vì đã ghi rõ trong CLAUDE.md là "chưa xử lý".
+- *Giải pháp đề xuất:*
+  Đánh giá 4 lựa chọn thị trường (SSM bastion hiện tại / OpenVPN / Tailscale / NetBird / **Cloudflare Zero Trust**) trên 3 tiêu chí: ops overhead, bề mặt lộ ra (inbound port), và mô hình cấp quyền. Khuyến nghị **Cloudflare Zero Trust** (`cloudflared` tunnel, outbound-only, giữ nguyên posture 0 inbound port như SSM hiện tại) + Access policy theo SSO/MFA — giải quyết đồng thời cả 2 vấn đề: (1) hết cảnh tunnel chết giữa chừng (Access session theo policy, không phải port-forward tay per-session), (2) thay dần IAM user tĩnh bằng danh tính SSO có thể revoke/audit theo từng người, thu hẹp trực tiếp bề mặt `AdministratorAccess` sprawl. Cấp quyền theo từng app (ai vào Grafana, ai vào kubectl-proxy...) thay vì mesh VPN kiểu Tailscale/NetBird (vào 1 node coi như vào cả mạng trừ khi tự cấu hình ACL kỹ) — khớp least-privilege hơn. Loại OpenVPN vì tự quản PKI/revoke cert là thêm việc, ngược hướng đang cần giảm ops overhead.
+- *Chi phí / effort:*
+  Free tier Cloudflare Zero Trust đủ cho quy mô team (≤50 user). Effort trung bình: cần tài khoản Cloudflare (BTC/CDO02 tự tạo, ngoài phạm vi Claude Code có thể tự làm — tạo tài khoản/nhập thông tin xác thực nằm trong danh sách hành động cấm), liên kết SSO (Google Workspace hoặc GitHub org hiện có), dựng `cloudflared` như 1 Deployment nhỏ trong cluster (outbound tunnel tới Cloudflare edge), viết Access policy cho từng app (kubectl-proxy, Grafana, ArgoCD). Không cần đổi domain hiện có — Access có sẵn domain miễn phí dạng `<team>.cloudflareaccess.com`.
+- *Acceptance criteria:*
+  Truy cập `kubectl`/Grafana/ArgoCD qua Cloudflare Access thành công với SSO, không cần lệnh `aws ssm start-session` tay nữa; audit log Access ghi được đúng người/thời điểm truy cập; SSM bastion giữ lại làm fallback cho tới khi migration verify ổn định qua ≥1 tuần vận hành thật (không tắt ngay).
+- *Rollback / nếu làm sai:*
+  Đây là bổ sung song song, không thay thế ngay — SSM bastion giữ nguyên hoạt động trong suốt quá trình đánh giá/triển khai thử. Nếu Cloudflare Access gây vấn đề (không vào được, chi phí phát sinh ngoài dự kiến), gỡ `cloudflared` Deployment + Access app, quay lại 100% SSM bastion — không có state nào bị khoá vào Cloudflare (EKS API vẫn private-only, không đổi cấu hình mạng cluster).
 
 ---
 

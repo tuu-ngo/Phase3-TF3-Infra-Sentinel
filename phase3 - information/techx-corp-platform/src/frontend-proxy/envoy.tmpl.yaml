@@ -1,6 +1,6 @@
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
-
+# rebuild-sync (retry after checkout main.go fix): touch to build alongside accounting/cart/checkout/product-catalog/product-reviews/recommendation under one CI tag
 
 static_resources:
   listeners:
@@ -37,30 +37,17 @@ static_resources:
                       domains:
                         - "*"
                       routes:
-                        - match: { path: "/loadgen" }
-                          redirect: { path_redirect: "/loadgen/" }
-                        - match: { prefix: "/loadgen/" }
-                          route: { cluster: loadgen, prefix_rewrite: "/" }
+                        # Mandate #1 (network-exposure): /loadgen, /jaeger, /grafana, /feature
+                        # (flagd-ui) removed from the public route - ops UIs, private-only now
+                        # (SSM bastion + kubectl port-forward, see docs/runbooks/private-access-to-ops-uis.md).
+                        # /flagservice/ is NOT a UI - it's the flag-read path services depend on
+                        # at runtime; do not remove it, that's a disqualifying flagd violation.
                         - match: { prefix: "/otlp-http/" }
                           route: { cluster: opentelemetry_collector_http, prefix_rewrite: "/" }
-                        - match: { path: "/jaeger" }
-                          redirect: { path_redirect: "/jaeger/" }
-                        - match: { prefix: "/jaeger/" }
-                          route: { cluster: jaeger }
-                        - match: { path: "/grafana" }
-                          redirect: { path_redirect: "/grafana/" }
-                        - match: { prefix: "/grafana/" }
-                          route: { cluster: grafana }
                         - match: { prefix: "/images/" }
                           route: { cluster: image-provider, prefix_rewrite: "/" }
                         - match: { prefix: "/flagservice/" }
                           route: { cluster: flagservice, prefix_rewrite: "/", timeout: 0s }
-                        - match: { prefix: "/feature" }
-                          route:
-                            cluster: flagd-ui
-                            prefix_rewrite: "/"
-                            upgrade_configs:
-                              - upgrade_type: websocket
                         - match: { prefix: "/" }  # Default/catch-all route - keep last since prefix:"/" matches everything
                           route: { cluster: frontend }
                 http_filters:

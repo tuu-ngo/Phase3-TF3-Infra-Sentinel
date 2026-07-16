@@ -14,10 +14,76 @@ spec:
         - values.yaml
         - ../deploy/values-flagd-sync.yaml
         - ../deploy/values-prod.yaml
+        - ../deploy/values-aio-llm.yaml
+      parameters:
+        - name: default.image.repository
+          value: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
+        - name: default.image.tag
+          value: 58b13f2
+        - name: components.frontend-proxy.ingress.enabled
+          value: "false"
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: techx-tf3
+  # The rollout controller progressively scales its referenced Deployment down.
+  # ArgoCD must not self-heal that controller-owned replica count back to 2.
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Rollout
+      name: checkout-rollout
+      namespace: techx-tf3
+      jsonPointers:
+        - /spec/replicas
+    - group: apps
+      kind: Deployment
+      name: checkout
+      namespace: techx-tf3
+      jsonPointers:
+        - /spec/replicas
+    # HPA owns scale for these Deployments; Argo CD owns all remaining fields.
+    - group: apps
+      kind: Deployment
+      namespace: techx-tf3
+      name: ad
+      jsonPointers: [/spec/replicas]
+    - group: apps
+      kind: Deployment
+      namespace: techx-tf3
+      name: cart
+      jsonPointers: [/spec/replicas]
+    - group: apps
+      kind: Deployment
+      namespace: techx-tf3
+      name: currency
+      jsonPointers: [/spec/replicas]
+    - group: apps
+      kind: Deployment
+      namespace: techx-tf3
+      name: frontend
+      jsonPointers: [/spec/replicas]
+    - group: apps
+      kind: Deployment
+      namespace: techx-tf3
+      name: frontend-proxy
+      jsonPointers: [/spec/replicas]
+    - group: apps
+      kind: Deployment
+      namespace: techx-tf3
+      name: product-catalog
+      jsonPointers: [/spec/replicas]
+    - group: apps
+      kind: Deployment
+      namespace: techx-tf3
+      name: product-reviews
+      jsonPointers: [/spec/replicas]
+    - group: apps
+      kind: Deployment
+      namespace: techx-tf3
+      name: recommendation
+      jsonPointers: [/spec/replicas]
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true

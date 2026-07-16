@@ -3,15 +3,90 @@
 
 default:
   image:
-    repository: 012619468490.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
-    tag: d2bc367
+    # Switched to the new AWS account's ECR (temporary account, see team notes).
+    # Tag stays as-is until the build-push-ecr.yml run for frontend-proxy finishes -
+    # bump it in the same PR as the envoy.tmpl.yaml route removal once that image exists.
+    repository: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
+    tag: 58b13f2
 
 grafana:
+  # REL-17: Grafana giờ có hostname riêng qua Cloudflare (grafana.arthur-ngo.org).
+  # Base chart values.yaml đặt root_url = http://%(domain)s:%(http_port)s/grafana +
+  # serve_from_sub_path=true (cho đường truy cập /grafana subpath cũ) → khi vào qua
+  # hostname riêng, Grafana redirect tuyệt đối về http://localhost:3000/grafana (domain
+  # rỗng mặc định localhost) → ERR_CONNECTION_REFUSED. Override để phục vụ ở ROOT của
+  # hostname riêng. Đánh đổi đã chấp nhận: port-forward localhost:3000 cho Grafana sẽ
+  # redirect về hostname này thay vì đứng độc lập (dùng Cloudflare URL thay thế).
+  grafana.ini:
+    server:
+      domain: grafana.arthur-ngo.org
+      root_url: "%(protocol)s://%(domain)s/"
+      serve_from_sub_path: false
+  sidecar:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 96Mi
+      limits:
+        cpu: 150m
+        memory: 256Mi
   resources:
     requests:
-      memory: 250Mi
+      cpu: 50m
+      memory: 512Mi
+    limits:
+      cpu: 200m
+      memory: 1Gi
+
+jaeger:
+  jaeger:
+    # Mandate 2: OOMKilled thật giữa lúc load test 200 user (Exit Code 137, xác nhận qua
+    # kubectl describe) - limit cũ 1Gi bị bỏ sót khi tăng Prometheus/OpenSearch/Kafka trước đó.
+    # Volume trace tăng mạnh dưới 200 user, tăng limit tương tự nhóm quan sát kia.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 750Mi
+      limits:
+        cpu: 500m
+        memory: 2Gi
+
+opensearch:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 750Mi
+    limits:
+      cpu: 750m
+      memory: 1600Mi
+
+prometheus:
+  server:
+    resources:
+      requests:
+        cpu: 150m
+        memory: 450Mi
+      limits:
+        cpu: 800m
+        memory: 1200Mi
+
+opentelemetry-collector:
+  resources:
+    limits:
+      memory: 350Mi
 
 components:
+  # imageOverride (per-component) - dùng khi build/deploy lại 1 service riêng lẻ mà
+  # KHÔNG bump default.image.tag dùng chung ở trên. build-push-ecr.yml giờ build scoped
+  # theo service đổi (xem workflow) - bump default.image.tag sẽ làm MỌI service không có
+  # tag đó bị pull lỗi -> ImagePullBackOff hàng loạt. Giá trị hiện tại ở mỗi
+  # imageOverride.tag dưới đây = no-op (khớp default.image.tag hiện có). Đổi thành
+  # "<tag-CI-vừa-build>-<service>" (FULL string - chart KHÔNG tự nối hậu tố tên service
+  # cho imageOverride.tag, khác với default.image.tag) sau khi build-push-ecr.yml build
+  # xong service đó, trước khi tạo PR. Đang set cho: frontend-proxy (mandate-01, gỡ route
+  # Envoy) + accounting/cart/checkout/product-catalog/product-reviews/recommendation
+  # (fix app-code từ CDO02, xem handoff-cdo02-to-cdo01-deploy.md).
+  #
   # REL-01 (ADR 0001 — pre-work bước 1 nâng cấp EKS 1.32→1.34): replicas ≥2 cho nhóm
   # đường ra tiền + gateway, để node rolling-replace lúc upgrade không đứt checkout.
   # PDB đi kèm ở gitops/infrastructure/pdb-checkout.yaml.
@@ -19,29 +94,876 @@ components:
   # (frontend 1.4 rps, product-catalog 1.1 rps, còn lại <0.1 rps). Scale theo tải là việc
   # của HPA sau. LƯU Ý: KHÔNG thêm replicas cho postgresql/kafka/valkey (stateful singleton
   # — sẽ hỏng dữ liệu; HA datastore đi qua RDS/ElastiCache, xem ADR 0002).
-  frontend:
-    replicas: 2        # web khách thấy, traffic HTTP cao nhất
-  product-catalog:
-    replicas: 2        # backend traffic cao nhất + có crash history (REL-14)
-  cart:
-    replicas: 2
-  checkout:
-    replicas: 2
-  payment:
-    replicas: 2
-  currency:
-    replicas: 2
-  shipping:
-    replicas: 2
-  quote:
-    replicas: 2        # shipping phụ thuộc quote
-  product-reviews:
-    replicas: 2        # đứng sau tính năng AI tóm tắt review
-  accounting:
+  ad:
+    replicasManagedExternally: true
+    imageOverride:
+      digest: sha256:a45fdb96972c11c4b75261ef1205f96c92f5c23fb5edbc47f3b6bb95eb3f27bb
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
       limits:
+        cpu: 500m
+        memory: 512Mi
+  frontend:
+    replicasManagedExternally: true
+    # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
+    # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
+    # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
+    # in-flight hoan tat sau SIGTERM.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: frontend
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: frontend
+    imageOverride:
+      digest: sha256:047faed92fe4ecf8b2bb7d3d99c191a2d495f41024abc44c204fe94a9ae019a3
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 20
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    replicas: 2        # web khách thấy, traffic HTTP cao nhất
+    resources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+      limits:
+        cpu: 500m
+        memory: 250Mi
+  product-catalog:
+    replicasManagedExternally: true
+    # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
+    # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
+    # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
+    # in-flight hoan tat sau SIGTERM.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: product-catalog
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: product-catalog
+    replicas: 2        # backend traffic cao nhất + có crash history (REL-14)
+    imageOverride: # CDO02 fix main.go - xem comment imageOverride đầu components:
+      digest: sha256:412f75faac8b02fc48676c1fe2d3bc695e39b9cf6c0fbd6bb941c1fbea80f83f
+      tag: 6a3fe95-product-catalog
+    resources:
+      requests:
+        cpu: 100m
+        memory: 32Mi
+      limits:
+        cpu: 500m
+        memory: 64Mi
+    readinessProbe:
+      grpc:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 2
+      failureThreshold: 3
+  cart:
+    replicasManagedExternally: true
+    # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
+    # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
+    # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
+    # in-flight hoan tat sau SIGTERM.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: cart
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: cart
+    # Mandate 2 do-not-disrupt (tạm, chỉ trong cửa sổ load test) đã gỡ sau khi test xong + co
+    # xuống xác nhận ổn định (PM-108 cleanup) - xem docs/mandate-02-load-test-remediation-plan.md.
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    replicas: 2
+    imageOverride: # CDO02 fix HealthCheckService.cs - xem comment imageOverride đầu components:
+      digest: sha256:1cc20ba4d7f195245429e084e5aa495a305ed0b14539261953f8595ab50c05b6
+      tag: 6a3fe95-cart
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 160Mi
+  checkout:
+    # Mandate 3: checkout is managed by Argo Rollouts, but the Rollout still reuses this
+    # pod template through workloadRef. Keep the same graceful shutdown contract as the
+    # other revenue services so drain/rollout does not cut an in-flight PlaceOrder.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
+    replicas: 2
+    imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
+      digest: sha256:a774cb69f27795406f768881a7c575ba882f024f8e99ca928413047f3b3eb532
+      tag: 7527509-checkout
+    # Mandate 2 remediation: 2 pod stable từng bị xếp chung 1 node (xác nhận qua
+    # kubectl trước load test) - checkout là service chịu tải chính, mất cả node đó
+    # là mất cả 2 pod dù có PDB. hostname dùng ScheduleAnyway (soft) để không chặn
+    # HPA scale lên tới 8 pod nếu node chưa kịp Karpenter cung cấp; zone dùng
+    # DoNotSchedule (hard) vì luôn dư số AZ, không có rủi ro kẹt lịch.
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: checkout
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: checkout
+    resources:
+      requests:
+        cpu: 100m
+        memory: 32Mi
+      limits:
+        cpu: 500m
+        memory: 64Mi
+    readinessProbe:
+      grpc:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 2
+      failureThreshold: 3
+  payment:
+    # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
+    # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
+    # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
+    # in-flight hoan tat sau SIGTERM.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: payment
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: payment
+    imageOverride:
+      digest: sha256:839b9cb5e5c50ba9a03acea8a4b15e29be724089e30cf18904530a1bc07bede5
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 20
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    replicas: 2
+    # Mandate 2: memory limit cũ (180Mi) đã bị dùng ~50-54% chỉ với 10 user loadgen
+    # nền (xác nhận qua kubectl top) - payment đứng đường charge tiền, ưu tiên tăng
+    # trước 200 user thật, tránh OOM đúng lúc checkout.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 100Mi
+      limits:
+        cpu: 300m
+        memory: 300Mi
+  currency:
+    replicasManagedExternally: true
+    # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
+    # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
+    # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
+    # in-flight hoan tat sau SIGTERM.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: currency
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: currency
+    imageOverride:
+      digest: sha256:e4e4c76b27fea4d82bbc25aa2f2d6c2163450a223f89c71e7ae4985fb6c0203a
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 8Mi
+      limits:
+        cpu: 300m
+        memory: 20Mi
+  shipping:
+    # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
+    # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
+    # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
+    # in-flight hoan tat sau SIGTERM.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: shipping
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: shipping
+    imageOverride:
+      digest: sha256:4952c73703cca38ec8afe934a3571f5f0a5f5e8e2adeb4af3eafc5cfa5ddb3ec
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    replicas: 2
+    # Mandate 2: 20Mi limit quá mỏng cho tải 200 user, không có HPA để bù nếu chạm.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 8Mi
+      limits:
+        cpu: 150m
+        memory: 64Mi
+  quote:
+    # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
+    # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
+    # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
+    # in-flight hoan tat sau SIGTERM.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: quote
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: quote
+    imageOverride:
+      digest: sha256:97fbf36ede49bb20218b75bfe0f2c9e90ed976114813091abb11ca789f567df3
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    replicas: 2        # shipping phụ thuộc quote
+    # Mandate 2: 40Mi limit quá mỏng cho tải 200 user, không có HPA để bù nếu chạm.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 24Mi
+      limits:
+        cpu: 150m
+        memory: 80Mi
+  product-reviews:
+    replicasManagedExternally: true
+    # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
+    # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
+    # sleep handler (khong can shell, chay ca voi container distroless). grace 30s = 25s cho
+    # in-flight hoan tat sau SIGTERM.
+    terminationGracePeriodSeconds: 30
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 5
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: product-reviews
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: product-reviews
+    replicas: 2        # đứng sau tính năng AI tóm tắt review
+    imageOverride: # CDO02 fix database.py + product_reviews_server.py - xem comment imageOverride đầu components:
+      digest: sha256:4d3811fa4bf160d94e8254bd370bcf0a81a84ce670dc691d8cb4103162f7f538
+      tag: f6e9532-product-reviews
+    resources:
+      requests:
+        cpu: 100m
+        memory: 80Mi
+      limits:
+        cpu: 500m
+        memory: 150Mi
+    readinessProbe:
+      grpc:
+        port: 3551
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 3551
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 2
+      failureThreshold: 3
+  recommendation:
+    replicasManagedExternally: true
+    imageOverride: # CDO02 fix recommendation_server.py - xem comment imageOverride đầu components:
+      digest: sha256:7b1246d011356a0e6d2b0b94b854b2bc3eb0ee06a502d02d9a79a3163b447b78
+      tag: 6a3fe95-recommendation
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 500Mi
+    readinessProbe:
+      grpc:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 2
+      failureThreshold: 3
+  accounting:
+    imageOverride: # CDO02 fix Consumer.cs - xem comment imageOverride đầu components:
+      digest: sha256:8fc8a91f98ae40d6be284ff9009b32dd0e1e1c3152532362ed363f8bc71c4ed6
+      tag: 6a3fe95-accounting
+    resources:
+      requests:
+        cpu: 50m
+        memory: 150Mi
+      limits:
+        cpu: 200m
         memory: 350Mi
+  email:
+    imageOverride:
+      digest: sha256:ca14e55cc0855e3a8a2de19098d75f69772408d2bef6f9b52663e864ae1a545f
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 20
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 100Mi
+  fraud-detection:
+    imageOverride:
+      digest: sha256:b4797d6b16bf6a3b88ec8ddb9dbcd6c29c208e6be221f4f018af4b5f624fbc13
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 300m
+        memory: 512Mi
+  image-provider:
+    imageOverride:
+      digest: sha256:00b73a3efd2caab3e69fce24b40b4e176da5c5f89b7b2c8ae2f37c25400cf44a
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8081
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8081
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    resources:
+      requests:
+        cpu: 25m
+        memory: 16Mi
+      limits:
+        cpu: 100m
+        memory: 50Mi
+  kafka:
+    service:
+      # REL-10: KRaft 1-node tu noi controller cua chinh no qua Service kafka:9093. Pod PHAI nam
+      # trong Service endpoints NGAY khi chua ready, neu khong startupProbe/readinessProbe se loai pod
+      # khoi endpoints -> broker khong noi duoc controller -> 9092 khong mo -> DEADLOCK (2 cutover 14/07
+      # that bai vi thieu field nay). publishNotReadyAddresses giu pod trong endpoints ke ca khi not-ready.
+      publishNotReadyAddresses: true
+    resources:
+      requests:
+        cpu: 100m
+        memory: 650Mi
+      limits:
+        cpu: 500m
+        memory: 1.5Gi
+    # REL-10: PVC persistence cho Kafka (KRaft). image apache/kafka 3.9.1, chay uid/gid 1000,
+    # CLUSTER_ID co dinh qua env -> format KRaft idempotent (launch script skip "already formatted").
+    envOverrides:
+      - name: KAFKA_LOG_DIRS          # data trong SUBDIR cua volume, KHONG phai volume root ->
+        value: /var/lib/kafka/data    # lost+found (o root EBS) vo hinh voi LogManager, khong crash loadLogs
+      - name: CLUSTER_ID              # PIN cluster-id: lan format dau + MOI restart dung 1 gia tri co dinh
+        value: ckjPoprWQzOf0-FuNkGfFQ # -> tranh "Cluster ID mismatch" crash. Git truoc day KHONG set (image
+                                      # default doi khac) -> pin tuong minh de deterministic qua restart/redeploy
+    podSecurityContext:
+      fsGroup: 1000                   # kafka ghi duoc vao EBS volume moi (thieu -> "Permission denied", nhu valkey da dinh)
+    initContainers:
+      # Tao + chown subdir data truoc khi kafka chay. Chu dich thay vi subPath: subPath + fsGroup
+      # co bug kubelet khong chown subpath dir -> uid 1000 khong ghi duoc. Mount thang + initContainer chown la chac an.
+      - name: init-kafka-data
+        image: busybox:1.36
+        command: ["sh", "-c", "mkdir -p /var/lib/kafka/data && chown -R 1000:1000 /var/lib/kafka/data"]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+          - name: kafka-data
+            mountPath: /var/lib/kafka
+    additionalVolumeMounts:
+      - name: kafka-data
+        mountPath: /var/lib/kafka     # mount THANG volume (khong subPath); kafka chi doc/ghi subdir /data
+    additionalVolumes:
+      - name: kafka-data
+        persistentVolumeClaim:
+          claimName: kafka-data       # khai o gitops/infrastructure/datastore-pvc.yaml
+    strategy:                         # RWO PVC + Deployment -> Recreate tranh multi-attach deadlock khi rollout
+      type: Recreate
+    podAnnotations:
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"   # dung de Karpenter/CA evict pod stateful
+    # REL-10 probe fix (cutover 14/07 that bai): BO readinessProbe. KRaft 1-node tu noi controller
+    # cua chinh no qua Service kafka:9093; readiness gate 9092 -> pod chua Ready bi loai khoi Service
+    # endpoints -> broker khong noi duoc controller -> 9092 khong bao gio mo -> DEADLOCK.
+    # Thay bang startupProbe: cho broker du thoi gian bootstrap tren EBS + KRaft format; trong luc do
+    # liveness bi TAT. Startup xong liveness moi bat -> co the gat, bat treo runtime nhanh.
+    startupProbe:
+      tcpSocket:
+        port: 9092
+      periodSeconds: 10
+      failureThreshold: 30            # ~300s ngan sach khoi dong (EBS attach + format + JVM)
+      timeoutSeconds: 3
+    livenessProbe:                    # chi chay SAU startupProbe thanh cong -> khong can initialDelay
+      tcpSocket:
+        port: 9092
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+  llm:
+    imageOverride:
+      digest: sha256:85a7578ef9b826196632fdd219eaa131f0caed024753499d036fc5baabf374b8
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8000
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8000
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
+  load-generator:
+    imageOverride:
+      digest: sha256:db7016dbed1d6b24c5aa6beb1102fd11148aa791a6b61b745ef8fdebc6146641
+    envOverrides:
+      - name: LOCUST_AUTOSTART
+        value: "true"
+      - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+        value: "false"
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: "1"
+        memory: 1500Mi
+  postgresql:
+    schedulingRules:
+      nodeSelector:
+        techx.io/workload: stateful
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: stateful
+          effect: NoSchedule
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 300m
+        memory: 512Mi
+    envOverrides:              # PGDATA vào subdir để lost+found của EBS volume không làm initdb từ chối
+      - name: PGDATA
+        value: /var/lib/postgresql/data/pgdata
+    additionalVolumeMounts:
+      - name: postgresql-data
+        mountPath: /var/lib/postgresql/data
+    additionalVolumes:
+      - name: postgresql-data
+        persistentVolumeClaim:
+          claimName: postgresql-data   # PVC ở gitops/infrastructure/datastore-pvc.yaml
+    strategy:                  # RWO PVC + Deployment -> Recreate tránh deadlock rolling update
+      type: Recreate
+    podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+      # Mandate 2 do-not-disrupt đã gỡ (PM-108 cleanup) - postgres giờ chạy trên node group
+      # stateful riêng (stateful_1a, taint techx.io/workload=stateful), ngoài Karpenter
+      # flash-sale-spot NodePool, nên rủi ro consolidation tự nguyện không còn áp dụng.
+    readinessProbe:
+      tcpSocket:
+        port: 5432
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 5432
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 5
+  valkey-cart:
+    schedulingRules:
+      nodeSelector:
+        techx.io/workload: stateful
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: stateful
+          effect: NoSchedule
+    podSecurityContext:
+      fsGroup: 999
+    resources:
+      requests:
+        cpu: 50m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --dir
+      - /data
+    additionalVolumeMounts:
+      - name: valkey-cart-data
+        mountPath: /data
+    additionalVolumes:
+      - name: valkey-cart-data
+        persistentVolumeClaim:
+          claimName: valkey-cart
+    persistence:
+      enabled: true            # chart tạo PVC 'valkey-cart' (valkey-cart-pvc.yaml). AOF ghi vào PVC
+      size: 1Gi
+      storageClassName: gp2
+    strategy:                  # RWO PVC + Deployment -> Recreate tránh deadlock rolling update
+      type: Recreate
+    podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+      # Mandate 2 do-not-disrupt đã gỡ (PM-108 cleanup) - cùng lý do với postgresql phía trên,
+      # valkey giờ chạy trên node group stateful riêng, ngoài Karpenter flash-sale-spot NodePool.
+    readinessProbe:
+      tcpSocket:
+        port: 6379
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 6379
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 5
   flagd:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 75Mi
     env:
       - name: FLAGD_METRICS_EXPORTER
         value: otel
@@ -65,14 +987,74 @@ components:
       - '[{"uri":"https://122.248.223.194.sslip.io/flags.json","provider":"http","authHeader":"Bearer $(FLAGD_SYNC_TOKEN)"}]'
     sidecarContainers: []
   frontend-proxy:
+    replicasManagedExternally: true
+    # Mandate 3: graceful shutdown - RIENG frontend-proxy dai hon cac service khac (5s) vi day la
+    # ALB target (type=ip), khong phai chi Service noi bo cluster. Endpoint noi bo propagate nhanh
+    # (~vai giay) nhung ALB deregistration cham hon: sau DeregisterTargets, ALB can ~chuc giay de
+    # ngung route connection moi toi target dang draining. preStop 20s giu pod phuc vu suot cua so
+    # do (khop deregistration_delay=30s dat o gitops/edge/frontend-proxy-internal-ingress.yaml).
+    # grace 40s = 20s preStop + 20s cho Envoy drain in-flight sau SIGTERM.
+    terminationGracePeriodSeconds: 40
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 20
+    # Mandate 3 (bảo trì không downtime): ép 2 replica ra 2 AZ khác nhau (hard, DoNotSchedule)
+    # => luôn ở 2 node khác nhau => drain 1 node không bao giờ mất cả service. hostname soft
+    # (ScheduleAnyway) để HPA scale-up trong 1 AZ không bị kẹt lịch. Pattern giống checkout.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
+        maxSurge: 1
+    schedulingRules:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: frontend-proxy
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              opentelemetry.io/name: frontend-proxy
+    # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
+    # grpc-health/sai HTTP path). liveness long hon readiness.
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
     replicas: 2        # cổng vào DUY NHẤT (Envoy) — SPOF của toàn hệ thống
+    imageOverride: # mandate-01: gỡ route Envoy - xem comment imageOverride đầu components:
+      digest: sha256:7cf4dd2e0c5cdf097ee8c56600ca94b31d4bd1fc04965dac13f6c26262287630
+      tag: 6a3fe95-frontend-proxy
+    resources:
+      requests:
+        cpu: 100m
+        memory: 32Mi
+      limits:
+        cpu: 500m
+        memory: 65Mi
     ingress:
       annotations:
         alb.ingress.kubernetes.io/healthcheck-path: /
         alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
         alb.ingress.kubernetes.io/scheme: internet-facing
         alb.ingress.kubernetes.io/target-type: ip
-      enabled: true
+      enabled: false
       hosts:
         - host: ""
           paths:
@@ -80,3 +1062,7 @@ components:
               pathType: Prefix
               port: 8080
       ingressClassName: alb
+
+rollouts:
+  checkout:
+    replicasManagedExternally: true
