@@ -47,10 +47,10 @@ actionlint .github/workflows/build-push-ecr.yml .github/workflows/test-image-bum
 ```
 
 ## Actual pytest collection count
-79
+84
 
 ## Actual pytest pass count
-79
+84
 
 ## Actionlint result
 Exit code 0. No diagnostics reported.
@@ -108,11 +108,11 @@ Implementation summary:
 
 Test discovery:
 Command: `python -m pytest --collect-only -q scripts/ci`
-Collected: 79
+Collected: 84
 
 Test execution:
 Command: `python -m pytest -q scripts/ci`
-Passed: 79
+Passed: 84
 Failed: 0
 Skipped: 0
 
