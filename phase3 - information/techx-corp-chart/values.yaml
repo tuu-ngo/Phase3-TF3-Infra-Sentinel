@@ -660,8 +660,9 @@ components:
       limits:
         memory: 1500Mi
     securityContext:
-      runAsUser: 65532
-      runAsGroup: 65532
+      # Matches the non-root `locust` user created by the PM-101 image.
+      runAsUser: 10001
+      runAsGroup: 10001
       runAsNonRoot: true
       allowPrivilegeEscalation: false
       capabilities:

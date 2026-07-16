@@ -13,6 +13,15 @@ defmodule FlagdUi.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      # The PM-101 release gate blocks HIGH/CRITICAL. Cowlib 2.18.0 is the
+      # latest release and still carries these unfixed LOW/MEDIUM advisories.
+      # Keep the acknowledgement narrow so any new advisory still fails audit.
+      hex: [
+        ignore_advisories: [
+          "EEF-CVE-2026-43966",
+          "EEF-CVE-2026-43969"
+        ]
+      ],
       releases: [
         flagd_ui: [
           applications: [
@@ -52,20 +61,19 @@ defmodule FlagdUi.MixProject do
       {:esbuild, "~> 0.10.0", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.4.1", runtime: Mix.env() == :dev},
       {:heroicons,
-       github: "tailwindlabs/heroicons",
-       tag: "v2.2.0",
-       sparse: "optimized",
+       path: "/opt/heroicons",
        app: false,
-       compile: false,
-       depth: 1},
-      {:swoosh, "~> 1.20.0"},
-      {:req, "~> 0.5.16"},
+       compile: false},
+      {:swoosh, "~> 1.26.3"},
+      {:req, "~> 0.6.2"},
       {:telemetry_metrics, "~> 1.1.0"},
       {:telemetry_poller, "~> 1.3.0"},
       {:gettext, "~> 1.0.2"},
       {:jason, "~> 1.4.4"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.10.0"},
+      {:bandit, "~> 1.12.0"},
+      {:cowboy, "~> 2.17.0", override: true},
+      {:cowlib, "~> 2.18.0", override: true},
       {:credo, "~> 1.7.13", only: [:dev, :test], runtime: false},
       {:opentelemetry, "~> 1.7.0"},
       {:opentelemetry_api, "~> 1.5.0"},

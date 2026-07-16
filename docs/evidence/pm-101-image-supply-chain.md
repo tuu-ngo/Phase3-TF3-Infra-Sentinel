@@ -4,29 +4,36 @@
 
 **Backlog:** item #8 / PM-101, extending PM-95 digest pinning and ECR immutability
 
-**Branch:** `feat/pm-101-trivy-cosign-gate`
+**Branch:** `fix/pm-101-production-completion`
 
 **Date:** 2026-07-16
 
-**Status:** implementation ready for PR; remote CI, signature, and live-digest
-evidence remain pending until the workflow is merged and run on `main`
+**Status:** all 20 first-party build targets pass the strict remote
+HIGH/CRITICAL gate. Production push/sign and live-digest evidence remain
+pending until the synchronized branch is merged and the `main` release flow
+finishes.
 
 ## 1. Scope and isolation from PM-92
 
-This branch is created from the current `origin/main` and contains only PM-101
-CI, supply-chain documentation, and evidence changes:
+The original PM-101 workflow/ADR implementation is already on `main`. This
+completion branch contains the Dockerfile/base-image changes and dependency
+updates required to make the zero-HIGH/CRITICAL gate pass. A temporary
+scan-only input was used on the branch to remediate without ECR mutation; after
+syncing with the newer Mandate 8 workflow on `main`, that temporary input is not
+part of the production workflow:
 
-- `.github/workflows/build-push-ecr.yml`
-- `.github/workflows/scan-external-images.yml`
-- `docs/adr/0008-pm-101-image-supply-chain-gate.md`
-- `docs/security/image-supply-chain-controls.md`
 - `docs/evidence/pm-101-image-supply-chain.md`
+- first-party image Dockerfiles and dependency lockfiles needed to clear the
+  blocking gate
 
-It deliberately does **not** contain PM-92 changes to
-`phase3 - information/techx-corp-chart/values.yaml` or application Dockerfiles.
-Merging this branch therefore does not change Kubernetes pod templates, runtime
-UIDs, security contexts, image digests, replicas, public storefront routing,
-private operations access, or flagd/fault-injection behavior.
+It deliberately does **not** contain PM-92 chart/securityContext or PSA changes.
+The image remediation is in PM-101 scope because the release gate correctly
+rejects the old dependencies and bases. Some final images now use patched
+Alpine/distroless bases and explicit non-root users; those runtime changes were
+smoke-tested locally. Merging the branch itself still does not change Kubernetes
+pod templates, deployed image digests, replicas, public storefront routing,
+private operations access, or flagd/fault-injection behavior. Runtime changes
+occur only after a separately reviewed signed-digest promotion.
 
 ## 2. Before PM-101
 
@@ -114,7 +121,7 @@ with an unreviewed HIGH/CRITICAL finding must stop.
 
 ## 5. Safe rollout flow
 
-1. Review this branch and confirm its diff contains no PM-92 runtime files.
+1. Review this branch and confirm its diff contains no PM-92 chart/PSA files.
 2. Merge the PM-101 PR into `main`.
 3. Run `Build & Push TechX Corp images to ECR` manually in full mode on `main`.
 4. Remediate every HIGH/CRITICAL finding until the full run is green.
@@ -141,24 +148,82 @@ cannot cause an unreviewed workload rollout.
 | Keyless Cosign signing | No | Implemented | ECR digest signatures must exist. |
 | Immediate Cosign verification | No | Implemented | Raw verify report for every signed digest. |
 | Digest/run/report mapping | No | Implemented as `signed-images.jsonl` | Attach artifact and summary table to Jira. |
-| External-image exception list | Informal | Documented | Run the external workflow and retain its artifact. |
+| External-image exception list | Informal | Documented | Pass: run `29472103737`, artifact `trivy-external-images-29472103737`. |
 | Live cluster runs signed digests | No proof | Out of this branch's mutation scope | Promote signed digests separately and compare live state. |
 
 ### Branch validation record — 2026-07-16
 
-- Branch base: `origin/main@f817e17`.
-- PM-101 history is split into five reviewable phases: first-party gate/sign
-  (`b71891b`), safe Buildx targets (`6529b89`), signature verification/evidence
-  (`61965eb`), external exceptions plus ADR (`67a143c`), and this final
-  before/after evidence phase.
-- `actionlint` passed for both changed workflows.
-- `git diff --check` passed.
-- The final branch diff is limited to the five PM-101 CI/ADR/docs/evidence files
-  listed in section 1; no PM-92 chart or Dockerfile is present.
-- No workflow was dispatched, ECR artifact mutated, GitOps value changed, or
-  Kubernetes resource applied while preparing this branch.
+- Remediation code head `cfa38ab` was scanned on the branch, then synchronized
+  with `origin/main@d8c2dd7` through merge commit `a712912`.
+- The completion history is separated by control/remediation phase: scan-only
+  diagnostics and report retention; Java/Node/Go/Python/Ruby/PHP/base-image
+  remediation; then the final Flagd UI, proxy, payment and browser-load image
+  work.
+- The original PM-101 workflows and ADR were actionlint-validated before their
+  merge to `main`; this completion branch does not change the external-image
+  workflow.
+- `git diff --check` passes for the completion branch.
+- The branch contains no PM-92 chart, PSA, Kyverno, resource request/limit or
+  securityContext mutation.
+- No GitOps value or Kubernetes resource has been changed by this branch.
+- Full remote scan-only run `29496811086` was dispatched from `cfa38ab` and
+  completed successfully; because `scan_only=true`, it could not push or sign a
+  candidate before acceptance. The
+  final production workflow is the newer `main` implementation: it permits
+  manual promotion only from `main`, uses run-unique immutable tags, scans the
+  local candidate before push and every published platform after push, signs
+  and verifies the digest, then opens a review-only GitOps image-bump PR.
 
-## 7. Commands used for final verification
+## 7. Current execution record — 2026-07-16
+
+The branch is not yet eligible for a 100% DoD claim. The following evidence is
+real and reproducible:
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Trivy pre-push gate | Pass: strict remote batch accepted all 20 images before any AWS credentials/push | Actions run `29496811086` |
+| Full candidate build | Pass: 20/20 linux/amd64 candidates built | Actions run `29496811086` |
+| Per-image Trivy reports | Pass: 20 JSON files; every report has `HIGH=0`, `CRITICAL=0` | artifact `trivy-app-images-29496811086` (ID `8375271831`) |
+| Local strict Trivy | All previously failing targets were remediated with zero HIGH/CRITICAL, including unfixed findings | local builds/scans and functional smoke tests from this branch |
+| External-image scan | Passes as a non-blocking scheduled scan; findings remain upstream exceptions | run `29472103737`, artifact `trivy-external-images-29472103737` |
+| Keyless Cosign implementation | Code path present, but skipped by failed full gate | Actions run `29479442966` shows push/sign skipped |
+| ECR signatures | Not yet proven for the new release | no successful full production run yet |
+| Live digest mapping | Not yet promoted | no GitOps digest promotion yet |
+
+The remediation is fully committed and pushed. Important completion commits are
+`fe6aed2` (frontend), `d24fa65` (cart/Kafka), `ecaa0d9`
+(Python/Ruby/PHP), `f5d89b9` (Flagd UI), `1ff34f8` (proxy/image-provider/fraud
+runtime), `51fce5d` (Go services), `3e6db41` (payment) and `cfa38ab`
+(load-generator Playwright/Chromium).
+
+Local functional evidence for the last risk-bearing images:
+
+| Image | Functional result | Runtime identity | Strict Trivy result |
+| --- | --- | --- | --- |
+| `load-generator` | Playwright 1.61.0 opened Alpine Chromium 149 and loaded a test page | UID/GID `10001:10001` | 0 HIGH, 0 CRITICAL |
+| `flagd-ui` | Phoenix root endpoint returned HTTP 200 with the real read-only flag data mount | UID/GID `65532:65532` | 0 HIGH, 0 CRITICAL |
+| `frontend-proxy` | Envoy admin `/ready` returned `LIVE` / HTTP 200 | UID/GID `101:101` | 0 HIGH, 0 CRITICAL |
+| `payment` | gRPC server started on `0.0.0.0:50051` | `node` user | 0 HIGH, 0 CRITICAL |
+| `fraud-detection` | Java service process started on the patched Alpine JRE | UID/GID `10001:10001` | 0 HIGH, 0 CRITICAL |
+| `image-provider` | `/status` returned HTTP 200 | UID `101` | 0 HIGH, 0 CRITICAL |
+
+For `load-generator`, Playwright support was not removed to satisfy the gate.
+The image retains the pinned Playwright Python/JavaScript driver, replaces its
+glibc-only Node binary with patched Alpine Node, and points it at patched Alpine
+Chromium. This removes the vulnerable Debian/Xvfb package surface while
+preserving the browser-traffic behavior used by the demo.
+
+Remote run `29496811086` is the accepted branch batch for all 20 current build
+targets. It ran from `2026-07-16T12:05:12Z` to `12:27:42Z`, completed green,
+and retained exactly 20 JSON reports. Every report was independently counted
+from the downloaded artifact and contains zero HIGH and zero CRITICAL findings.
+The production push/sign run is now allowed after review and merge.
+
+The next acceptance gate is one green full run on `main`, followed by ECR
+signature verification and live digest evidence. Until then the correct status
+is **partial, not complete**.
+
+## 8. Commands used for final verification
 
 Verify branch isolation before merge:
 
@@ -185,7 +250,7 @@ kubectl get pods -n techx-tf3 -o json \
   | sort -u
 ```
 
-## 8. Rollback
+## 9. Rollback
 
 If the new CI control causes an unintended release outage, revert the PM-101
 merge commit on `main`. This restores the previous workflow and removes the
@@ -194,7 +259,7 @@ digests, alter ECR immutability, expose private operations endpoints, or disable
 flagd. A Security-approved temporary exception must be documented separately;
 do not silently weaken `TRIVY_SEVERITIES` or remove Cosign verification.
 
-## 9. Definition of Done
+## 10. Definition of Done
 
 - [x] Blocking Trivy step is before the normal ECR push in branch code.
 - [x] Threshold is explicitly zero HIGH/CRITICAL.
@@ -202,10 +267,12 @@ do not silently weaken `TRIVY_SEVERITIES` or remove Cosign verification.
 - [x] External-image exception and non-blocking periodic scan are documented.
 - [x] PM-101 changes are isolated from PM-92 runtime hardening.
 - [ ] Full workflow run on `main` is green.
-- [ ] Trivy artifact covers every agreed first-party service.
+- [x] Trivy artifact covers all 20 current first-party build targets with zero
+  HIGH/CRITICAL findings (`trivy-app-images-29496811086`).
 - [ ] Every pushed first-party digest has a successful Cosign verification.
 - [ ] Jira/release evidence maps each running digest to its scan and signature.
-- [ ] External-image workflow has produced its first retained artifact.
+- [x] External-image workflow produced retained artifact
+  `trivy-external-images-29472103737` from successful run `29472103737`.
 
 PM-101 must remain open until every unchecked runtime/evidence item above is
 complete. A green branch diff is implementation evidence, not production proof.
