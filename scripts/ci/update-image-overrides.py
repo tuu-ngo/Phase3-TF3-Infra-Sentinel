@@ -135,7 +135,6 @@ def validate_manifest(manifest, args):
 def parse_yaml_strict(filepath):
     yaml = YAML()
     yaml.preserve_quotes = True
-    # To catch duplicates, we can use ruamel's strict parser or just standard python if ruamel has it enabled
     try:
         with open(filepath, "r") as f:
             doc = yaml.load(f)
@@ -188,7 +187,6 @@ def main():
     doc = parse_yaml_strict(values_path)
     components = doc['components']
     
-    # Check all target components are dicts
     for svc_info in manifest["services"]:
         name = svc_info["name"]
         if name in args.excluded_service:
@@ -198,17 +196,15 @@ def main():
         if not isinstance(components[name], dict):
             fail(f"component {name} value is non-mapping")
         io = components[name].get('imageOverride')
-        if io is not None and not isinstance(io, dict):
+        # io could be {} or None, but if it exists and is scalar, fail
+        if "imageOverride" in components[name] and io is not None and not isinstance(io, dict):
             fail(f"imageOverride for {name} is non-mapping")
 
-    # Read raw lines
     with open(values_path, "rb") as f:
         raw_bytes = f.read()
     raw_text = raw_bytes.decode('utf-8')
     lines = raw_text.splitlines(keepends=True)
     
-    # We will compute edits. An edit is (line_index, old_line, new_lines_list)
-    # Since we only replace single lines (scalar values) or insert lines, we can track them.
     edits = {}
     
     summary = {
@@ -232,11 +228,30 @@ def main():
         new_tag = svc_info["tag"]
         
         comp_node = components[name]
-        io_node = comp_node.get('imageOverride')
         
-        # Determine exact lines via ruamel node metadata
-        if io_node is not None:
-            # Case A, B, C
+        if "imageOverride" in comp_node:
+            io_node = comp_node.get('imageOverride')
+            io_line_idx = comp_node.lc.data['imageOverride'][0]
+            
+            # Case C: imageOverride exists but is empty or null
+            if io_node is None or not io_node:
+                # Replace the line with `imageOverride:\n  digest: ...`
+                io_line = lines[io_line_idx]
+                indent = find_indent(io_line)
+                spaces = " " * indent
+                insert_line = f"{spaces}imageOverride:\n{spaces}  digest: {new_digest}\n"
+                edits[io_line_idx] = insert_line
+                summary["updated"].append({
+                    "service": name,
+                    "oldDigest": None,
+                    "newDigest": new_digest,
+                    "tagKeyExisted": False,
+                    "oldTag": None,
+                    "newTag": None
+                })
+                continue
+            
+            # Normal Case A and B
             digest_node = io_node.get('digest')
             tag_node = io_node.get('tag')
             
@@ -244,40 +259,52 @@ def main():
             old_tag = tag_node if tag_node is not None else None
             
             tag_key_existed = 'tag' in io_node
-            
             changed = False
             tag_updated = False
             
-            # If digest node exists, we just replace its line
-            if digest_node is not None and digest_node != new_digest:
-                line_idx = io_node.lc.data['digest'][0]
-                old_line = lines[line_idx]
-                # Replace the digest value preserving comments
-                # The line format: `[space]digest: sha256:old # comment`
-                # We regex replace the value part.
-                new_line = re.sub(r'(digest:\s*)\S+', r'\g<1>' + new_digest, old_line)
-                edits[line_idx] = new_line
-                changed = True
-            elif digest_node is None:
-                # Case C: imageOverride exists but empty or no digest.
-                # Find the line of imageOverride
-                io_line_idx = comp_node.lc.data['imageOverride'][0]
+            if "digest" in io_node:
+                if digest_node != new_digest:
+                    line_idx = io_node.lc.data['digest'][0]
+                    old_line = lines[line_idx]
+                    m = re.search(r'(digest:\s*)("[^"]*"|\'[^\']*\'|\S+)', old_line)
+                    if m:
+                        val_str = m.group(2)
+                        if val_str.startswith('"') and val_str.endswith('"'):
+                            new_line = old_line[:m.start(2)] + f'"{new_digest}"' + old_line[m.end(2):]
+                        elif val_str.startswith("'") and val_str.endswith("'"):
+                            new_line = old_line[:m.start(2)] + f"'{new_digest}'" + old_line[m.end(2):]
+                        else:
+                            new_line = old_line[:m.start(2)] + new_digest + old_line[m.end(2):]
+                    else:
+                        new_line = old_line
+                    edits[line_idx] = new_line
+                    changed = True
+            else:
+                # Insert digest inside imageOverride
                 io_line = lines[io_line_idx]
                 indent = find_indent(io_line) + 2
                 spaces = " " * indent
                 insert_line = f"{spaces}digest: {new_digest}\n"
-                # Insert right after imageOverride
-                if io_line_idx + 1 not in edits:
-                    edits[io_line_idx + 0.5] = insert_line # 0.5 to insert after
+                if io_line_idx + 0.5 not in edits:
+                    edits[io_line_idx + 0.5] = insert_line
                 else:
                     fail("Overlap during insertion")
                 changed = True
                 
-            # For tag
             if tag_key_existed and old_tag != new_tag:
                 line_idx = io_node.lc.data['tag'][0]
                 old_line = lines[line_idx]
-                new_line = re.sub(r'(tag:\s*)\S+', r'\g<1>' + new_tag, old_line)
+                m = re.search(r'(tag:\s*)("[^"]*"|\'[^\']*\'|\S+)', old_line)
+                if m:
+                    val_str = m.group(2)
+                    if val_str.startswith('"') and val_str.endswith('"'):
+                        new_line = old_line[:m.start(2)] + f'"{new_tag}"' + old_line[m.end(2):]
+                    elif val_str.startswith("'") and val_str.endswith("'"):
+                        new_line = old_line[:m.start(2)] + f"'{new_tag}'" + old_line[m.end(2):]
+                    else:
+                        new_line = old_line[:m.start(2)] + new_tag + old_line[m.end(2):]
+                else:
+                    new_line = old_line
                 edits[line_idx] = new_line
                 changed = True
                 tag_updated = True
@@ -296,7 +323,6 @@ def main():
                 
         else:
             # Case D: imageOverride does not exist.
-            # Insert right after the service name key
             svc_line_idx = doc['components'].lc.data[name][0]
             svc_line = lines[svc_line_idx]
             indent = find_indent(svc_line) + 2
@@ -317,7 +343,6 @@ def main():
     if not summary["updated"]:
         summary["noChanges"] = True
 
-    # Apply edits to lines
     new_lines = []
     for i, line in enumerate(lines):
         if i in edits:
@@ -338,18 +363,32 @@ def main():
     summary["skipped"].sort(key=lambda x: x["service"])
 
     if not summary["noChanges"]:
+        # Verify resulting YAML before replacing
+        verify_yaml = YAML(typ="safe")
+        try:
+            verified_doc = verify_yaml.load(new_text)
+        except Exception as e:
+            fail(f"Generated YAML is invalid: {e}")
+            
+        for svc_info in summary["updated"]:
+            svc = svc_info["service"]
+            try:
+                found_digest = verified_doc["components"][svc]["imageOverride"]["digest"]
+                if found_digest != svc_info["newDigest"]:
+                    fail(f"Semantic verification failed for {svc} digest")
+            except KeyError:
+                fail(f"Semantic verification failed for {svc} structure")
+                
         dir_name = os.path.dirname(values_path)
         fd, temp_path = tempfile.mkstemp(dir=dir_name, prefix="values-prod-", suffix=".tmp")
         with os.fdopen(fd, 'wb') as f:
             f.write(new_bytes)
             f.flush()
             os.fsync(f.fileno())
-        # Preserve original mode
         orig_mode = values_path.stat().st_mode
         os.chmod(temp_path, orig_mode)
         os.replace(temp_path, values_path)
 
-    # Write summary
     with open(args.summary_output, "w") as f:
         json.dump(summary, f, indent=2)
 

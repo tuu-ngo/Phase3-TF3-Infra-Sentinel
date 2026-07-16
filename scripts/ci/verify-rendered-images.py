@@ -106,9 +106,11 @@ def main():
             if "@sha256:" not in image:
                 fail(f"Mutable tag remains for app image in {svc}: {image}")
                 
-            found_digest = image.split("@")[-1]
-            if found_digest != expected_digest:
-                if found_digest in all_digests_in_manifest:
+            if image != expected_full_image:
+                found_digest = image.split("@")[-1]
+                if found_digest == expected_digest:
+                    fail(f"Wrong registry or repository in {svc}. Expected {expected_full_image}, got {image}")
+                elif found_digest in all_digests_in_manifest:
                     fail(f"Digest swapped between two services. {svc} is using {found_digest}")
                 else:
                     fail(f"Wrong digest in matching service workload {svc}. Expected {expected_digest}, got {found_digest}")
