@@ -1,9 +1,12 @@
-name: mandate-05-runtime-admission
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: mandate-05-runtime-admission
 policies:
-  - ../../../../gitops/policies/kyverno/require-resource-requests.yaml
-  - ../../../../gitops/policies/kyverno/baseline-security-context.yaml
-  - ../../../../gitops/policies/kyverno/disallow-latest-tag.yaml
-  - ../../../../gitops/policies/kyverno/require-first-party-image-digest.yaml
+  - ../../../gitops/policies/kyverno/require-resource-requests.yaml
+  - ../../../gitops/policies/kyverno/baseline-security-context.yaml
+  - ../../../gitops/policies/kyverno/disallow-latest-tag.yaml
+  - ../../../gitops/policies/kyverno/require-first-party-image-digest.yaml
 resources:
   - resources/pod-good-third-party.yaml
   - resources/pod-good-first-party-digest.yaml
