@@ -21,6 +21,17 @@ spec:
               - kube-system
               - argocd
               - kyverno
+        - resources:
+            namespaces:
+              - techx-tf3
+            selector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - currency
+                - llm
+                - product-reviews
       validate:
         message: "allowPrivilegeEscalation must be set to false."
         pattern:
@@ -42,6 +53,17 @@ spec:
               - kube-system
               - argocd
               - kyverno
+        - resources:
+            namespaces:
+              - techx-tf3
+            selector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - currency
+                - llm
+                - product-reviews
       validate:
         message: "Containers must drop all capabilities."
         pattern:
@@ -65,6 +87,17 @@ spec:
               - kube-system
               - argocd
               - kyverno
+        - resources:
+            namespaces:
+              - techx-tf3
+            selector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - currency
+                - llm
+                - product-reviews
       validate:
         message: "seccompProfile must be set to RuntimeDefault."
         anyPattern:
