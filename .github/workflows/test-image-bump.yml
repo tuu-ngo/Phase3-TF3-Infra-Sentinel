@@ -1,6 +1,6 @@
 name: Test Image Bump PR
 
-on:
+"on":
   pull_request:
     paths:
       - ".github/workflows/build-push-ecr.yml"
