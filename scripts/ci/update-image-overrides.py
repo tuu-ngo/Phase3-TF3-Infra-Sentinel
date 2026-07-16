@@ -1,100 +1,356 @@
 #!/usr/bin/env python3
 import sys
 import json
+import re
 import argparse
+import os
+import tempfile
 from pathlib import Path
 from ruamel.yaml import YAML
 
+ALLOWED_SERVICES = {
+    "accounting", "ad", "cart", "checkout", "currency", "email",
+    "fraud-detection", "frontend", "frontend-proxy", "image-provider",
+    "kafka", "llm", "load-generator", "payment", "product-catalog",
+    "product-reviews", "quote", "recommendation", "shipping", "flagd-ui"
+}
+
+ALLOWED_MEDIA_TYPES = {
+    "application/vnd.oci.image.index.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+    "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.v2+json"
+}
+
+def reject_duplicates(ordered_pairs):
+    d = {}
+    for k, v in ordered_pairs:
+        if k in d:
+            raise ValueError(f"Duplicate key found: {k}")
+        d[k] = v
+    return d
+
+def fail(msg):
+    print(f"FAIL: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+def validate_manifest(manifest, args):
+    if not isinstance(manifest, dict):
+        fail("Manifest is not a JSON object")
+    
+    if manifest.get("schemaVersion") != 1:
+        fail("Invalid schemaVersion")
+        
+    expected_top_fields = {
+        "schemaVersion", "repository", "registry", "sourceSha",
+        "sourceShortSha", "workflowRunId", "workflowRunAttempt",
+        "mode", "baseTag", "platforms", "services"
+    }
+    
+    if set(manifest.keys()) != expected_top_fields:
+        fail(f"Unknown top-level fields or missing required fields. Expected {expected_top_fields}, got {set(manifest.keys())}")
+        
+    if manifest["mode"] not in {"scoped", "full"}:
+        fail("mode must be scoped or full")
+        
+    if manifest["sourceSha"] != args.expected_source_sha:
+        fail("sourceSha mismatch")
+    if manifest["sourceShortSha"] != args.expected_source_short_sha:
+        fail("sourceShortSha mismatch")
+    if manifest["workflowRunId"] != args.expected_run_id:
+        fail("workflowRunId mismatch")
+    if manifest["workflowRunAttempt"] != args.expected_run_attempt:
+        fail("workflowRunAttempt mismatch")
+    if manifest["mode"] != args.expected_mode:
+        fail("mode mismatch")
+    if manifest["registry"] != args.expected_registry:
+        fail("registry mismatch")
+    if manifest["repository"] != args.expected_repository:
+        fail("repository mismatch")
+    if manifest["baseTag"] != args.expected_base_tag:
+        fail("baseTag mismatch")
+        
+    # normalize platforms
+    expected_platforms = args.expected_platforms.split(",") if args.expected_platforms else []
+    expected_platforms = ",".join(sorted(expected_platforms)) if expected_platforms else ""
+    manifest_platforms = manifest["platforms"].split(",") if manifest["platforms"] else []
+    manifest_platforms = ",".join(sorted(manifest_platforms)) if manifest_platforms else ""
+    if manifest_platforms != expected_platforms:
+        fail("platforms mismatch")
+        
+    services = manifest["services"]
+    if not isinstance(services, list):
+        fail("services must be a list")
+    if not services:
+        fail("services list is empty")
+        
+    prev_name = ""
+    seen_services = set()
+    for s in services:
+        if not isinstance(s, dict):
+            fail("service entry must be an object")
+        
+        expected_svc_fields = {"name", "tag", "digest", "manifestMediaType"}
+        if set(s.keys()) != expected_svc_fields:
+            fail("Unknown or missing fields in service object")
+            
+        name = s["name"]
+        if name not in ALLOWED_SERVICES:
+            fail(f"Unknown service name: {name}")
+        if name in seen_services:
+            fail(f"Duplicate service name: {name}")
+        seen_services.add(name)
+        
+        if name <= prev_name:
+            fail("Services list is not deterministically sorted")
+        prev_name = name
+        
+        if not re.match(r"^sha256:[0-9a-f]{64}$", s["digest"]):
+            fail(f"Invalid digest format for {name}")
+            
+        expected_tag = f"{manifest['baseTag']}-{name}"
+        if s["tag"] != expected_tag:
+            fail(f"tag does not equal <baseTag>-<service> for {name}")
+            
+        if len(s["tag"]) > 128:
+            fail(f"Full tag exceeds 128 characters for {name}")
+            
+        if not re.match(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$", s["tag"]):
+            fail(f"Tag does not match Docker tag convention for {name}")
+            
+        mt = s["manifestMediaType"]
+        if mt not in ALLOWED_MEDIA_TYPES:
+            fail(f"Invalid manifestMediaType for {name}")
+            
+        if "," in manifest_platforms and mt not in {
+            "application/vnd.oci.image.index.v1+json",
+            "application/vnd.docker.distribution.manifest.list.v2+json"
+        }:
+            fail(f"multi-platform with single-manifest media type for {name}")
+
+    expected_set = set(args.expected_services.split()) if args.expected_services else set()
+    if seen_services != expected_set:
+        fail("Expected service set mismatch")
+
+def parse_yaml_strict(filepath):
+    yaml = YAML()
+    yaml.preserve_quotes = True
+    # To catch duplicates, we can use ruamel's strict parser or just standard python if ruamel has it enabled
+    try:
+        with open(filepath, "r") as f:
+            doc = yaml.load(f)
+    except Exception as e:
+        fail(f"Malformed YAML or duplicate keys: {e}")
+    if not isinstance(doc, dict):
+        fail("YAML root must be a mapping")
+    if 'components' not in doc or not isinstance(doc['components'], dict):
+        fail("components missing or non-mapping")
+    return doc
+
+def find_indent(line):
+    return len(line) - len(line.lstrip())
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--values', required=True, help="Path to values-prod.yaml")
-    parser.add_argument('--manifest', required=True, help="Path to approved-images.json")
-    parser.add_argument('--excluded-service', action='append', default=[], help="Services explicitly excluded from production")
-    parser.add_argument('--summary-output', required=True, help="Path to write the summary JSON")
+    parser.add_argument('--values', required=True)
+    parser.add_argument('--manifest', required=True)
+    parser.add_argument('--summary-output', required=True)
+    parser.add_argument('--expected-source-sha', required=True)
+    parser.add_argument('--expected-source-short-sha', required=True)
+    parser.add_argument('--expected-run-id', required=True)
+    parser.add_argument('--expected-run-attempt', required=True)
+    parser.add_argument('--expected-mode', required=True)
+    parser.add_argument('--expected-registry', required=True)
+    parser.add_argument('--expected-repository', required=True)
+    parser.add_argument('--expected-base-tag', required=True)
+    parser.add_argument('--expected-platforms', required=True)
+    parser.add_argument('--expected-services', required=True)
+    parser.add_argument('--excluded-service', action='append', default=[])
     args = parser.parse_args()
 
     manifest_path = Path(args.manifest)
     values_path = Path(args.values)
-    summary_path = Path(args.summary_output)
-
-    if not manifest_path.is_file():
-        sys.exit(f"FAIL: Manifest file not found at {manifest_path}")
-
-    with manifest_path.open('r') as f:
-        manifest = json.load(f)
-
-    # Validate manifest basic schema
-    if manifest.get('schemaVersion') != 1:
-        sys.exit("FAIL: Invalid schemaVersion")
     
-    if not manifest.get('services'):
-        sys.exit("FAIL: Manifest services list is empty")
+    if not manifest_path.exists() or manifest_path.is_symlink() or not manifest_path.is_file():
+        fail("Manifest file missing or invalid type")
+        
+    if manifest_path.stat().st_size > 1024 * 1024:
+        fail("Manifest file larger than 1 MiB")
+        
+    try:
+        with open(manifest_path, "r") as f:
+            manifest = json.load(f, object_pairs_hook=reject_duplicates)
+    except Exception as e:
+        fail(f"Manifest JSON parsing failed: {e}")
+        
+    validate_manifest(manifest, args)
+    
+    doc = parse_yaml_strict(values_path)
+    components = doc['components']
+    
+    # Check all target components are dicts
+    for svc_info in manifest["services"]:
+        name = svc_info["name"]
+        if name in args.excluded_service:
+            continue
+        if name not in components:
+            fail(f"UNKNOWN_PRODUCTION_COMPONENT: {name}")
+        if not isinstance(components[name], dict):
+            fail(f"component {name} value is non-mapping")
+        io = components[name].get('imageOverride')
+        if io is not None and not isinstance(io, dict):
+            fail(f"imageOverride for {name} is non-mapping")
 
-    yaml = YAML()
-    yaml.preserve_quotes = True
-    yaml.indent(mapping=2, sequence=4, offset=2)
-
-    with values_path.open('r') as f:
-        doc = yaml.load(f)
-
-    if 'components' not in doc:
-        sys.exit("FAIL: 'components' key missing from values-prod.yaml")
-
+    # Read raw lines
+    with open(values_path, "rb") as f:
+        raw_bytes = f.read()
+    raw_text = raw_bytes.decode('utf-8')
+    lines = raw_text.splitlines(keepends=True)
+    
+    # We will compute edits. An edit is (line_index, old_line, new_lines_list)
+    # Since we only replace single lines (scalar values) or insert lines, we can track them.
+    edits = {}
+    
     summary = {
+        "schemaVersion": 1,
+        "sourceSha": manifest["sourceSha"],
+        "runId": manifest["workflowRunId"],
+        "runAttempt": manifest["workflowRunAttempt"],
+        "noChanges": False,
         "updated": [],
+        "unchanged": [],
         "skipped": []
     }
-
-    components = doc['components']
-
-    for service_entry in manifest['services']:
-        svc = service_entry['name']
-        new_digest = service_entry['digest']
-        new_tag = service_entry['tag']
-
-        if svc in args.excluded_service:
-            summary['skipped'].append({
-                "service": svc,
-                "reason": "not deployed in production"
-            })
+    
+    for svc_info in manifest["services"]:
+        name = svc_info["name"]
+        if name in args.excluded_service:
+            summary["skipped"].append({"service": name, "reason": "excluded-from-production-values"})
             continue
+            
+        new_digest = svc_info["digest"]
+        new_tag = svc_info["tag"]
+        
+        comp_node = components[name]
+        io_node = comp_node.get('imageOverride')
+        
+        # Determine exact lines via ruamel node metadata
+        if io_node is not None:
+            # Case A, B, C
+            digest_node = io_node.get('digest')
+            tag_node = io_node.get('tag')
+            
+            old_digest = digest_node if digest_node else None
+            old_tag = tag_node if tag_node is not None else None
+            
+            tag_key_existed = 'tag' in io_node
+            
+            changed = False
+            tag_updated = False
+            
+            # If digest node exists, we just replace its line
+            if digest_node is not None and digest_node != new_digest:
+                line_idx = io_node.lc.data['digest'][0]
+                old_line = lines[line_idx]
+                # Replace the digest value preserving comments
+                # The line format: `[space]digest: sha256:old # comment`
+                # We regex replace the value part.
+                new_line = re.sub(r'(digest:\s*)\S+', r'\g<1>' + new_digest, old_line)
+                edits[line_idx] = new_line
+                changed = True
+            elif digest_node is None:
+                # Case C: imageOverride exists but empty or no digest.
+                # Find the line of imageOverride
+                io_line_idx = comp_node.lc.data['imageOverride'][0]
+                io_line = lines[io_line_idx]
+                indent = find_indent(io_line) + 2
+                spaces = " " * indent
+                insert_line = f"{spaces}digest: {new_digest}\n"
+                # Insert right after imageOverride
+                if io_line_idx + 1 not in edits:
+                    edits[io_line_idx + 0.5] = insert_line # 0.5 to insert after
+                else:
+                    fail("Overlap during insertion")
+                changed = True
+                
+            # For tag
+            if tag_key_existed and old_tag != new_tag:
+                line_idx = io_node.lc.data['tag'][0]
+                old_line = lines[line_idx]
+                new_line = re.sub(r'(tag:\s*)\S+', r'\g<1>' + new_tag, old_line)
+                edits[line_idx] = new_line
+                changed = True
+                tag_updated = True
+                
+            if changed:
+                summary["updated"].append({
+                    "service": name,
+                    "oldDigest": old_digest,
+                    "newDigest": new_digest,
+                    "tagKeyExisted": tag_key_existed,
+                    "oldTag": old_tag,
+                    "newTag": new_tag if tag_updated else old_tag
+                })
+            else:
+                summary["unchanged"].append(name)
+                
+        else:
+            # Case D: imageOverride does not exist.
+            # Insert right after the service name key
+            svc_line_idx = doc['components'].lc.data[name][0]
+            svc_line = lines[svc_line_idx]
+            indent = find_indent(svc_line) + 2
+            spaces = " " * indent
+            
+            insert_str = f"{spaces}imageOverride:\n{spaces}  digest: {new_digest}\n"
+            edits[svc_line_idx + 0.5] = insert_str
+            
+            summary["updated"].append({
+                "service": name,
+                "oldDigest": None,
+                "newDigest": new_digest,
+                "tagKeyExisted": False,
+                "oldTag": None,
+                "newTag": None
+            })
 
-        if svc not in components:
-            sys.exit(f"FAIL: UNKNOWN_PRODUCTION_COMPONENT '{svc}' not found in values-prod.yaml")
+    if not summary["updated"]:
+        summary["noChanges"] = True
 
-        comp = components[svc]
-        if 'imageOverride' not in comp:
-            comp['imageOverride'] = {}
+    # Apply edits to lines
+    new_lines = []
+    for i, line in enumerate(lines):
+        if i in edits:
+            new_lines.append(edits[i])
+        else:
+            new_lines.append(line)
+        if i + 0.5 in edits:
+            new_lines.append(edits[i + 0.5])
+            
+    new_text = "".join(new_lines)
+    new_bytes = new_text.encode('utf-8')
+    
+    if raw_bytes == new_bytes:
+        summary["noChanges"] = True
+        
+    summary["updated"].sort(key=lambda x: x["service"])
+    summary["unchanged"].sort()
+    summary["skipped"].sort(key=lambda x: x["service"])
 
-        old_digest = comp['imageOverride'].get('digest')
-        old_tag = comp['imageOverride'].get('tag')
+    if not summary["noChanges"]:
+        dir_name = os.path.dirname(values_path)
+        fd, temp_path = tempfile.mkstemp(dir=dir_name, prefix="values-prod-", suffix=".tmp")
+        with os.fdopen(fd, 'wb') as f:
+            f.write(new_bytes)
+            f.flush()
+            os.fsync(f.fileno())
+        # Preserve original mode
+        orig_mode = values_path.stat().st_mode
+        os.chmod(temp_path, orig_mode)
+        os.replace(temp_path, values_path)
 
-        # Update digest
-        comp['imageOverride']['digest'] = new_digest
-        tag_field_updated = False
-
-        # Only update tag if it already existed in the yaml or if it's a new imageOverride struct?
-        # Specification says: 
-        # Case B - component has digest but no tag -> update digest, no tag.
-        # Case C - component uses shared default tag -> imageOverride.digest: sha256:new.
-        # "Không tự thêm tag nếu tag chưa tồn tại."
-        if old_tag is not None:
-            comp['imageOverride']['tag'] = new_tag
-            tag_field_updated = True
-
-        summary['updated'].append({
-            "service": svc,
-            "oldDigest": old_digest,
-            "newDigest": new_digest,
-            "oldTag": old_tag,
-            "newTag": new_tag if tag_field_updated else None,
-            "tagFieldUpdated": tag_field_updated
-        })
-
-    with values_path.open('w') as f:
-        yaml.dump(doc, f)
-
-    with summary_path.open('w') as f:
+    # Write summary
+    with open(args.summary_output, "w") as f:
         json.dump(summary, f, indent=2)
 
 if __name__ == "__main__":
