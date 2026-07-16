@@ -17,6 +17,13 @@ def load_json(path):
         return json.load(handle)
 
 
+def selector_matches_app(selector, app_name):
+    if not app_name:
+        return False
+    match_labels = (selector or {}).get("matchLabels") or {}
+    return app_name in match_labels.values()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--policyreports", required=True)
@@ -28,17 +35,22 @@ def main():
     policyreports = load_yaml(args.policyreports)
     pods = load_json(args.pods)
     exceptions = load_yaml(args.exceptions) if args.exceptions else {"exceptions": []}
-    approved = {
-        (
-            exc.get("policy"),
-            tuple(exc.get("rules") or []),
-            exc.get("selector", {}).get("matchLabels", {}).get("app.kubernetes.io/name"),
-        )
-        for exc in exceptions.get("exceptions", [])
-    }
-
-    active_uids = {item["metadata"]["uid"] for item in pods.get("items", []) if item.get("metadata", {}).get("uid")}
+    exception_records = exceptions.get("exceptions", [])
+    active_pods = {}
+    for item in pods.get("items", []):
+        metadata = item.get("metadata", {})
+        uid = metadata.get("uid")
+        if not uid:
+            continue
+        labels = metadata.get("labels") or {}
+        active_pods[uid] = {
+            "name": metadata.get("name"),
+            "namespace": metadata.get("namespace"),
+            "app": labels.get("app.kubernetes.io/name") or labels.get("app"),
+        }
+    active_uids = set(active_pods)
     active_failures = []
+    approved_exceptions = []
     stale_results = []
     unresolved_results = []
 
@@ -47,16 +59,32 @@ def main():
         uid = scope.get("uid")
         source = "active" if uid in active_uids else "stale" if uid else "unresolved"
         for result in report.get("results") or []:
+            if result.get("result") not in {"fail", "warn", "error"}:
+                continue
             entry = {
                 "policy": result.get("policy"),
                 "rule": result.get("rule"),
-                "resource": result.get("resource", {}).get("name"),
-                "namespace": result.get("resource", {}).get("namespace"),
+                "resource": active_pods.get(uid, {}).get("name") or scope.get("name"),
+                "namespace": active_pods.get(uid, {}).get("namespace") or scope.get("namespace"),
+                "app": active_pods.get(uid, {}).get("app"),
                 "category": source,
                 "message": result.get("message"),
             }
             if source == "active":
-                active_failures.append(entry)
+                match = next(
+                    (
+                        exc
+                        for exc in exception_records
+                        if exc.get("policy") == entry["policy"]
+                        and entry["rule"] in (exc.get("rules") or [])
+                        and selector_matches_app(exc.get("selector"), entry["app"])
+                    ),
+                    None,
+                )
+                if match:
+                    approved_exceptions.append({**entry, "exceptionId": match.get("id")})
+                else:
+                    active_failures.append(entry)
             elif source == "stale":
                 stale_results.append(entry)
             else:
@@ -64,10 +92,7 @@ def main():
 
     output = {
         "activeFailures": active_failures,
-        "approvedExceptions": [
-            {"policy": policy, "rules": list(rules), "app": app}
-            for policy, rules, app in sorted(approved)
-        ],
+        "approvedExceptions": approved_exceptions,
         "staleResults": stale_results,
         "unresolvedResults": unresolved_results,
     }
