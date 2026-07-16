@@ -1,0 +1,74 @@
+name: mandate-05-runtime-admission
+policies:
+  - ../../../../gitops/policies/kyverno/require-resource-requests.yaml
+  - ../../../../gitops/policies/kyverno/baseline-security-context.yaml
+  - ../../../../gitops/policies/kyverno/disallow-latest-tag.yaml
+  - ../../../../gitops/policies/kyverno/require-first-party-image-digest.yaml
+resources:
+  - resources/pod-good-third-party.yaml
+  - resources/pod-good-first-party-digest.yaml
+  - resources/pod-missing-resources.yaml
+  - resources/pod-root.yaml
+  - resources/pod-latest.yaml
+  - resources/pod-first-party-tag.yaml
+  - resources/pod-bad-init-container.yaml
+results:
+  - policy: require-resource-requests
+    rule: require-cpu-memory-requests-limits
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: require-resource-requests
+    rule: require-cpu-memory-requests-limits
+    resources:
+      - mandate05-missing-resources
+      - mandate05-bad-init
+    kind: Pod
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-effective-non-root
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: require-effective-non-root
+    resources:
+      - mandate05-root
+    kind: Pod
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: deny-container-run-as-user-zero
+    resources:
+      - mandate05-root
+    kind: Pod
+    result: fail
+  - policy: disallow-latest-tag
+    rule: require-explicit-non-latest-image-reference
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: disallow-latest-tag
+    rule: require-explicit-non-latest-image-reference
+    resources:
+      - mandate05-latest
+      - mandate05-bad-init
+    kind: Pod
+    result: fail
+  - policy: require-first-party-image-digest
+    rule: require-techx-ecr-sha256-digest
+    resources:
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: require-first-party-image-digest
+    rule: require-techx-ecr-sha256-digest
+    resources:
+      - mandate05-first-party-tag
+    kind: Pod
+    result: fail
