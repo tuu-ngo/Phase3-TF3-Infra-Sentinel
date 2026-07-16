@@ -1,0 +1,41 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-access
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: jaeger
+  policyTypes:
+    - Ingress
+  ingress:
+    # Telemetry ingestion: open to all workloads in the namespace
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 14250
+        - protocol: TCP
+          port: 14268
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+        - protocol: UDP
+          port: 6831
+        - protocol: UDP
+          port: 6832
+    # Query API / UI: restricted to Grafana and AIOps Engine
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+        - podSelector:
+            matchLabels:
+              app: aiops-engine
+      ports:
+        - protocol: TCP
+          port: 16686
+        - protocol: TCP
+          port: 16685
