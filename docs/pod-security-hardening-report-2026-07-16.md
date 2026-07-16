@@ -19,6 +19,7 @@ Commit lien quan:
 - `e9549be security: harden non-root workload contexts`
 - `e7c10a9 security: enforce non-root app containers`
 - `e865b2f fix: conflict in product review`
+- `fe2adde security: harden flagd and postgresql contexts`
 
 ### 1. Harden cac workload da non-root san
 
@@ -89,6 +90,7 @@ Sau khi Dockerfile co user non-root, da them `securityContext` vao Helm values c
 Da harden them initContainer cho cac job cho dependency:
 
 - `accounting.wait-for-kafka`
+- `checkout.wait-for-kafka`
 - `fraud-detection.wait-for-kafka`
 - `cart.wait-for-valkey-cart`
 
@@ -103,6 +105,22 @@ capabilities:
   drop: ["ALL"]
 ```
 
+### 4. Bo sung theo audit live 2026-07-16
+
+Sau khi doi chieu file audit `mandate-05-nonroot-container-audit.md`, da bo sung them cac gap co file quan ly trong repo:
+
+- `checkout.wait-for-kafka`: them non-root securityContext cho init container bi sot.
+- `flagd`: main container, `flagd-ui` sidecar, va `init-config` da co non-root securityContext.
+- `postgresql`: them non-root securityContext + `fsGroup` de giu quyen ghi PVC.
+- `prometheus.server`: them container-level securityContext de `runAsNonRoot` hien thi ro tren container.
+- `grafana`: them container-level `runAsNonRoot` cho main container va 3 sidecar config.
+- `jaeger`: them container-level non-root securityContext.
+- `opentelemetry-collector`: them non-root securityContext theo image user `10001:10001`.
+- `cloudflared`: them `runAsNonRoot`, `runAsUser: 65532`, `runAsGroup: 65532`.
+- `argo-rollouts`: them explicit `podSecurityContext` va `containerSecurityContext` trong ArgoCD Application Helm values.
+- `techx-corp-chart default`: them baseline securityContext mac dinh cho workload moi.
+- `kyverno baseline policy`: them rule `runAsNonRoot` cho container va initContainer de chong drift.
+
 ## Ket qua hien tai trong code
 
 Tong so component enabled trong `values.yaml`: `22`
@@ -113,7 +131,7 @@ Main container da co day du:
 - `allowPrivilegeEscalation: false`
 - `capabilities.drop: ["ALL"]`
 
-Ket qua: `20/22` main containers.
+Ket qua main container nhom `components`: `22/22` da co baseline non-root securityContext trong code.
 
 Da dat:
 
@@ -126,11 +144,13 @@ Da dat:
 - `fraud-detection`
 - `frontend`
 - `frontend-proxy`
+- `flagd`
 - `image-provider`
 - `kafka`
 - `llm`
 - `load-generator`
 - `payment`
+- `postgresql`
 - `product-catalog`
 - `product-reviews`
 - `quote`
@@ -138,10 +158,11 @@ Da dat:
 - `shipping`
 - `valkey-cart`
 
-Chua dat:
+Can rollout test live:
 
-- `flagd` - da them baseline securityContext cho main container, sidecar `flagd-ui`, va init container; can rollout test live.
-- `postgresql` - da them baseline securityContext + fsGroup; can rollout test live vi day la workload stateful.
+- `flagd` - third-party image + config writer init container.
+- `postgresql` - stateful workload, phai xac nhan PVC va `PGDATA` van ghi duoc.
+- `opentelemetry-collector` - DaemonSet co host metrics; image da non-root nhung can xac nhan metric collection sau rollout.
 
 ## Nhung diem chua xu ly co chu dich
 
@@ -207,13 +228,15 @@ kubectl -n techx-tf3 logs deploy/<service> --tail=100
 
 ## Trang thai yeu cau
 
-Hien tai code da tien rat gan toi yeu cau cho app-owned workload:
+Hien tai code da tien sat yeu cau cho phan repo nay:
 
-- Main app containers: `20/22` da co hardening day du.
+- Main `components`: `22/22` da co hardening baseline trong code.
+- Cac gap live audit co file GitOps/Helm trong repo da duoc bo sung: `checkout` init, `flagd`, `postgresql`, Prometheus, Grafana, Jaeger, OTel Collector, Cloudflared, Argo Rollouts.
 - App image truoc do chay root da duoc them non-root user.
-- Chua dat tuyet doi "khong container nao chay root" vi con:
-  - `postgresql`
-  - `flagd`
-  - Kafka `init-kafka-data` root initContainer
+- Chua dat tuyet doi "khong container nao chay root" o toan cluster vi con:
+  - Kafka `init-kafka-data` root initContainer co chu dich.
+  - ArgoCD tu than no khong co file GitOps trong repo nay.
+  - `aiops-engine` thuoc owner khac, khong nam trong repo.
+  - EKS add-on privileged nhu CNI/kube-proxy/CSI node can ghi ADR exception.
 
-Ket luan: phan app-owned stateless/near-stateless da duoc harden trong code. Phan con lai can quyet dinh cung team vi lien quan stateful volume va third-party image, khong nen ep nhanh de tranh outage.
+Ket luan: cac workload co file quan ly trong repo da duoc harden them theo audit. Phan con lai can ADR exception hoac can owner khac xu ly, khong nen patch truc tiep de tranh drift va outage.

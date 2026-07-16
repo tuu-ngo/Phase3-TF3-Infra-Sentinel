@@ -34,7 +34,16 @@ default:
     affinity: {}
     tolerations: []
   # Default securityContext for all components
-  securityContext: {}
+  # Component-level values still win, so this only hardens future workloads
+  # that forget to set an explicit container securityContext.
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
 
 serviceAccount:
   # Specifies whether a service account should be created
@@ -338,6 +347,13 @@ components:
       - name: wait-for-kafka
         image: busybox:latest
         command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
     securityContext:
       runAsUser: 65532
       runAsGroup: 65532
@@ -1171,6 +1187,18 @@ opentelemetry-collector:
     repository: "otel/opentelemetry-collector-contrib"
   fullnameOverride: otel-collector
   mode: daemonset
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
   presets:
     hostMetrics:
       enabled: true
@@ -1327,6 +1355,20 @@ jaeger:
     resources:
       limits:
         memory: 600Mi
+    podSecurityContext:
+      runAsUser: 10001
+      runAsGroup: 10001
+      runAsNonRoot: true
+      fsGroup: 10001
+    securityContext:
+      runAsUser: 10001
+      runAsGroup: 10001
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
   userconfig:
     service:
       extensions: [jaeger_storage, jaeger_query, healthcheckv2]
@@ -1449,6 +1491,15 @@ prometheus:
     resources:
       limits:
         memory: 400Mi
+    containerSecurityContext:
+      runAsUser: 65534
+      runAsGroup: 65534
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
 
 grafana:
   enabled: true
@@ -1469,6 +1520,15 @@ grafana:
   plugins:
     - grafana-opensearch-datasource
   sidecar:
+    securityContext:
+      runAsUser: 65534
+      runAsGroup: 65534
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
     alerts:
       enabled: true
     dashboards:
@@ -1482,6 +1542,16 @@ grafana:
   resources:
     limits:
       memory: 300Mi
+  containerSecurityContext:
+    runAsUser: 472
+    runAsGroup: 472
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    privileged: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
 
 opensearch:
   enabled: true
