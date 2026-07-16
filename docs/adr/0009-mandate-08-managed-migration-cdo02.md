@@ -1,4 +1,4 @@
-# ADR 0008 — Mandate #8: đưa cả 3 store lên managed (RDS / ElastiCache / MSK)
+# ADR 0009 — Mandate #8: đưa cả 3 store lên managed (RDS / ElastiCache / MSK)
 
 **Ngày:** 16/07/2026
 **Người quyết định (ký):** CDO02 (Reliability + Cost Optimization)
@@ -80,7 +80,7 @@ ADR 0002 (12/07) quyết định **hoãn MSK** vì "phá ngân sách". Hai cơ s
    `kafka.t3.small` rẻ hơn nhiều lần.
 
 Ngoài ra ADR 0002 đã tự ghi điều kiện: *"Nếu BTC ra mandate migrate datastore theo cách khác (VD bắt
-buộc MSK) → thực thi theo mandate"*. Directive #8 chính là trường hợp đó. ADR 0008 này thực thi
+buộc MSK) → thực thi theo mandate"*. Directive #8 chính là trường hợp đó. ADR 0009 này thực thi
 điều kiện đã ghi sẵn, **không phải đảo ngược tuỳ tiện**.
 
 ## Quyết định

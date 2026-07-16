@@ -1,6 +1,6 @@
 # Runbook — Mandate #8: cutover 3 store lên managed (RDS / ElastiCache / MSK)
 
-Cơ sở kỹ thuật + đánh đổi: [ADR 0008](../adr/0008-mandate-08-managed-migration-cdo02.md).
+Cơ sở kỹ thuật + đánh đổi: [ADR 0009](../adr/0009-mandate-08-managed-migration-cdo02.md).
 Thứ tự: **Valkey → Postgres → Kafka** (dễ → khó). Mỗi store cutover **độc lập**, verify xong mới sang cái kế.
 
 **Nguyên tắc xuyên suốt:**
@@ -201,7 +201,7 @@ Dựng cả 3 managed service **song song với store cũ**. Bước này **zero
 - **RDS**: PG **17.6** (khớp in-cluster), `db.t4g.micro`, **Multi-AZ**, private subnet, `storage_encrypted=true`,
   backup retention ≥7 ngày. SG inbound 5432 từ **SG node group** (app) **+ SG bastion** (đường vận
   hành/migration — thiếu cái này thì tunnel ở §0 không nối được).
-  *(KHÔNG cần `rds.logical_replication` — kế hoạch dùng dump/restore, xem ADR 0008 §4.)*
+  *(KHÔNG cần `rds.logical_replication` — kế hoạch dùng dump/restore, xem ADR 0009 §4.)*
 - **ElastiCache**: engine **valkey 9.0**, `cache.t4g.micro`, 1 primary + 1 replica Multi-AZ,
   `transit_encryption_enabled=true` (**bắt buộc** để dùng auth-token), `at_rest_encryption_enabled=true`,
   **`auth_token`** lấy từ secret `techx-tf3/elasticache-auth`, private subnet group.
@@ -209,7 +209,7 @@ Dựng cả 3 managed service **song song với store cũ**. Bước này **zero
 - **MSK**: Kafka **3.9.x KRaft**, **3× `kafka.t3.small`** / 3 AZ, `encryption_in_transit.client_broker=TLS`,
   encryption at rest, private subnet, **`client_authentication.sasl.scram.enabled=true`**.
   SG inbound 9096 từ **SG node group** (MSK không tunnel được → thao tác qua pod, không cần SG bastion).
-- **KMS + Secrets** (ADR 0008 §3): 1 **customer-managed KMS key**; 3 secret — `techx-tf3/postgres`,
+- **KMS + Secrets** (ADR 0009 §3): 1 **customer-managed KMS key**; 3 secret — `techx-tf3/postgres`,
   `techx-tf3/elasticache-auth`, và `AmazonMSK_techx-tf3/kafka-scram` (**tên PHẢI có tiền tố
   `AmazonMSK_`** và **PHẢI** mã hoá bằng CMK trên — MSK từ chối key `aws/secretsmanager` mặc định).
 
@@ -229,7 +229,7 @@ echo "$MSK_BOOTSTRAP"    # → phải là chuỗi *:9096
 
 ## 3. Code + Secrets (deploy TRƯỚC cutover, cờ TLS TẮT → hành vi không đổi)
 
-1. **Sửa 4 service** cho **TLS + auth** gated bằng env, mặc định tắt (chi tiết ADR 0008 §2):
+1. **Sửa 4 service** cho **TLS + auth** gated bằng env, mặc định tắt (chi tiết ADR 0009 §2):
    - `cart/src/cartstore/ValkeyCartStore.cs:52` — `ssl=false` hardcode → `ssl=$VALKEY_TLS` +
      `password=$VALKEY_AUTH_TOKEN` (default: `false` / rỗng = y như hiện tại)
    - `checkout/kafka/producer.go` — `KAFKA_SECURITY_PROTOCOL` (default `PLAINTEXT`) → khi `SASL_SSL`:
@@ -243,7 +243,7 @@ echo "$MSK_BOOTSTRAP"    # → phải là chuỗi *:9096
 1b. **`cart` cần thêm nhánh DUAL-WRITE** (`VALKEY_DUAL_WRITE_ADDR`, rỗng = tắt): mỗi `HashSet`+`KeyExpire`
    ghi thêm sang địa chỉ thứ 2. **Lỗi ở kho thứ 2 KHÔNG được làm fail request khách** (log + bỏ qua) —
    nếu không, dual-write biến ElastiCache thành SPOF mới ngay trong cửa sổ migrate. Điều kiện của
-   chứng minh ADR 0008 §5.
+   chứng minh ADR 0009 §5.
 2. **Build image** qua `build-push-ecr.yml` (build scoped theo service — xem comment `imageOverride`
    đầu `components:` trong `values-prod.yaml`; bump `imageOverride.tag` FULL string, **không** bump
    `default.image.tag`).
@@ -259,7 +259,7 @@ kubectl -n "$NS" get pods -l 'opentelemetry.io/name in (cart,checkout,accounting
 
 ## 4. Cutover Valkey → ElastiCache (**cửa sổ hội tụ 60 phút** — 0 mất giỏ)
 
-**Cơ sở** ([ADR 0008](../adr/0008-mandate-08-managed-migration-cdo02.md) §5): `ValkeyCartStore.cs:174,199`
+**Cơ sở** ([ADR 0009](../adr/0009-mandate-08-managed-migration-cdo02.md) §5): `ValkeyCartStore.cs:174,199`
 đặt **TTL 60 phút mỗi lần ghi**; đọc không gia hạn. ⇒ *giỏ còn sống tại T ⟺ được ghi trong [T−60ph, T]*
 ⇒ dual-write đủ **60 phút** thì ElastiCache **chắc chắn** chứa mọi giỏ còn sống. **Không cần bulk copy.**
 
@@ -317,7 +317,7 @@ kubectl -n "$NS" logs -l opentelemetry.io/name=cart --tail=30 | grep -iE "error|
 
 ## 5. Cutover Postgres → RDS ("đóng băng người ghi duy nhất", zero-downtime)
 
-**Cơ sở** ([ADR 0008](../adr/0008-mandate-08-managed-migration-cdo02.md) §Hiện trạng #4): `accounting`
+**Cơ sở** ([ADR 0009](../adr/0009-mandate-08-managed-migration-cdo02.md) §Hiện trạng #4): `accounting`
 là **service DUY NHẤT ghi** vào Postgres, và nó ghi **async từ Kafka** với `EnableAutoCommit=false`.
 `product-catalog`/`product-reviews` **chỉ đọc**. → Dừng `accounting` = Postgres read-only, mà **khách
 không hề bị ảnh hưởng**.
@@ -485,7 +485,7 @@ grep -rn "otelp\|otelu" "phase3 - information/techx-corp-chart/values.yaml" \
 
 + Trình: **bảng parity** trước/sau (§1 mục b — baseline, so với §5 bước 3), **key convergence Valkey**
 (§4 bước 3, `miss=0`), **lag Kafka = 0** (§6 bước 5), Grafana SLO suốt cả 3 cửa sổ cutover
-(checkout ≥99%), và [ADR 0008](../adr/0008-mandate-08-managed-migration-cdo02.md) ký tên.
+(checkout ≥99%), và [ADR 0009](../adr/0009-mandate-08-managed-migration-cdo02.md) ký tên.
 
 ## 8. Dọn dẹp — **ĐIỂM KHÔNG QUAY LUI**
 
