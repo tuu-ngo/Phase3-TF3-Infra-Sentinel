@@ -271,13 +271,8 @@ components:
           labelSelector:
             matchLabels:
               opentelemetry.io/name: cart
-    # Mandate 2 (TẠM, chỉ trong cửa sổ load test): karpenter.sh/do-not-disrupt - lần test trước
-    # Karpenter consolidate 1 node đang chạy payment/quote/shipping ngay giữa lúc test, gây 503/500
-    # oan (đồng hồ consolidateAfter là per-node, node đó đã "rảnh" từ trước khi test bắt đầu nên
-    # hết hạn giữa chừng dù đã tăng consolidateAfter lên 1h). Annotation này miễn nhiễm hoàn toàn
-    # với timer. NHỚ GỠ lại sau khi xong Mandate 2, để lâu sẽ chặn Karpenter tối ưu chi phí node.
-    podAnnotations:
-      karpenter.sh/do-not-disrupt: "true"
+    # Mandate 2 do-not-disrupt (tạm, chỉ trong cửa sổ load test) đã gỡ sau khi test xong + co
+    # xuống xác nhận ổn định (PM-108 cleanup) - xem docs/mandate-02-load-test-remediation-plan.md.
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -310,9 +305,6 @@ components:
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
       digest: sha256:a774cb69f27795406f768881a7c575ba882f024f8e99ca928413047f3b3eb532
       tag: 7527509-checkout
-    # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
-    podAnnotations:
-      karpenter.sh/do-not-disrupt: "true"
     # Mandate 2 remediation: 2 pod stable từng bị xếp chung 1 node (xác nhận qua
     # kubectl trước load test) - checkout là service chịu tải chính, mất cả node đó
     # là mất cả 2 pod dù có PDB. hostname dùng ScheduleAnyway (soft) để không chặn
@@ -387,11 +379,6 @@ components:
               opentelemetry.io/name: payment
     imageOverride:
       digest: sha256:839b9cb5e5c50ba9a03acea8a4b15e29be724089e30cf18904530a1bc07bede5
-    # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
-    # payment là 1 trong 3 service (cùng quote/shipping) thực sự bị Karpenter evict giữa lúc test
-    # trước, gây 500/503 oan cho checkout - ưu tiên cao nhất trong 3 cái.
-    podAnnotations:
-      karpenter.sh/do-not-disrupt: "true"
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -512,9 +499,6 @@ components:
               opentelemetry.io/name: shipping
     imageOverride:
       digest: sha256:4952c73703cca38ec8afe934a3571f5f0a5f5e8e2adeb4af3eafc5cfa5ddb3ec
-    # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
-    podAnnotations:
-      karpenter.sh/do-not-disrupt: "true"
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -574,9 +558,6 @@ components:
               opentelemetry.io/name: quote
     imageOverride:
       digest: sha256:97fbf36ede49bb20218b75bfe0f2c9e90ed976114813091abb11ca789f567df3
-    # Mandate 2 (TẠM, chỉ trong cửa sổ load test) - xem giải thích đầy đủ ở comment component "cart".
-    podAnnotations:
-      karpenter.sh/do-not-disrupt: "true"
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -637,8 +618,8 @@ components:
               opentelemetry.io/name: product-reviews
     replicas: 2        # đứng sau tính năng AI tóm tắt review
     imageOverride: # CDO02 fix database.py + product_reviews_server.py - xem comment imageOverride đầu components:
-      digest: sha256:4d5403f3b7beda840dad76b406e1a25f4d1dd90248638930ed4327bdb1517439
-      tag: 6a3fe95-product-reviews
+      digest: sha256:4d3811fa4bf160d94e8254bd370bcf0a81a84ce670dc691d8cb4103162f7f538
+      tag: f6e9532-product-reviews
     resources:
       requests:
         cpu: 100m
@@ -893,11 +874,9 @@ components:
       type: Recreate
     podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
       cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
-      # PV này khoá AZ (topology.kubernetes.io/zone) — nếu node hiện tại là node Spot
-      # (flash-sale-spot), annotation này chặn Karpenter TỰ NGUYỆN consolidate/evict pod.
-      # KHÔNG chặn được AWS thu hồi Spot instance thật (spot interruption) — mitigation
-      # thật là đưa postgres về on-demand khi có đủ capacity ở đúng AZ (xem báo cáo CDO01).
-      karpenter.sh/do-not-disrupt: "true"
+      # Mandate 2 do-not-disrupt đã gỡ (PM-108 cleanup) - postgres giờ chạy trên node group
+      # stateful riêng (stateful_1a, taint techx.io/workload=stateful), ngoài Karpenter
+      # flash-sale-spot NodePool, nên rủi ro consolidation tự nguyện không còn áp dụng.
     readinessProbe:
       tcpSocket:
         port: 5432
@@ -953,9 +932,8 @@ components:
       type: Recreate
     podAnnotations:            # datastore: đừng để cluster-autoscaler evict lúc scale-down
       cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
-      # Cùng lý do với postgresql phía trên: PV khoá AZ, chặn Karpenter tự nguyện
-      # consolidate/evict — không chặn được spot interruption thật.
-      karpenter.sh/do-not-disrupt: "true"
+      # Mandate 2 do-not-disrupt đã gỡ (PM-108 cleanup) - cùng lý do với postgresql phía trên,
+      # valkey giờ chạy trên node group stateful riêng, ngoài Karpenter flash-sale-spot NodePool.
     readinessProbe:
       tcpSocket:
         port: 6379

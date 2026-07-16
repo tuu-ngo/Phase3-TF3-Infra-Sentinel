@@ -1,0 +1,1548 @@
+﻿Summary,Issue key,Issue id,Issue Type,Status,Project key,Project name,Project type,Project lead,Project lead id,Project description,Priority,Resolution,Assignee,Assignee Id,Reporter,Reporter Id,Creator,Creator Id,Created,Updated,Last Viewed,Resolved,Due date,Votes,Labels,Labels,Labels,Labels,Description,Environment,Watchers,Watchers,Watchers Id,Watchers Id,Original estimate,Remaining Estimate,Time Spent,Work Ratio,Σ Original Estimate,Σ Remaining Estimate,Σ Time Spent,Security Level,Inward issue link (Blocks),Inward issue link (Blocks),Outward issue link (Blocks),Outward issue link (Blocks),Outward issue link (Blocks),Outward issue link (Blocks),Inward issue link (Cloners),Outward issue link (Cloners),Attachment,Attachment,Attachment,Attachment,Custom field (Development),Custom field (Issue color),Custom field (Rank),Sprint,Custom field (Start date),Custom field (Story point estimate),Team Id,Team Name,Custom field (Vulnerability),Comment,Comment,Comment,Comment,Parent,Parent key,Parent summary,Status Category,Status Category Changed
+"[PM-92 follow-up] Kiểm tra write-path & áp securityContext cho stateful/observability (Postgres, Kafka, Valkey, Grafana/Jaeger/Prometheus/OpenSearch/OTel Collector)",PM-112,10422,Subtask,To Do,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,,Ngọc Hiếu Lý,712020:fd591227-22c6-4046-99cd-b785cb6a9ded,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/15/2026 20:53,7/15/2026 23:25,,,,0,follow-up,P2,security,,"*Bối cảnh:* {{docs/pod-security-hardening-note.md}} (commit {{dcccec2}}) liệt kê {{postgresql}}, {{kafka}}, {{valkey-cart}} và cả nhóm observability (Grafana/Jaeger/Prometheus/OpenSearch/OTel Collector) là exception vì cần ""kiểm tra path ghi trước khi bật read-only root FS"" — đúng theo yêu cầu gốc của PM-92, nhưng việc kiểm tra này chưa được thực hiện, mới chỉ dừng ở bước xác định.
+
+*Việc cần làm:*
+
+* Với từng workload, xác định các path cần ghi tại runtime (data dir, WAL, log, tmp, cache, plugin dir...).
+* Với path ghi bắt buộc: dùng {{emptyDir}}/{{volumeMount}} riêng cho path đó, để phần còn lại của root FS chuyển {{readOnlyRootFilesystem: true}}.
+* Áp phần còn lại của baseline securityContext ({{allowPrivilegeEscalation: false}}, {{capabilities.drop: [ALL]}}, {{seccompProfile: RuntimeDefault}}) cho các workload này — kể cả khi chưa bật được {{readOnlyRootFilesystem}}, các field khác vẫn nên áp được ngay (không phụ thuộc write-path).
+* Test rolling-restart/redeploy để xác nhận không có lỗi {{read-only file system}} hoặc mất data (đặc biệt Postgres/Kafka — cần cẩn trọng, có thể phối hợp với Mandate #3 no-downtime evidence).
+
+*DoD:*
+
+* [ ] Có bảng path ghi runtime cho từng workload (Postgres/Kafka/Valkey/Grafana/Jaeger/Prometheus/OpenSearch/OTel Collector).
+* [ ] Baseline securityContext (không tính readOnlyRootFilesystem) được áp cho các workload này nếu không có rủi ro.
+* [ ] {{readOnlyRootFilesystem: true}} được bật ở nơi an toàn, có {{emptyDir}}/volume riêng cho path ghi bắt buộc.
+* [ ] Không có mất data / CrashLoop sau khi áp dụng, verify qua rolling-restart có kiểm soát.
+
+*Nguồn:* phát hiện từ review PM-92 (commit {{ba58acb}}, {{dcccec2}}) — xem comment trên PM-92.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001wf:,PM Sprint 2,,,,,,,,,,10402,PM-92,[MANDATE 5] — Pod Security Standards + securityContext hardening (P1),To Do,7/15/2026 20:53
+"[PM-92 follow-up] Vá base image Alpine (USER non-root) cho currency, llm, product-reviews",PM-111,10421,Subtask,To Do,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,,Ngọc Hiếu Lý,712020:fd591227-22c6-4046-99cd-b785cb6a9ded,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/15/2026 20:53,7/15/2026 23:25,7/15/2026 20:55,,,0,follow-up,P2,security,,"*Bối cảnh:* {{docs/pod-security-hardening-note.md}} (commit {{dcccec2}}) liệt kê {{currency}}, {{llm}}, {{product-reviews}} là exception có chủ đích vì base image Alpine chưa có {{USER}} directive — ép {{runAsNonRoot}} có thể làm container không start. Đây là exception tạm thời, PM-92 tự ghi rõ ""cần vá base image trước khi siết tiếp"".
+
+*Việc cần làm:*
+
+* Sửa Dockerfile của {{currency}}, {{llm}}, {{product-reviews}}: thêm non-root {{USER}} (tạo user/group riêng hoặc dùng distroless/non-root base image tương đương).
+* Verify container vẫn start/healthy sau khi đổi user (đặc biệt {{currency}} là C++, {{llm}}/{{product-reviews}} là Python — kiểm tra quyền ghi file/socket cần thiết ở runtime).
+* Sau khi build lại, bật {{runAsNonRoot: true}} + phần còn lại của baseline securityContext cho 3 service này trong {{values.yaml}}.
+* Cập nhật lại bảng exception trong {{docs/pod-security-hardening-note.md}} — bỏ 3 service này khỏi danh sách exception nếu đã vá xong, hoặc ghi rõ lý do nếu vẫn phải giữ exception.
+
+*DoD:*
+
+* [ ] {{currency}}, {{llm}}, {{product-reviews}} chạy non-root ({{runAsNonRoot: true}}) sau khi patch base image.
+* [ ] Không có regression (container start bình thường, health check pass).
+* [ ] Bảng exception trong {{pod-security-hardening-note.md}} được cập nhật đúng thực tế.
+
+*Nguồn:* phát hiện từ review PM-92 (commit {{ba58acb}}, {{dcccec2}}) — xem comment trên PM-92.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001w7:,PM Sprint 2,,,,,,,,,,10402,PM-92,[MANDATE 5] — Pod Security Standards + securityContext hardening (P1),To Do,7/15/2026 20:53
+[PM-92 follow-up] Mở rộng securityContext baseline để đạt DoD ≥80% container,PM-110,10420,Subtask,To Do,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,,Ngọc Hiếu Lý,712020:fd591227-22c6-4046-99cd-b785cb6a9ded,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/15/2026 20:53,7/15/2026 23:25,7/15/2026 20:55,,,0,follow-up,P1,security,,"*Bối cảnh:* PM-92 hiện đã harden {{frontend}}, {{checkout}}, {{payment}}, {{shipping}} (full) + {{cart}} (partial) = 5/28 container = 17.9%, chưa đạt DoD {{≥80%}}. Đây là 1 trong 4 tiêu chí DoD gốc của PM-92, hiện đang fail rõ ràng (tự báo cáo trong {{docs/pod-security-hardening-note.md}}).
+
+*Việc cần làm:*
+
+* Rà lại toàn bộ 28 container trong namespace {{techx-tf3}}, liệt kê container nào còn thiếu {{allowPrivilegeEscalation=false}} / {{capabilities.drop=[ALL]}} / {{seccompProfile=RuntimeDefault}}.
+* Áp baseline securityContext cho các service stateless còn lại chưa nằm trong batch đầu (ngoài 5 service đã làm và ngoài nhóm exception đã ghi ở PM-92).
+* Hoàn tất {{runAsNonRoot}}/{{readOnlyRootFilesystem}} cho {{cart}} sau khi xác minh Dockerfile/runtime user.
+* Đo lại tỷ lệ container đạt baseline, cập nhật con số vào PM-92 hoặc report riêng.
+
+*DoD:*
+
+* [ ] ≥80% container app đạt {{allowPrivilegeEscalation=false}}, {{drop ALL}}, {{seccompProfile=RuntimeDefault}}.
+* [ ] {{cart}} đạt hardening đầy đủ (runAsNonRoot + readOnlyRootFilesystem) hoặc có lý do exception rõ ràng nếu không đạt được.
+* [ ] Không có workload critical CrashLoop sau khi mở rộng hardening.
+
+*Nguồn:* phát hiện từ review PM-92 (commit {{ba58acb}}, {{dcccec2}}) — xem comment trên PM-92.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001vz:,PM Sprint 2,,,,,,,,,,10402,PM-92,[MANDATE 5] — Pod Security Standards + securityContext hardening (P1),To Do,7/15/2026 20:53
+Migrate production GitOps và CI/CD từ deploy/account-migration-gitops sang main không downtime,PM-109,10419,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,Done,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,7/15/2026 16:48,7/15/2026 16:59,7/15/2026 20:24,7/15/2026 16:48,,0,,,,,"Đã migrate production GitOps/CICD source of truth từ branch {{deploy/account-migration-gitops}} sang protected {{main}} mà không downtime.
+
+Phạm vi:
+
+* Merge production baseline và ArgoCD control plane vào {{main}}.
+* Cập nhật ArgoCD apps/bootstrap để track {{main}}.
+* Sửa drift HPA replica ownership.
+* Bật lại {{prune:true}} sau khi hậu kiểm ổn định.
+* Dọn các branch migration thừa, giữ lại branch deploy để rollback/tham chiếu.
+
+PR chính:
+
+* #122 [https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/122|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/122|smart-link] 
+* #125 [https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/125|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/125|smart-link] 
+* #126 [https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/126|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/126|smart-link] 
+* #128 [https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/128|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/128|smart-link] 
+* #129 [https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/129|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/129|smart-link] 
+* #130 [https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/130|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/130|smart-link] 
+
+Kết quả:
+
+* Production hiện chạy theo {{main}}.
+* ArgoCD apps đã Synced/Healthy.
+* Storefront verify HTTP 200.
+* Terraform plan no-op.
+* Giữ rollback tag: {{production-pre-main-cutover-2026-07-15}}.",,Truong Cong Tu,,712020:b6ce0571-393d-4992-9f18-c182f93d4560,,,,,,,,,,,,,,,,,,,,,,,,0|i001vr:,PM Sprint 2,,,,,,,,,,,,,Done,7/15/2026 16:48
+"[EVIDENCE] Mandate #2 — Load test 200 user/15 phút thật: kết quả, remediation, cost",PM-108,10418,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,Done,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/15/2026 14:48,7/15/2026 22:57,7/15/2026 22:56,7/15/2026 22:50,,0,auditability,cost,P1,performance,"*Backlog gốc:* Mandate #2 - Chịu được flash sale mà không tăng ngân sách. Tiếp nối PM-106 (phân tích capacity lý thuyết, Done) — đây là phần *bằng chứng thật* (evidence) sau khi chạy load test 200 user/15 phút thật, đúng yêu cầu ""Phải nộp"" của {{MANDATE-02-scale-under-budget.md}}.
+*Phụ thuộc:* PM-106 (capacity analysis lý thuyết, Done), PM-105 (topologySpreadConstraints + memory headroom, Done)
+
+*Bối cảnh:*
+
+Sau khi PM-106 xác định lý thuyết đã đủ điều kiện chạy test (pod quota nâng lên, browser traffic tắt), team chạy load test 200 user/15 phút thật ngày 15/07/2026, 12:45–13:02 (giờ VN). Trong lúc chuẩn bị/chạy thử trước đó, phát sinh thêm nhiều điểm nghẽn không có trong phân tích lý thuyết ban đầu — phải xử hết trước khi bài test chính thức chạy sạch (yêu cầu #3 của mandate: ""Tự tìm và xử điểm nghẽn"").
+
+*Điểm nghẽn phát hiện và đã xử lý trước bài test chính thức:*
+
+# *Checkout canary rollout Degraded oan* — Karpenter consolidation quá nhạy ({{consolidateAfter: 2m}}) evict pod đúng lúc phân tích SLO đang đo → tăng lên {{1h}} cho cửa sổ test, sau đó hạ về {{3m}} sau khi có {{karpenter.sh/do-not-disrupt}} bảo vệ riêng 7 component checkout-critical ({{cart}}, {{checkout}}, {{payment}}, {{shipping}}, {{quote}}, {{postgresql}}, {{valkey-cart}}). Xác nhận PDB ({{minAvailable: 1}}) *không* đủ chặn kiểu disruption này ({{DISRUPTIONS-ALLOWED: 1}} ngay lúc 2/2 pod khỏe).
+# *Observability OOM* — Jaeger {{OOMKilled}} thật (Exit Code 137) giữa 1 lần test trước do volume trace tăng mạnh dưới tải; tăng limit Jaeger/Prometheus/OpenSearch/Kafka/OpenTelemetry Collector.
+# *Memory limit quá mỏng* — {{payment}} (đã dùng ~50% limit chỉ với 10 user nền), {{shipping}}, {{quote}} không có HPA để bù → tăng limit cả 3.
+# *Thiếu* {{topologySpreadConstraints}} cho checkout — 2 pod stable từng nằm chung 1 node, rủi ro mất cả 2 nếu node chết → thêm spread theo hostname (soft) + zone (hard).
+# *Dashboard SLO panel Cart đo sai tầng* — query cũ ở {{service_name=""cart""}} (backend) không bao giờ đánh dấu span lỗi, nên hiện 100% dù Locust từng thấy lỗi 503 thật ở 1 lần test trước → sửa sang đo ở tầng {{frontend}} với {{span_name}} cụ thể. Giới hạn còn lại: lỗi kiểu Envoy circuit-breaker (span tên chung {{GET}}/{{POST}}) vẫn chưa gắn được vào đúng flow cụ thể — ghi nhận như known issue, không chặn kết luận vì tỷ lệ lỗi vẫn trong ngân sách theo Locust.
+# Đã đối chiếu số liệu bằng lệnh thật trước khi kết luận: {{kubectl}}/Prometheus/AWS Pricing API — không suy diễn.
+
+*Kết quả bài test chính thức (15/07/2026, 12:45–13:02 VN):*
+
+||SLO||Ngưỡng||Đo được||
+|Checkout success rate|≥99%|*99.9825%* (2327/2327 {{PlaceOrder}} thành công, 0 {{STATUS_CODE_ERROR}} — đo qua Prometheus đúng cửa sổ test)|
+|Browse/Cart success rate|≥99.5%|*100.0000%* cả hai|
+|Storefront p95 latency|<1000ms|*46-48ms*|
+
+* *0 lỗi thật* trong toàn bộ Locust ({{POST /api/checkout}} 2399 request/0 fail, {{POST/GET /api/cart}} 10700 request/0 fail).
+* *Cost:* $0.4044/giờ (3× {{t3.large}} + 1× {{t3.medium}} on-demand + 3× {{t3.small}} spot — giá thật qua AWS Pricing API), *không đổi* trong lúc test vì Karpenter không cần thêm node (capacity sẵn có đã đủ) → cost/đơn ≈ $0.0000493, nằm sâu dưới trần ~$300/tuần/TF, không phình khi tải tăng.
+* *Co lên → co xuống* rõ nhất ở tầng pod: {{frontend-hpa}} 2→7→2, {{product-reviews-hpa}} 2→3→2, co xuống về baseline trong ~10 phút sau khi dừng tải. Số node không đổi (7: 4 on-demand/3 spot) trong suốt 3 mốc — ghi nhận trung thực là test này *chưa chứng minh* ""Karpenter tự thêm node khi cần"", chỉ chứng minh capacity sẵn có đã đủ gánh 200 user.
+
+*Output đã nộp:*
+
+* {{docs/mandate-02-load-test-report.md}} — báo cáo đầy đủ SLO/cost/co giãn/cách mentor chạy lại, kèm 7 ảnh bằng chứng ({{docs/postmortem/Mandate02-image/}}) + video demo.
+* {{docs/mandate-02-load-test-remediation-plan.md}} — toàn bộ điểm nghẽn phát hiện + fix + lý do, dùng để xác thực lại sau này.
+* {{docs/runbooks/flash-sale-load-test.md}} — cập nhật: abort threshold cụ thể, backup thủ công datastore, ramp thử nhỏ trước test chính thức.
+
+Commit:
+[report: mandate-02 · tuu-ngo/Phase3-TF3-Infra-Sentinel@51963d7|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/121/commits/51963d7ed4c14459f5752765dc150f103f63f0a2]
+
+[Remove: Do not disrupt in 7 component, consolidateAfter 3m -> 2m by hoang-trong-tan · Pull Request #143 · tuu-ngo/Phase3-TF3-Infra-Sentinel|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/143]
+
+*(15/07) Cleanup sau test — đã làm:* gỡ {{karpenter.sh/do-not-disrupt: ""true""}} khỏi cả 7 component ({{cart}}, {{checkout}}, {{payment}}, {{shipping}}, {{quote}}, {{postgresql}}, {{valkey-cart}}) trong {{values-prod.yaml}}, trả {{consolidateAfter}} về {{2m}} (từ {{3m}}) trong {{gitops/karpenter/spot-nodepool.yaml}}. Verify: {{helm template}} exit 0, {{grep -c karpenter.sh/do-not-disrupt values-prod.yaml}} = 0. Giữ nguyên {{cluster-autoscaler.kubernetes.io/safe-to-evict: ""false""}} trên postgresql/valkey-cart (không thuộc Mandate 2, bảo vệ datastore khỏi cluster-autoscaler riêng).
+
+Commit: {{fix(mandate-2): PM-108 cleanup - remove karpenter.sh/do-not-disrupt, revert consolidateAfter to 2m}} (local commit {{640fc61}} trên {{tan-cdo011}})
+
+*Tiêu chí hoàn thành (DoD):*
+
+[x] Load test 200 user/15 phút thật đã chạy, giữ đủ 3 SLO bắt buộc.  
+[x] Cost trong trần + cost/đơn không phình, có số liệu trước/trong test.  
+[x] Bằng chứng co lên → co xuống (tầng pod), ghi trung thực giới hạn ở tầng node.  
+[x] Tự phát hiện và xử lý điểm nghẽn phát sinh trong lúc chuẩn bị/chạy test (yêu cầu #3 mandate).  
+[x] Có cách cho mentor chạy lại hoặc chứng kiến để tự xác nhận (mục 6 report).  
+[x] *Dọn dẹp sau test:* đã đổi {{consolidateAfter}} về lại {{2m}}, đã gỡ {{karpenter.sh/do-not-disrupt}} khỏi cả 7 component — verify bằng {{helm template}} + grep, không còn sót annotation nào.
+
+*Ghi chú:* Không có sự cố nào chạm abort threshold trong suốt cửa sổ test. Toàn bộ DoD đã đạt — *đủ điều kiện Done.*",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001uz:,PM Sprint 2,,,,,,,,,,,,,Done,7/15/2026 22:50
+[INCIDENT] BTC bơm flag paymentFailure — checkout fail ~85% trong 14:22-14:34 14/07/2026,PM-107,10417,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Highest,Done,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/14/2026 14:49,7/15/2026 22:50,7/15/2026 22:57,7/15/2026 22:50,,0,auditability,incident,P0,,"*Loại:* Incident report (theo yêu cầu khẩn của BTC/tư lệnh, phản hồi trong 2h) - KHÔNG phải bug của TF, là fault injection có kiểm soát từ BTC qua flagd.
+*Postmortem đầy đủ:* {{docs/postmortem/0004-btc-injected-payment-failure-flag.md}}
+*Liên quan nhưng KHÔNG phải cùng sự cố:* {{docs/postmortem/0003-checkout-kafka-producer-latency-incident.md}} (bug Kafka do TF tự gây + tự sửa hôm trước, đã fix, khác chữ ký triệu chứng: treo 15s vs fail nhanh <60ms lần này)
+
+*Tóm tắt:*
+
+Trong khoảng 14:22:16 - 14:34:00 (14/07/2026), {{POST /api/checkout}} fail hàng loạt (~85% trong mẫu Locust quan sát: 28/33 request), phản hồi RẤT NHANH (34-59ms - không phải treo/timeout). Nguyên nhân: flag {{paymentFailure}} (flagd, đồng bộ từ nguồn trung tâm BTC) bị bật lên tỷ lệ cao, khiến {{payment.charge()}} chủ động throw ""Payment request failed. Invalid token. app.loyalty.level=gold"" (xem {{src/payment/charge.js:37}}).
+
+*Bằng chứng:*
+
+# Locust: POST /api/checkout 33 requests, 28 fails, median 34ms/95%ile 49ms/99%ile 59ms/max 59ms - fail nhanh, không phải hang.
+# Jaeger trace {{load-generator: user_checkout_single}} (48.33ms, 10 service, 30 span) - lỗi xuất hiện từ checkout lan lên frontend/frontend-proxy ngay lập tức; Jaeger search cùng khung giờ (~14:27-14:34pm) thấy nhiều trace đỏ (error) liên tục.
+# Log pod {{payment}} ({{kubectl logs --since=25m}}): 171 lần lỗi giống hệt nhau, kèm stack trace trỏ đúng {{charge.js:37}} + {{index.js:21}}. Timestamp lỗi đầu tiên 14:22:16.825, cuối cùng 14:34:00.123 - khớp gần khít khung giờ BTC nêu (14:15-14:30).
+# Code {{src/payment/charge.js}}: chuỗi lỗi ""Invalid token. app.loyalty.level=gold"" CHỈ sinh ra từ nhánh đọc flag {{paymentFailure}} qua OpenFeature/flagd-provider - không phải lỗi thẻ tín dụng thật (các lỗi thẻ khác có message khác hẳn).
+# Query trực tiếp OFREP endpoint flagd lúc điều tra (sau 14:34): {{{""value"":0,""key"":""paymentFailure"",""reason"":""STATIC"",""variant"":""off""}}} - flag đã tự tắt, hệ thống đã hồi phục.
+
+*Detect có tự động không:* KHÔNG. {{grafana-alerting}} ConfigMap trong cluster rỗng (0 alert rule) - chưa có cảnh báo tự động khi tỷ lệ lỗi checkout/payment tăng đột biến. Phát hiện hoàn toàn thủ công (thử đặt đơn + chạy Locust thấy fail cao, sau đó mới tra Jaeger/log để tìm nguyên nhân).
+
+*Phân tích thêm (15/07):* thử triển khai alert rule cho checkout success rate, phát hiện thêm root cause rộng hơn: {{templates/grafana-config.yaml}} glob {{*.yaml}} nhưng file rất thật là {{.yml}} → toàn bộ 4 rule sẵn có (pod restart/OOMKilled/readiness/checkout-unavailable) chưa từng được load vào cluster từ trước giờ, dù code đã viết đúng. *Quyết định:* không track alert rule + fix glob này như phần của ticket incident này — giữ lại ở dạng đề xuất/phương án trong {{docs/postmortem/0004-...md}} mục ""How to fix"" để làm riêng khi có ticket phù hợp, không blộc ticket postmortem này.
+
+*Ảnh hưởng:*
+
+* Checkout success rate ước tính ~15% trong cửa sổ ~12 phút - vi phạm nghiêm trọng SLO checkout ≥99%.
+* KHÔNG có rủi ro dữ liệu/tài chính: {{payment.charge()}} throw lỗi TRƯỚC KHI trả {{transactionId}} - request bị chặn chưa hề charge thẻ thật, không có giao dịch ma.
+
+*Output đã nộp:*
+
+# {{docs/postmortem/0004-btc-injected-payment-failure-flag.md}} - postmortem đầy đủ kèm bằng chứng chi tiết + mục đề xuất alert rule (chưa triển khai, giữ làm phương án).
+# Ticket này (Jira) + postmortem (GitHub).
+
+Commits:  
+[report: postmortem 0004 injected-payment format · tuu-ngo/Phase3-TF3-Infra-Sentinel@b135bf3|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/b135bf34ea57b4459c9c1b65cd6d1560a89b88ef]
+
+[fix: bug concurrency checkout code · tuu-ngo/Phase3-TF3-Infra-Sentinel@25d26a7|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/25d26a7dc048f58b5f4cfb98836dde8e61809aa5]
+
+{{docs(postmortem-0004): keep checkout success-rate alert as a proposal, not implemented}} (local commit {{6189e2f}} trên {{tan-cdo011}})
+
+*Tiêu chí hoàn thành (DoD):*
+
+[x] Xác định chính xác flag/nguyên nhân BTC bơm. [x] Có bằng chứng đầy đủ (dashboard/metrics/log/trace) kèm timestamp chính xác. [x] Xác nhận không có rủi ro dữ liệu/tài chính thật.
+
+[x] Gửi report này vào nhóm TF (Zalo/Slack) kèm link Jira + link postmortem.
+
+[x] Push postmortem lên GitHub (branch làm việc hiện tại).
+
+[x] *(15/07)* Grafana alert rule cho success rate checkout *được giữ lại ở dạng đề xuất trong postmortem, không phải DoD bắt buộc của ticket này* — quyết định của team, sẽ làm riêng ở ticket khác khi phù hợp.
+
+*Ghi chú:* Đây là bằng chứng TF phát hiện đúng và định vị đúng nguyên nhân sự cố BTC bơm vào - không phải lỗi TF gây ra. Toàn bộ DoD trong scope ticket này đã đạt — *đủ điều kiện Done.*",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001v3:,PM Sprint 2,,,,,,,,,,,,,Done,7/15/2026 22:50
+[Mandate #2] [DOC] — Phân tích capacity lý thuyết trước load test 200 user/15 phút,PM-106,10416,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,Done,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/14/2026 12:48,7/15/2026 16:49,7/15/2026 20:23,7/15/2026 14:49,,0,cost,P1,performance,,"*Backlog gốc:* Mandate #2 - Chịu được flash sale mà không tăng ngân sách; tiếp nối T8 (PM-94, HPA + Karpenter)
+*Phụ thuộc:* T8 (PM-94, Done), {{deploy/values-prod.yaml}} (resource sizing từng component), {{gitops/infrastructure/resource-quota.yaml}}, {{gitops/infrastructure/hpa-hotpath.yaml}}
+
+*Bối cảnh:*
+
+Trước khi chạy load test 200 user/15 phút thật cho Mandate #2, cần 1 tài liệu tính toán lý thuyết xem cấu hình HPA/Karpenter/ResourceQuota hiện tại có đủ sức chịu tải đó không, và nếu chưa thì chạm trần ở đâu trước - để team không phải ""thử rồi mới biết"" ngay trước hạn, tránh tốn thời gian chạy test khi biết trước sẽ fail vì lý do hạ tầng chứ không phải do code.
+
+*Yêu cầu:*
+
+* Liệt kê CPU/memory request + limit của 9 service hot-path (theo {{hpa-hotpath.yaml}} min/max) và toàn bộ baseline còn lại trong namespace {{techx-tf3}}.
+* Đối chiếu với trần {{ResourceQuota}} hiện tại + capacity node tĩnh/Karpenter, xác định chạm trần ở đâu TRƯỚC (pod count / CPU request / CPU limit / memory) khi HPA scale hết {{maxReplicas}}.
+* Review cấu hình {{load-generator}} ({{LOCUST_BROWSER_TRAFFIC_ENABLED}}, {{LOCUST_AUTOSTART}}) xem có phù hợp cho 1 bài test 200 user đo SLO sạch hay không.
+* Kết luận rõ ràng: đã đủ điều kiện chạy test thật chưa, còn thiếu đúng những gì.
+
+*Phạm vi đã làm:*
+
+* Viết {{docs/mandate-02-load-test-capacity-analysis.md}}: bảng CPU/mem request-limit từng service, đối chiếu số liệu *live thật* qua {{kubectl}} (không chỉ suy từ values.yaml) để tránh sai lệch do sidecar/init container ẩn.
+* Snapshot live {{ResourceQuota}}/node/HPA tại thời điểm viết, tính tổng resource ở kịch bản HPA scale hết cỡ (81 pod) so với trần hiện tại.
+* Phát hiện #1: {{pods: ""50""}} (đã nâng lên {{""90""}}, sau đó {{""100""}}) là điểm nghẽn chặn cứng đến SỚM NHẤT - đến trước cả CPU/memory, vì baseline + HPA-max cần 81 pod trong khi chỉ còn ~11 pod dư từ trạng thái idle.
+* Phát hiện #2: tổng CPU *limit* lý thuyết ở kịch bản max (~34.8 vCPU) vượt gần gấp đôi capacity thật hiện có (~17.8 vCPU, gồm node tĩnh + trần burst Karpenter) - rủi ro CPU throttle/latency spike lúc đỉnh tải, khác hẳn và độc lập với rủi ro pod bị {{Pending}} do hết quota (CPU request thì vẫn đủ, chỉ CPU limit mới overcommit).
+* Review {{LOCUST_BROWSER_TRAFFIC_ENABLED}}/{{LOCUST_AUTOSTART}} trong {{values-prod.yaml}} - khuyến nghị tắt browser traffic (đã được áp dụng) để tránh nhiễu kết quả đo SLO + rủi ro OOM chính pod {{load-generator}}.
+
+*Đã chạy test thật (15/07/2026, 12:45-13:02 VN) — đối chiếu lý thuyết với thực tế:*
+
+* Load test 200 user/15 phút thật đã chạy, giữ cả 3 SLO (checkout 99.98%, browse/cart 100%, p95 46-48ms), 0 lỗi thật (Prometheus xác nhận 0 {{STATUS_CODE_ERROR}} trên {{PlaceOrder}}, khớp Locust 0 fail).
+* Trước khi chạy test thật, phải xử thêm nhiều điểm nghẽn KHÔNG có trong phân tích lý thuyết ban đầu (lộ ra khi chuẩn bị/chạy thử): Karpenter consolidation quá nhạy làm rollout fail oan, memory limit {{payment}}/{{shipping}}/{{quote}}/Jaeger quá mỏng, thiếu {{topologySpreadConstraints}} cho checkout, dashboard SLO panel Cart đo sai tầng. Toàn bộ chi tiết ở ticket riêng (xem link dưới) - không lặp lại ở đây theo đúng nguyên tắc tách bạch lý thuyết (ticket này) vs bằng chứng thật (ticket mới).
+* Tài liệu lý thuyết {{docs/mandate-02-load-test-capacity-analysis.md}} được giữ nguyên làm tài liệu tham khảo gốc, không chỉnh sửa lẫn với số liệu thật - số liệu thật nằm ở {{docs/mandate-02-load-test-report.md}} (ticket riêng).
+
+*Output đã nộp:*
+
+Tài liệu: {{docs/mandate-02-load-test-capacity-analysis.md}}
+
+Commits:
+[doc: load test capacity analysis · tuu-ngo/Phase3-TF3-Infra-Sentinel@fbbffbc|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/fbbffbc791a992169977cdd14b4fd52c3bb26bd9]
+
+*Tiêu chí hoàn thành (DoD):*
+
+[x] Tài liệu liệt kê đủ CPU/mem request-limit của 9 service hot-path + toàn bộ baseline.
+[x] Xác định rõ điểm nghẽn đầu tiên khi HPA scale hết cỡ, kèm số liệu cụ thể.
+[x] Khuyến nghị cụ thể, có thể hành động ngay (nâng {{pods}} quota, tắt browser traffic load-generator).
+[x] Chạy load test 200 user/15 phút thật để đối chiếu với lý thuyết trong tài liệu — xem PM-108.
+[x] Cập nhật số liệu thật (SLO, cost, replicas/node scale-up thực tế) sau khi chạy test — nằm ở {{docs/mandate-02-load-test-report.md}}, chi tiết đầy đủ trong PM-108 (không gộp vào tài liệu lý thuyết này để giữ tách bạch nguồn số liệu).
+
+*Ghi chú:* Tài liệu này mang tính lý thuyết/tham khảo cho cả team trước khi chạy test. Bằng chứng (evidence) chính thức cho Mandate #2 — kết quả test thật, remediation, cost — nằm ở *PM-108*.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001uv:,PM Sprint 2,,,,,,,,,,,,,Done,7/15/2026 14:49
+[MANDATE-1] [SEC] CICD build-push scoped theo service + gỡ route Envoy ,PM-105,10415,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,Done,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/14/2026 12:47,7/15/2026 16:49,7/15/2026 20:23,7/14/2026 18:30,,0,P1,security,,,"*Backlog gốc:* Mandate #1 - Storefront công khai, mọi cổng vận hành phải riêng tư (phần CDO01 - least-exposure Envoy), đi kèm cải tiến {{build-push-ecr.yml}}
+*Phụ thuộc:* ADR 0004 (mandate-01 CDO01), PR #48 (CDO02 - ADR/runbook/audit log SSM bastion), tài khoản ECR mới {{197826770971}}
+
+*Bối cảnh:*
+
+{{frontend-proxy}} (Envoy) đang route công khai {{/grafana}}, {{/jaeger}}, {{/loadgen}}, {{/feature}} (flagd-ui) ra internet cùng storefront - vi phạm trực tiếp Mandate #1. Song song, {{build-push-ecr.yml}} trước đó luôn build+push toàn bộ 18 image mỗi lần có thay đổi trong {{techx-corp-platform/}}, kể cả khi chỉ 1 service đổi (ví dụ chỉ sửa {{frontend-proxy}}) - tốn thời gian CI không cần thiết, đặc biệt trong lúc đang gấp deadline.
+
+*Yêu cầu:*
+
+* Gỡ route {{/grafana}}, {{/jaeger}}, {{/loadgen}}, {{/feature}} khỏi {{src/frontend-proxy/envoy.tmpl.yaml}} - giữ nguyên {{/flagservice/}} (kênh service đọc flag runtime, KHÔNG được đụng - vi phạm là disqualify) và {{envoy.filters.http.fault}}.
+* CI chỉ build+push image cho (các) service thực sự đổi trong mỗi lần push, thay vì build toàn bộ 18 service mỗi lần; giữ {{workflow_dispatch}} làm lựa chọn build-toàn-bộ thủ công khi cần.
+* Đảm bảo OIDC role dùng để build/push trỏ đúng account ECR đang live ({{197826770971}}) - phát hiện {{AWS_ROLE_ARN}} cũ trỏ nhầm account {{012619468490}} đã retire khỏi Terraform.
+* {{deploy/values-prod.yaml}} phải cho phép bump tag của 1 service riêng lẻ mà không kéo theo 17 service còn lại pull nhầm tag không tồn tại.
+
+*Phạm vi đã làm:*
+
+* Sửa {{src/frontend-proxy/envoy.tmpl.yaml}}: gỡ 4 route/redirect nêu trên, giữ nguyên phần còn lại.
+* Viết lại {{.github/workflows/build-push-ecr.yml}}: thêm bước {{Detect which services changed}} (diff theo {{src/<service>/}}, anchor bằng {{git -C ""$GITHUB_WORKSPACE""}} để tránh lỗi pathspec tính theo cwd của {{working-directory}} mặc định, fallback build-toàn-bộ khi đổi file dùng chung như {{docker-compose.yml}}/{{pb/}}); tách job build {{full}} / {{scoped}}; thêm nhánh {{deploy/account-migration-gitops}} vào trigger {{push}} (tạm thời, cần gỡ lại sau khi merge {{main}}).
+* Sửa trust policy IAM role OIDC đúng account {{197826770971}} (role {{github-actions-ecr-push}}), chấp nhận cả {{main}} và {{deploy/account-migration-gitops}}.
+* {{deploy/values-prod.yaml}}: thêm {{imageOverride}} theo từng component (frontend-proxy + 6 service CDO02 sửa app-code: accounting/cart/checkout/product-catalog/product-reviews/recommendation) để build/deploy 1 service riêng lẻ không phải bump tag chung.
+* Fix kèm 1 bug compile thật phát hiện trong lúc build ({{checkout/main.go}}: biến {{cs}} không tồn tại trong {{main()}}, đúng ra là {{svc}}) - chặn CI build service {{checkout}}.
+
+*Output đã nộp:*
+
+Commits:
+[feat: delete envoy route observability service, update: docs adr 0004… · tuu-ngo/Phase3-TF3-Infra-Sentinel@53a9dfc|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/53a9dfc0f25cfeb252539bd3c18e045a345e8b47]
+
+*Tiêu chí hoàn thành (DoD):*
+
+[x] {{curl}} storefront public trả 200. 
+
+[x] {{curl /grafana}}, {{/jaeger}}, {{/loadgen}}, {{/feature}} qua domain public trả 403/404.
+[x] {{/flagservice/}} vẫn hoạt động bình thường (không bị đụng).
+[x] CI chỉ build đúng (các) service thay đổi khi push (đã verify logic bằng merge commit PR #53, cần verify thêm 1 lần build thành công thật trên ECR).
+
+[Merge pull request #57 from tuu-ngo/tan-cdo011 · tuu-ngo/Phase3-TF3-Infra-Sentinel@6a3fe95|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/actions/runs/29271528012/job/86890155822]
+
+ [x] {{workflow_dispatch}} vẫn build được toàn bộ khi cần. 
+
+[x] SLO checkout không tụt trong lúc rollout route mới.
+
+*Ghi chú:* ADR đầy đủ ở {{docs/adr/0004-mandate-01-cdo01-envoy-least-exposure.md}}.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001un:,PM Sprint 2,,,,,,,,,,,,,Done,7/14/2026 18:30
+[MANDATE 5] Kyverno admission policy — chặn root/tag latest/thiếu limit ngay lúc apply,PM-104,10414,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Highest,Done,Lê Hoàng Việt,712020:e4b88991-3f10-4b8c-9d74-77c3adf48075,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/14/2026 12:32,7/15/2026 22:08,7/15/2026 20:00,7/15/2026 21:49,,0,,,,,"*Backlog gốc:* liên quan mục #5 (T6/PM-92 - Pod Security Standards) và mục #8 (T9/PM-95 + T15/PM-101 - image supply chain), {{cd01-performance-security-week1-backlog.md}} - Kyverno là lớp policy engine để tự động ENFORCE các quy tắc đó tại admission-time, thay vì chỉ trông vào con người nhớ set đúng mỗi lần deploy
+*Phụ thuộc:* T6 (PM-92) nên bật PSA {{audit}}/{{warn}} + baseline securityContext trước; T15 (PM-101, Cosign) nếu muốn Kyverno verify chữ ký image ở phần nâng cao
+
+*Bối cảnh:*
+
+Namespace {{techx-tf3}} hiện chưa có nhãn Pod Security Admission, và các baseline (securityContext, resource requests/limits qua LimitRange) đang được set bằng cách sửa tay {{values.yaml}}/{{values-prod.yaml}} - không có gì NGĂN 1 lần deploy sau này vô tình bỏ sót các baseline đó (thiếu securityContext, thiếu resource request, dùng image chưa scan/ký). Cluster hiện chưa có admission controller policy nào.
+
+*Yêu cầu:*
+
+* Cài Kyverno vào cluster qua GitOps (1 ArgoCD Application riêng trong {{gitops/apps/}}, cùng pattern đã dùng cho Karpenter/metrics-server).
+* Viết {{ClusterPolicy}} ở chế độ *audit trước* (KHÔNG {{enforce}} ngay - tránh chặn nhầm deploy đang chạy, cùng nguyên tắc thận trọng T6 đã áp dụng cho PSA {{audit}}/{{warn}}):
+** Bắt buộc container có {{resources.requests}}/{{resources.limits}} (bổ sung {{LimitRange}} hiện có, chặn ngay tại admission thay vì chỉ default ngầm).
+** Bắt buộc baseline securityContext ({{allowPrivilegeEscalation: false}}, {{capabilities.drop: [ALL]}}, {{seccompProfile: RuntimeDefault}}) cho service không nằm trong danh sách exception mà T6 đã liệt kê (vd {{currency}}, {{llm}}, {{product-reviews}} chạy root do base image thiếu {{USER}}).
+** (Tuỳ chọn, sau khi T15 xong) verify chữ ký Cosign cho image tự build trước khi cho phép chạy.
+* Sau giai đoạn audit đủ lâu không phát sinh false-positive chặn nhầm service hợp lệ, mới cân nhắc chuyển policy sang {{enforce}} cho namespace {{techx-tf3}}.
+
+*Output cần nộp:*
+
+# Kyverno controller Running trong cluster (qua GitOps).
+# Bộ {{ClusterPolicy}} chế độ audit cho: resource requests bắt buộc, securityContext baseline, (tuỳ chọn) verify chữ ký image.
+# Báo cáo policy report: bao nhiêu resource đang vi phạm mỗi policy, đối chiếu với danh sách exception mà T6 đã ghi.
+
+*Tiêu chí hoàn thành (DoD):*
+
+[ ] Kyverno Running trong cluster, không gây gián đoạn deploy hiện có.
+[ ] Có {{ClusterPolicy}} {{audit}} cho resource requests bắt buộc + securityContext baseline.
+[ ] Policy report khớp với số liệu evidence T6 (PM-92) đã ghi, không mâu thuẫn.
+[ ] Không có workload nào bị chặn ngoài ý muốn (đang ở {{audit}}, chưa {{enforce}}).
+[ ] Có kế hoạch/tiêu chí rõ ràng để chuyển từ {{audit}} sang {{enforce}}.
+
+*Ghi chú:* Kyverno KHÔNG thay thế {{LimitRange}}/{{ResourceQuota}}/nhãn PSA namespace đã có - đây là lớp guardrail bổ sung, phát hiện sớm hơn (tại admission) thay vì chỉ default ngầm hoặc audit sau khi đã deploy.",,HOANG TRONG TAN,Lê Hoàng Việt,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,712020:e4b88991-3f10-4b8c-9d74-77c3adf48075,,,,,,,,,,,,,,,,,,,,,,,0|i001uf:,PM Sprint 2,,,,,,"15/Jul/26 2:15 PM;712020:e4b88991-3f10-4b8c-9d74-77c3adf48075;[feat(security): implement ECR tag immutability, digest pinning and Tr… · tuu-ngo/Phase3-TF3-Infra-Sentinel@ca902be|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/ca902be828f05d3b060d4f100e04326527d0c008]",15/Jul/26 10:08 PM;712020:e4b88991-3f10-4b8c-9d74-77c3adf48075;[fix(ci): grant Trivy repository-scoped ECR pull access by VietSory · Pull Request #132 · tuu-ngo/Phase3-TF3-Infra-Sentinel|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/132],,,,,,Done,7/15/2026 21:49
+Account migration / Terraform CICD,PM-103,10413,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Highest,Done,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,7/14/2026 12:27,7/15/2026 16:23,7/15/2026 20:01,7/14/2026 12:27,,0,,,,,"*Backlog gốc:* Account migration / Terraform production hardening
+*Phụ thuộc:* AWS account mới 197826770971, Terraform state S3/DynamoDB, GitHub Actions OIDC
+
+*Bối cảnh:*
+
+Sau khi migrate sang AWS account mới, Terraform code/state cần được chuẩn hóa để production infra có thể quản lý qua Git thay vì apply tay từ máy cá nhân.
+
+Trạng thái ban đầu có rủi ro:
+
+* Terraform layout còn phẳng, khó tách ownership.
+* State/code có phần chưa khớp hoàn toàn sau migration.
+* Plan/apply chưa có luồng CI/CD rõ ràng cho branch migration.
+* Cần test trên branch deploy/account-migration-gitops trước, chưa chạy trực tiếp vào main.
+* Cần đảm bảo refactor Terraform không làm thay đổi/xóa infra production ngoài ý muốn.
+
+*Yêu cầu:*
+
+Refactor Terraform theo cấu trúc production rõ ràng và bổ sung CI/CD để plan/apply có kiểm soát.
+
+Phạm vi:
+
+* Tách production root vào {{infra/live/production}}.
+* Tách capability thành module riêng:
+** network
+** access/bastion
+** eks-platform
+** edge/CloudFront
+* Giữ remote state S3 + DynamoDB lock.
+* Thêm/migrate moved blocks để Terraform hiểu resource cũ sau khi refactor.
+* Không destroy/recreate resource production chỉ vì đổi layout code.
+* Thiết lập GitHub Actions Terraform plan/apply chạy trên branch deploy/account-migration-gitops để test trước.
+* Dùng GitHub OIDC role cho plan/apply thay vì credential dài hạn.
+* Apply được gate thủ công, không tự động apply vào main.
+* Ghi lại hướng dẫn vận hành trong README/runbook.
+
+*Phạm vi đã làm:*
+
+* Refactor Terraform production layout sang {{infra/live/production}}.
+* Tách Terraform modules theo capability.
+* Thêm {{moved.tf}} để preserve state address khi đổi cấu trúc.
+* Bootstrap GitHub OIDC role cho Terraform plan/apply.
+* Thêm workflow Terraform Plan cho branch migration.
+* Thêm workflow Terraform Apply có manual dispatch/action gate.
+* Cấu hình CI/CD tạm thời chạy trên {{deploy/account-migration-gitops}} để test hạ tầng trước khi chuyển về main.
+* Cập nhật README/runbook cho cách chạy plan/apply.
+* Verify full Terraform plan chạy được sau refactor và không có destroy ngoài ý muốn.
+
+*Output đã nộp:*
+
+Refactor Terraform production capabilities
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/478d406|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/478d406|smart-link] 
+
+Add Terraform plan/apply CI/CD and GitHub OIDC
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/c85e6de|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/c85e6de|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/3aa1e22|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/3aa1e22|smart-link] 
+
+Fix Terraform plan after private edge cutover
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/3d0bec45b60d6ac21421cd851ef159c22092ec6d|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/3d0bec45b60d6ac21421cd851ef159c22092ec6d|smart-link] 
+
+Evidence/docs:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/efa87b5c7b5b744e155fdb7707468c59c15396c4|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/efa87b5c7b5b744e155fdb7707468c59c15396c4|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/99ebb6e|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/99ebb6e|smart-link] 
+
+*Tiêu chí hoàn thành (DoD):*
+
+[x] Terraform production root nằm ở {{infra/live/production}}.
+[x] Terraform code được tách module theo capability.
+[x] Remote state S3 + DynamoDB lock được dùng cho production.
+[x] Có moved blocks để tránh Terraform hiểu nhầm là destroy/create khi refactor.
+[x] GitHub Actions Terraform Plan chạy được trên branch migration.
+[x] GitHub Actions Terraform Apply có manual dispatch/gate.
+[x] CI/CD dùng GitHub OIDC role, không dùng static AWS key trong repo.
+[x] Full Terraform plan chạy được sau refactor.
+[x] Không có destroy ngoài ý muốn trong plan hiện tại.
+[x] README/runbook đã cập nhật cách plan/apply.
+
+*Còn cần làm khi chuyển quy trình về main:*
+
+[ ] Merge branch deploy/account-migration-gitops vào main.
+[ ] Đổi ArgoCD targetRevision từ deploy/account-migration-gitops về main.
+[ ] Đổi Terraform workflow branch guard từ deploy/account-migration-gitops về main.
+[ ] Đổi GitHub OIDC allowed branch từ deploy/account-migration-gitops về main.
+[ ] Chạy lại Terraform plan trên main sau khi chuyển.
+[ ] Cập nhật docs/runbook để main là branch production chính thức.
+
+*Ghi chú:*
+
+Trong giai đoạn migration, Terraform CI/CD cố ý chạy trên branch deploy/account-migration-gitops để test an toàn trước khi đưa về main. Không merge hoặc đổi target sang main cho tới khi branch migration đã ổn định và được review.",,Truong Cong Tu,,712020:b6ce0571-393d-4992-9f18-c182f93d4560,,,,,,,,,,,,,,,,,,,,,,,,0|i001u7:,PM Sprint 2,,,,,,,,,,,,,Done,7/14/2026 12:27
+T3 — ADR: chốt public ingress boundary CloudFront/ALB (P0/P1),PM-102,10412,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,Done,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,7/14/2026 12:21,7/15/2026 16:19,7/15/2026 20:23,7/14/2026 12:21,,0,,,,,"*Backlog gốc:* Mandate #1 - Storefront công khai, mọi cổng vận hành phải riêng tư
+*Phụ thuộc:* CloudFront baseline, AWS Load Balancer Controller, ArgoCD GitOps
+
+*Yêu cầu:*
+
+Chuyển storefront sang mô hình CloudFront -> internal ALB để giảm public attack surface.
+
+Đảm bảo:
+
+* Storefront vẫn public qua CloudFront.
+* Frontend ALB không còn direct internet-facing.
+* Các cổng vận hành/internal UI không public qua storefront path.
+* Có rollback path nếu CloudFront private origin gặp lỗi.
+
+*Phạm vi đã làm:*
+
+* Tạo internal ALB riêng cho frontend-proxy.
+* Thêm GitOps-managed internal Ingress cho frontend-proxy.
+* Thêm Terraform CloudFront private origin phases.
+* Cấu hình CloudFront dùng internal ALB/VPC origin cho storefront traffic.
+* Thêm WAF/protected path handling để chặn public access tới operations-only paths.
+* Cut over CloudFront primary origin từ public ALB sang private VPC origin.
+* Chuẩn hóa migration theo phase:
+** WAF
+** staging private origin
+** private cutover
+** rollback
+* Giữ storefront public qua CloudFront.
+* Không public Grafana/Jaeger/ArgoCD/load-generator/feature UI.
+
+*Output đã nộp:*
+
+Add internal frontend ingress
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/c9b4cfc|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/c9b4cfc|smart-link] 
+
+Add private CloudFront origin phases
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/b936df4|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/b936df4|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/9a42725|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/9a42725|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/c85e6de|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/c85e6de|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/c99f8b9|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/c99f8b9|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/01509c0|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/01509c0|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/f6f5e78|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/f6f5e78|smart-link] 
+
+Cut over to private CloudFront origin
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/e2b8d45|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/e2b8d45|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/3d649ba|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/3d649ba|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/2541229|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/2541229|smart-link] 
+
+Fix private edge plan after cutover
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/3d0bec45b60d6ac21421cd851ef159c22092ec6d|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/3d0bec45b60d6ac21421cd851ef159c22092ec6d|smart-link] 
+
+Evidence/docs:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/efa87b5c7b5b744e155fdb7707468c59c15396c4|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/efa87b5c7b5b744e155fdb7707468c59c15396c4|smart-link][https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/01509c0|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/01509c0|smart-link] 
+ 
+
+*Tiêu chí hoàn thành (DoD):*
+
+[x] Storefront vẫn truy cập public qua CloudFront.
+[x] Frontend ALB chuyển sang internal/private, không direct internet-facing.
+[x] CloudFront origin trỏ về internal ALB/VPC origin.
+[x] Public access tới operations paths bị chặn.
+[x] Grafana/Jaeger/ArgoCD/load-generator/feature UI không public qua storefront path.
+[x] Có runbook cutover/rollback.
+[x] Smoke test: storefront trả 200, protected ops paths trả 403.
+
+*Ghi chú:*
+
+SSM/private access workflow hiện vẫn được giữ để truy cập các internal tools khi cần kiểm tra. Long-term private access UX bằng VPN/Zero Trust/domain nội bộ được tracking riêng trong backlog.",,Truong Cong Tu,,712020:b6ce0571-393d-4992-9f18-c182f93d4560,,,,,,,,,,,,,,,,,,,,,,,,0|i001t9:i,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),Done,7/14/2026 12:21
+[MANDATE 5] Scan gate (Trivy) + ký xác thực image (Cosign) trước khi vào cluster,PM-101,10411,Task,In Progress,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,,Tuấn Anh,712020:5fa151ef-8e66-46dc-ae8c-c5c0ae163d5f,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/14/2026 3:02,7/15/2026 16:14,7/15/2026 16:26,,,0,,,,,"*Backlog gốc:* mục #8, {{cd01-performance-security-week1-backlog.md}} (Image supply chain: tag immutability, digest pinning, scan gate)
+*Phụ thuộc:* T9 (PM-95) đã phụ trách phần ECR {{imageTagMutability}}/digest pinning - T15 làm phần bổ sung: scan gate chặn CI + ký xác thực image, chưa làm phần nào
+
+*Bối cảnh:*
+
+ECR đã bật {{scanOnPush=True}} nhưng đó là scan SAU KHI push (không chặn được image lỗi trước khi lên registry), và hiện chưa có cơ chế nào xác minh image đang chạy trên cluster đúng là image do CI của team build ra (không bị thay thế/giả mạo giữa lúc build và lúc deploy). {{.github/workflows/build-push-ecr.yml}} hiện build xong {{docker buildx bake --push}} thẳng, không qua bước scan hay sign nào.
+
+*Yêu cầu:*
+
+* Thêm bước *Trivy* scan trong {{build-push-ecr.yml}}, ngay sau khi build trước khi (hoặc song song lúc) push - fail CI nếu có lỗ hổng CRITICAL/HIGH vượt ngưỡng thống nhất với team (khớp đúng gate mà PM-95 đã đề ra: ""gate không deploy image có lỗ hổng CRITICAL/HIGH"").
+* Ký (sign) mỗi image tự build bằng *Cosign* ngay sau khi push lên ECR (ưu tiên keyless OIDC qua GitHub Actions, không lưu private key tĩnh trong repo/secret nếu tránh được).
+* External image (postgres/grafana/jaeger/prometheus/opensearch...) không tự build nên không ký được bằng Cosign - ghi rõ exception, chỉ áp Trivy scan định kỳ cho nhóm này, không chặn CI vì thiếu chữ ký.
+* (Nâng cao, không bắt buộc trong scope này) verify chữ ký Cosign tại admission-time trên cluster - xem task ""Setup Kyverno Policy"", Kyverno có policy type verify image sẵn, dùng lại được kết quả của task này.
+
+*Output cần nộp:*
+
+# Bước Trivy trong {{build-push-ecr.yml}} + ngưỡng fail (CRITICAL/HIGH) đã thống nhất với team.
+# Bước Cosign sign sau khi push, cấu hình keyless OIDC hoặc key management dùng.
+# Bảng exception cho external image (không ký, chỉ scan định kỳ).
+
+*Tiêu chí hoàn thành (DoD):*
+
+[ ] CI fail khi image build ra có lỗ hổng CRITICAL/HIGH vượt ngưỡng đã thống nhất.
+[ ] Mọi image app tự build (18 service) đều có chữ ký Cosign kèm theo trên ECR.
+[ ] Có evidence report scan gần nhất cho từng image app đang chạy thật.
+[ ] External image có danh sách exception rõ ràng, không bị CI chặn vì thiếu chữ ký.
+
+*Ghi chú:* liên quan trực tiếp T9 (PM-95 - digest pinning/tag immutability, cùng chủ đề #8) và làm nền cho task ""Setup Kyverno Policy"" (verify chữ ký tại admission).",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001tr:,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),In Progress,7/14/2026 22:02
+[MANDATE 3] Canary rollout qua Argo Rollouts — bảo trì không downtime luồng ra tiền,PM-100,10410,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Highest,Done,Tuấn Anh,712020:5fa151ef-8e66-46dc-ae8c-c5c0ae163d5f,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/14/2026 2:55,7/15/2026 16:14,7/15/2026 20:23,7/14/2026 22:02,,0,,,,,"*Backlog gốc:* mục #14, {{cd01-performance-security-week1-backlog.md}} (Rollout evidence cho Security/Performance changes) - team chọn hướng triển khai kỹ thuật bằng Argo Rollouts qua ArgoCD thay vì chỉ làm quy trình evidence before/after thủ công như bản gốc đề xuất
+*Phụ thuộc:* ArgoCD đã có sẵn ({{gitops/apps/techx-corp.yaml}}, {{syncPolicy.automated}}); Argo Rollouts controller (CRD {{Rollout}}) chưa được cài trên cluster; REL-01 (PDB + replicas>=2 cho nhóm hot-path) phải giữ nguyên trong lúc canary
+
+*Bối cảnh:*
+
+Deploy hiện tại qua Helm/ArgoCD dùng {{Deployment}} thường + {{RollingUpdate}} mặc định - khi rollout có vấn đề (đổi route Envoy, đổi resource request/limit, đổi securityContext...), pod mới thay pod cũ dần dần mà KHÔNG có bước phân tích tự động; lỗi chỉ phát hiện được khi người quan sát thủ công sau khi rollout đã chạy - đúng vấn đề backlog #14 nêu (""NetworkPolicy, quota, HPA, securityContext đều có thể làm gãy app nếu thiếu smoke test""). {{checkout}} là service ra tiền nhạy cảm nhất (đã có PDB {{checkout-pdb}} + {{replicas: 2}} từ REL-01) nhưng chưa có cơ chế tự động dừng/rollback nếu bản mới lỗi giữa chừng.
+
+*Yêu cầu:*
+
+* Cài Argo Rollouts controller vào cluster qua GitOps (1 ArgoCD Application riêng trong {{gitops/apps/}}, cùng pattern đã dùng cho Karpenter/metrics-server).
+* Chuyển tối thiểu {{checkout}} (cân nhắc thêm {{frontend-proxy}}, {{cart}}, {{product-catalog}} - nhóm hot-path/ra tiền) từ {{Deployment}} sang {{Rollout}} với chiến lược canary (vd 20% -> AnalysisRun -> 50% -> 100%, có bước pause).
+* Định nghĩa {{AnalysisTemplate}} dựa trên metric thật có sẵn qua Prometheus (success rate, p95 latency) để tự động abort/rollback nếu canary tệ hơn baseline - không chỉ dùng time-based pause.
+* Không được phá PDB/{{minReplicas}} hiện có (REL-01, và HPA min ở T8/PM-94) trong lúc canary chạy.
+branch: [https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/tree/feat/checkout-canary-rollouts|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/tree/feat/checkout-canary-rollouts|smart-link] 
+
+*Output cần nộp:*
+
+# Argo Rollouts controller Running trong cluster (qua GitOps).
+# Ít nhất {{checkout}} chuyển sang {{Rollout}} + {{AnalysisTemplate}} canary dựa trên metric thật.
+# 1 lần rollout thử nghiệm có chủ đích (deploy 1 thay đổi) để chứng minh canary + rollback tự động hoạt động đúng.
+
+*Tiêu chí hoàn thành (DoD):*
+
+[ ] Argo Rollouts controller Running trong cluster, quản lý qua GitOps (không apply tay).
+[ ] {{checkout}} (tối thiểu) chạy dưới dạng {{Rollout}} canary thay vì {{Deployment}} thường.
+[ ] Có {{AnalysisTemplate}} dựa trên metric Prometheus thật, không chỉ chờ theo thời gian.
+[ ] Demo được: cố tình deploy 1 bản lỗi -> canary tự abort/rollback trước khi ảnh hưởng 100% traffic.
+[ ] SLO checkout không tụt trong lúc test canary.
+
+*Ghi chú:* đáp ứng đúng tinh thần backlog #14 (auditability/rollback evidence, P2) nhưng bằng cơ chế tự động thay vì checklist ghi tay before/after.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001tj:,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),Done,7/14/2026 22:02
+T13 — Topology spread/anti-affinity cho service critical (P2),PM-99,10409,Task,In Progress,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:20,7/15/2026 22:29,7/15/2026 22:30,,,0,P2,performance,,,"*Backlog gốc:* mục #13, {{cd01-performance-security-week1-backlog.md}}
+*Phụ thuộc:* T1 (cùng người phụ trách chính) VÀ mục R1 backlog Reliability của CDO02 (tăng replicas nhóm checkout) — không làm trước vì chưa có gì để spread nếu vẫn {{replicas: 1}}
+*Làm chung:* CDO01 (Hoang Trong Tan) làm phần nền + {{checkout}}; CDO02 (Huu Tai Ngo) mở rộng pattern cho 9 service revenue còn lại trong lúc làm Mandate #3 (bảo trì không downtime) — 2 việc dùng chung 1 pattern kỹ thuật nên gộp chung track ở đây thay vì làm trùng lặp 2 lần.
+
+*Bối cảnh:* Cluster có 3 node Ready. Chart mặc định {{default.replicas: 1}}, {{default.schedulingRules.affinity: {}}} (rỗng hoàn toàn).
+
+*Yêu cầu:*
+
+* Xác nhận với CDO02 rằng mục R1 (tăng replicas checkout path) đã/sắp xong trước khi bắt đầu.
+* Dùng {{topologySpreadConstraints}} theo hostname/zone cho {{frontend-proxy}}, {{frontend}}, {{checkout}}, {{payment}}, {{cart}}, {{product-catalog}}.
+* Ưu tiên {{preferredDuringSchedulingIgnoredDuringExecution}} trước (tránh hard rule làm pod Pending nếu cluster thiếu capacity).
+* Xác nhận phân bố bằng {{kubectl get pods -o wide}}.
+
+*Phạm vi đã làm (2 đợt, cùng 1 pattern kỹ thuật):*
+
+# *Đợt 1 (CDO01,* {{b1265b92}}) — thêm nền tảng kỹ thuật: schema ({{values.schema.json}}) + template render ({{_objects.tpl}}) cho {{topologySpreadConstraints}}, áp dụng trước tiên cho {{checkout}} (pattern gốc: zone {{DoNotSchedule}} hard + hostname {{ScheduleAnyway}} soft). Cũng tiện tay tăng memory limit {{payment}}/{{shipping}}/{{quote}} và sửa {{consolidateAfter}} Karpenter (không thuộc phạm vi T13, phục vụ Mandate 2).
+# *Đợt 2 (CDO02,* {{d3d6863a}}, trong Mandate #3) — dùng đúng pattern đã chứng minh ở {{checkout}} (đợt 1), mở rộng {{topologySpreadConstraints}} (zone hard + hostname soft) + {{strategy.RollingUpdate maxUnavailable:0/maxSurge:1}} cho 9 service revenue còn lại: {{frontend}}, {{frontend-proxy}}, {{product-catalog}}, {{cart}}, {{payment}}, {{currency}}, {{shipping}}, {{quote}}, {{product-reviews}}. Verify bằng {{helm template}} (đúng lệnh ArgoCD dùng): exit 0, không lỗi schema, cả 10 Deployment revenue render đúng spread + strategy.
+
+*Kết quả cộng gộp:* cả 6 service PM-99 yêu cầu ({{frontend-proxy}}, {{frontend}}, {{checkout}}, {{payment}}, {{cart}}, {{product-catalog}}) đều đã có {{topologySpreadConstraints}} sau 2 đợt trên, cộng thêm 4 service ngoài yêu cầu gốc ({{currency}}, {{shipping}}, {{quote}}, {{product-reviews}}) được hưởng lây từ Mandate #3.
+
+*Lưu ý sai khác so với yêu cầu gốc:* yêu cầu ban đầu ưu tiên rule mềm ({{preferredDuringSchedulingIgnoredDuringExecution}}) trước để tránh Pending. Cả 2 đợt đều chọn zone *hard* ({{DoNotSchedule}}) thay vì mềm — quyết định có cân nhắc, ghi rõ trong ADR 0007 (đánh đổi: đảm bảo tách AZ thật sự, chấp nhận rủi ro rollout phải chờ nếu 1 AZ cạn node, bù bằng {{maxUnavailable:0}} để không tụt availability — fail-safe, không downtime). Không phải sai sót, là quyết định nâng chuẩn so với yêu cầu gốc.
+
+Commit:
+
+* [edit: consolidateAfter 2m -> 1h, add topologySpreadConstraints, impro… · tuu-ngo/Phase3-TF3-Infra-Sentinel@b1265b9|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/b1265b927dddf04f9516772304c3a8e26fa06bd5]
+* [feat(reliability): Mandate #3 - topologySpread + maxUnavailable:0 for revenue path · tuu-ngo/Phase3-TF3-Infra-Sentinel@d3d6863|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/d3d6863a241dc655f50c928f3c0c1bc81295caa7]
+
+*Output cần nộp:*
+
+# PR sửa {{techx-corp-chart/values.yaml}} (schedulingRules/affinity).
+# Bằng chứng phân bố pod trước/sau.
+
+*Tiêu chí hoàn thành (DoD):*
+
+* [x] Replica critical không dồn cùng 1 node nếu cluster còn capacity — đảm bảo cấu trúc bằng zone {{DoNotSchedule}} hard cho cả 6 service, verify qua {{helm template}}.
+* [ ] Kill thử 1 pod/node, service vẫn còn endpoint ready — có 1 lần test sơ bộ ghi nhận thành công (100%, p95 205ms, xem CLAUDE.md), nhưng demo chính thức trước mặt mentor theo ADR 0007 (mục ""Trạng thái thực thi"") *chưa chạy* — vẫn đang open.
+* [ ] Không tạo pod Pending do rule quá cứng — chưa có bằng chứng live dưới tải thật/lúc rollout đồng thời nhiều service; {{helm template}} xác nhận không lỗi schema nhưng đây không phải bằng chứng runtime.
+* [ ] Có output phân bố pod trước/sau đính kèm ({{kubectl get pods -o wide}}) — *chưa đính kèm vào ticket này*, cùng hạng mục còn thiếu với ADR 0007 mục ""Phải nộp"" #3.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001ta:zx,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),In Progress,7/13/2026 17:55
+T11 — SLO/load-test evidence pack cho browse/cart/checkout (P2),PM-97,10407,Task,In Review,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,,Long Trần,712020:e45ee2b5-d597-45d7-9c65-2bf518c324bb,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:20,7/15/2026 16:14,7/15/2026 21:54,,,0,auditability,P2,performance,,"*Backlog gốc:* mục #11, {{cd01-performance-security-week1-backlog.md}}
+*Phụ thuộc:* T4 (metrics-server) và T8 (HPA) — nên làm sau khi cả 2 có để đo được đúng cả metrics lẫn hành vi autoscale
+
+*Bối cảnh:* SLO: checkout success rate ≥99.0%, browse/cart success rate ≥99.5%, frontend p95 <1s. Cluster có {{load-generator}}, Prometheus/Grafana/Jaeger, nhưng chưa có bộ evidence chuẩn để chứng minh trước/sau cho từng thay đổi.
+
+*Yêu cầu:*
+
+* Chuẩn hoá kịch bản load nhẹ và load spike bằng {{load-generator}}.
+* Thu thập đồng thời: request rate, p95 latency, success rate, pod restarts, {{kubectl get events}}, CPU/memory pod/node, trace/error mẫu.
+* Lưu evidence vào thư mục riêng trong repo (vd {{docs/evidence/}}).
+* Kịch bản phải *chạy lại được* — dùng để so sánh trước/sau cho các task khác trong Epic này (đặc biệt T5, T7, T8).
+
+*Output cần nộp:*
+
+# Script/hướng dẫn chạy load test chuẩn hoá.
+# Bộ evidence đầu tiên (baseline).
+# Vị trí lưu trữ rõ ràng để các task khác dùng lại.
+
+*Tiêu chí hoàn thành (DoD):*
+
+* [ ] Có evidence pack chạy lại được cho browse/cart/checkout.
+* [ ] Có baseline trước khi thay đổi probes/replicas/resources — dùng làm mốc so sánh chung cho cả Epic.
+* [ ] Nếu Grafana lỗi, vẫn có fallback bằng {{kubectl}}, Prometheus query trực tiếp, hoặc log/event thô.
+* [ ] Ít nhất 2 task khác trong Epic này đã dùng evidence pack này để chứng minh trước/sau.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,13/Jul/26 9:31 PM;ug:11dc3840-8335-4bf2-a245-de69e8f036cd;11-load-test-baseline.md;https://laynitroepic.atlassian.net/rest/api/3/attachment/content/10096,,,,,,0|i001ta:zr,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),In Progress,7/13/2026 17:55
+T10 — Workload identity hygiene: tách ServiceAccount theo nhóm (P2),PM-96,10406,Task,In Progress,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:20,7/15/2026 15:42,7/15/2026 15:35,,,0,auditability,P2,security,,"*Backlog gốc:* mục #10, {{cd01-performance-security-week1-backlog.md}}
+*Phụ thuộc:* T6 — nên làm sau vì cùng động chạm cấu hình pod spec, tránh xung đột PR
+
+*Bối cảnh:* Hầu hết app pod dùng chung 1 ServiceAccount {{techx-corp}} (xác nhận qua {{techx-corp-chart/templates/serviceaccount.yaml}} — hiện là 1 SA dùng chung cho cả release, không templated theo từng component). {{kubectl auth can-i --list}} hiện chưa thấy quyền namespace rộng, nhưng dùng chung identity khiến audit khó và dễ privilege creep khi thêm quyền sau này.
+
+*Yêu cầu:*
+
+* Tách ServiceAccount theo nhóm: {{techx-frontend}}, {{techx-checkout}}, {{techx-data}}, {{techx-observability}}, {{techx-load-generator}}, {{techx-flagd}} (hoặc nhóm tương đương, thống nhất với team trước khi làm).
+* Không cấp Role/RoleBinding nếu workload không thật sự cần gọi Kubernetes API.
+* Ghi {{kubectl auth can-i --list}} làm evidence trước và sau cho từng ServiceAccount mới.
+
+*Output cần nộp:*
+
+# ServiceAccount mới theo nhóm.
+# PR sửa {{techx-corp-chart/templates/serviceaccount.yaml}} để templated theo nhóm thay vì 1 SA dùng chung.
+# Bảng mapping service → ServiceAccount → quyền cần thiết.
+
+*Tiêu chí hoàn thành (DoD):*
+
+* [ ] App stateless không cần Kubernetes API chạy với ServiceAccount riêng, không có RoleBinding.
+* [ ] Workload observability/data không dùng chung identity với app ở public path.
+* [ ] Có bảng mapping service → ServiceAccount → quyền cần thiết, kèm evidence {{kubectl auth can-i --list}} trước/sau.",,HOANG TRONG TAN,Thùy Trang,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,,,,,,,,,,,,,,,,,,,,,,0|i001ta:zi,PM Sprint 2,,,,,,15/Jul/26 3:41 PM;712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22;[Phase3-TF3-Infra-Sentinel/docs/T10-serviceaccount-thiet-ke.md at feature/T10-workload-identity-hygiene · tuu-ngo/Phase3-TF3-Infra-Sentinel|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/blob/feature/T10-workload-identity-hygiene/docs/T10-serviceaccount-thiet-ke.md],,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),In Progress,7/13/2026 17:54
+"T9 — Image supply chain: tag immutability, digest pinning, scan gate (P2)",PM-95,10405,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,Done,Lê Hoàng Việt,712020:e4b88991-3f10-4b8c-9d74-77c3adf48075,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:20,7/15/2026 22:09,7/15/2026 20:39,7/15/2026 22:09,,0,auditability,P2,security,,"*Backlog gốc:* mục #8, {{cd01-performance-security-week1-backlog.md}}
+*Phụ thuộc:* T3 (không bắt buộc, nhưng nên làm sau vì cùng chủ đề release workflow)
+
+*Bối cảnh:* ECR repo {{techx-corp}} đã bật {{scanOnPush=True}} (điểm tốt) nhưng {{imageTagMutability=MUTABLE}}, workload đang pin theo tag, chưa pin digest.
+
+*Yêu cầu:*
+
+* Chuyển ECR {{imageTagMutability}} sang {{IMMUTABLE}} sau khi thống nhất release workflow với team.
+* Pin digest cho image quan trọng trong Helm values hoặc release manifest (không chỉ pin tag).
+* Lưu image digest trong release note/Helm history.
+* Thêm gate không deploy image có lỗ hổng CRITICAL/HIGH vượt ngưỡng thống nhất — cân nhắc bật thêm Amazon Inspector (ECR enhanced scanning) để rescan liên tục thay vì chỉ scan lúc push.
+* Với external image (postgres, grafana, jaeger, prometheus...): ghi version/digest và lịch review định kỳ.
+
+*Output cần nộp:*
+
+# ECR repo đã đổi {{imageTagMutability}}.
+# Bảng digest các image đang chạy.
+# Cấu hình gate scan (nếu làm phần Inspector).
+
+*Tiêu chí hoàn thành (DoD):*
+
+* Release note có tag + digest cho từng image app.
+* ECR tag không còn bị overwrite được sau release.
+* Có bằng chứng scan cho image đang chạy hiện tại.
+* Helm rollback không phụ thuộc tag có thể bị ghi đè.",,HOANG TRONG TAN,Lê Hoàng Việt,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,712020:e4b88991-3f10-4b8c-9d74-77c3adf48075,,,,,,,,,,,,,,,,,,,,,,,0|i001ta:z,PM Sprint 2,,,,,,15/Jul/26 10:09 PM;712020:e4b88991-3f10-4b8c-9d74-77c3adf48075;[Fix/t9 image supply chain completion by VietSory · Pull Request #141 · tuu-ngo/Phase3-TF3-Infra-Sentinel|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/141],,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),Done,7/15/2026 22:09
+T8 — HPA + Karpenter,PM-94,10404,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,Done,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:19,7/15/2026 16:13,7/15/2026 20:02,7/14/2026 12:12,,0,cost,P1,performance,,"*Backlog gốc:* mục #7, cd01-performance-security-week1-backlog.md
+*Phụ thuộc:* T4 (metrics-server) và T5 (CPU requests)
+
+*Bối cảnh:*
+
+Mandate #2 yêu cầu hệ thống chịu được flash sale 200 concurrent users trong 15 phút, giữ SLO nhưng không tăng ngân sách cố định.
+
+Để đáp ứng yêu cầu này, hot-path services cần có HPA dựa trên CPU metrics và node autoscaling để bổ sung capacity khi pod Pending do thiếu tài nguyên.
+
+Backlog gốc đề xuất Cluster Autoscaler, nhưng triển khai thực tế đã chọn Karpenter Spot NodePool để scale node nhanh hơn và tối ưu cost tốt hơn trong giới hạn Mandate #2.
+
+*Yêu cầu:*
+
+Triển khai autoscaling cho hot-path services:
+
+* frontend-proxy
+* frontend
+* checkout
+* cart
+* product-catalog
+* currency
+* recommendation
+* product-reviews
+* ad
+
+Dùng CPU metric trước, chưa cần custom metric.
+
+Node autoscaling dùng Karpenter Spot NodePool thay vì Cluster Autoscaler.
+
+Đảm bảo:
+
+* HPA có CPU requests để tính utilization đúng.
+* ResourceQuota đủ cho HPA burst capacity.
+* Karpenter node chạy private-only, không gán public IP.
+* Scale-up/scale-down không làm rớt workload đang phục vụ request.
+* Vẫn giữ PDB/replicas tối thiểu để tránh scale-down làm rớt luồng checkout.
+
+*Phạm vi đã làm:*
+
+* Thêm metrics-server để HPA đọc được CPU metrics.
+* Thêm HPA GitOps manifest riêng cho hot-path services.
+* Bổ sung CPU requests cho hot-path services.
+* Tăng ResourceQuota để cho phép HPA burst capacity.
+* Thêm Karpenter controller qua GitOps.
+* Thêm Karpenter Spot NodePool.
+* Cấu hình Karpenter discovery đúng node security group.
+* Tắt public IP assignment cho Karpenter Spot nodes.
+
+*Output đã nộp:*
+
+Add HPA and CPU requests for hot-path services
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/10ea6306ddaeb5ec0dd27fbc26cd81e38c5b7fed|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/10ea6306ddaeb5ec0dd27fbc26cd81e38c5b7fed|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/59a9f74f38de887bf477c9a736d2189e1cfb5fba|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/59a9f74f38de887bf477c9a736d2189e1cfb5fba|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/74b64535579cb6258374a1462a63af54fded8290|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/74b64535579cb6258374a1462a63af54fded8290|smart-link] 
+
+Add Karpenter Spot NodePool for burst capacity
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/10ea6306ddaeb5ec0dd27fbc26cd81e38c5b7fed|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/10ea6306ddaeb5ec0dd27fbc26cd81e38c5b7fed|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/54b1dda7d092a30ba14de430dd963bf055fa5230|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/54b1dda7d092a30ba14de430dd963bf055fa5230|smart-link] 
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/6453f15e040c030062a744519257f68e3a724d98|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/6453f15e040c030062a744519257f68e3a724d98|smart-link] 
+
+Evidence/docs:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/efa87b5c7b5b744e155fdb7707468c59c15396c4|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/efa87b5c7b5b744e155fdb7707468c59c15396c4|smart-link] 
+
+*Tiêu chí hoàn thành (DoD):*
+
+[x] metrics-server hoạt động và HPA đọc được CPU metrics.
+[x] HPA tồn tại cho hot-path services.
+[x] CPU requests đã được cấu hình cho các service cần scale.
+[x] ResourceQuota cho phép HPA burst capacity.
+[x] Karpenter controller được cấu hình qua GitOps.
+[x] Karpenter Spot NodePool tồn tại.
+[x] Karpenter discovery trỏ đúng node security group.
+[x] Karpenter Spot nodes không được gán public IP.
+[x] PDB/replicas tối thiểu được giữ cho hot-path services để giảm rủi ro scale-down.
+
+*Còn cần bổ sung evidence trước khi close hoàn toàn Mandate #2:*
+
+[ ] Chạy load-generator ở mức mục tiêu 200 concurrent users trong 15 phút.
+[ ] Ghi lại replicas tăng/giảm theo HPA.
+[ ] Ghi lại node scale-up/scale-down của Karpenter khi thiếu capacity.
+[ ] Ghi lại SLO checkout >= 99%, browse/cart >= 99.5%, storefront p95 < 1s.
+[ ] Ghi lại cost/capacity trước-sau để chứng minh không tăng ngân sách cố định.
+
+**Ghi chú",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001ta:y,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),Done,7/14/2026 12:12
+T7 — ResourceQuota + LimitRange cho namespace (P2),PM-93,10403,Task,In Progress,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:19,7/15/2026 23:27,7/15/2026 23:34,,,0,cost,P2,performance,,"Làm cùng: Truong Cong Tu
+
+*Backlog gốc:* mục #6, {{cd01-performance-security-week1-backlog.md}}
+*Phụ thuộc:* T5 — BẮT BUỘC làm sau, không áp quota trước khi có baseline request (dễ tự bóp workload)
+
+*Bối cảnh:* {{kubectl -n techx-tf3 get resourcequota/limitrange}} → No resources found. Repo có mẫu sẵn {{phase3 - information/deploy/quota.yaml}} nhưng chưa áp dụng.
+
+*Yêu cầu:*
+
+* Chỉ bắt đầu sau khi T5 xong.
+* Thêm {{LimitRange}} cho namespace dựa trên baseline từ T5.
+* Điều chỉnh {{deploy/quota.yaml}} (mẫu có sẵn) cho khớp tổng CPU/memory thực tế với 3 node hiện tại — KHÔNG copy nguyên số mẫu.
+* Cân nhắc exception/quota riêng cho {{load-generator}} nếu cần.
+* Lưu ý: không đặt quota tổng quá chặt tới mức chặn nhầm việc tăng replica (CDO02 đang làm mục R1 — tăng replicas nhóm checkout).
+
+*Output cần nộp:*
+
+# {{LimitRange}} + {{ResourceQuota}} áp dụng vào namespace.
+# File {{quota.yaml}} đã điều chỉnh số theo thực tế.
+
+*Phạm vi đã làm (verify 15/07 qua commit + live cluster):*
+
+Đã tạo và áp dụng {{gitops/infrastructure/resource-quota.yaml}} ({{techx-quota}}, namespace {{techx-tf3}}: {{requests.memory: 16Gi}}, {{limits.memory: 24Gi}}, {{pods: ""100""}}, không đặt trần CPU — cố tình gỡ sau khi thấy gây chặn deploy oan) + {{gitops/infrastructure/limit-range.yaml}} ({{techx-limits}}: default request {{100m/50Mi}}, default limit {{200m/150Mi}} mỗi container). Cả 2 đang *live trên cluster*, verify qua {{docs/gitops-migration-walkthrough.md}} ({{pods: 39/90}} lúc đó, {{LimitRange techx-limits}} Synced) và thực chiến qua Mandate 2 load test (PM-108): đỉnh tải 200 user chỉ dùng ~47% {{limits.memory}} (11228Mi/24Gi) — không quá chật cũng không quá lỏng.
+
+Commits:
+
+* [feat(gitops): configure ArgoCD bootstrap and applications on feature branch · 84a0982|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/84a0982a2ac7b73cf32cfc8d51b762add6f7a614]
+* [chore(gitops): enable auto-sync for techx-corp and increase resource quota · fc0ca62|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/fc0ca62afa6f51379db6e45c68e8f10ae4bbc223]
+* [chore(gitops): remove CPU limits from ResourceQuota to prevent deployment blocks · f8dacd0|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/f8dacd09538226cdb919c3868974c825222e2d6d]
+* [chore(gitops): add LimitRange to inject default resources for quota validation · 5166f0d|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/5166f0d466a4c7057b45ecd841b7dd09360e6416]
+* [fix: raise production resource quota for hpa burst · 74b6455|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/74b64535579cb6258374a1462a63af54fded8290]
+* [fix: add Mandate 2 capacity headroom (#105) · fd3bade|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/fd3bade6e1a792e8741d55973b0a1559ef930530] (pods 90→100)
+
+*Gap còn mở (verify 15/07):*
+
+# {{deploy/quota.yaml}} (Output #2) chưa bao giờ được điều chỉnh, và không hề được áp dụng. Xác nhận: file này không được ArgoCD sync ({{gitops/apps/infrastructure-app.yaml}} chỉ trỏ tới {{gitops/infrastructure}}, không phải {{deploy/}}), không xuất hiện trong bất kỳ script deploy nào — vẫn giữ nguyên số mẫu gốc từ BTC từ commit {{bed66fc1f}} (06/07): {{requests.cpu: 4, limits.cpu: 8, pods: 40}} — không khớp với ResourceQuota thật đang áp dụng (không có CPU cap, {{pods: 100}}). Cần quyết định: xóa file này (dọn rác, tránh 2 nguồn số liệu lệch nhau gây hiểu nhầm) hoặc cập nhật khớp với thực tế rồi giữ làm tham chiếu.
+# {{load-generator}} — DoD ""không thể vô tình chiếm hết namespace budget"" chỉ đạt dạng mềm. Xác nhận: {{load-generator}} deploy chung namespace {{techx-tf3}} (qua Helm release destination), và {{techx-quota}} *không có* {{scopeSelector}} — tức áp phẳng cho toàn namespace, không có sub-quota riêng cho {{load-generator}}. Bảo vệ hiện tại chỉ đến từ resource request/limit cố định của chính nó ({{200m/1Gi}} request, {{1 core/1500Mi}} limit) + không có HPA (không tự phình replica) — không phải một ràng buộc cứng ngăn ai đó tăng tay replica rồi chiếm hết budget chung.
+
+*Kế hoạch cho DoD còn lại:* đã viết sẵn runbook {{docs/runbooks/pm-93-resourcequota-limitrange-verify.md}} — deploy 1 pod xin {{requests.memory: 20Gi}} (vượt hẳn hard cap 16Gi) để xác nhận bị chặn ngay tại admission-time (""exceeded quota""), kèm test phụ xác nhận LimitRange tự inject default cho pod không khai báo resources. Sẽ chạy và đính bằng chứng sau.
+
+*Tiêu chí hoàn thành (DoD):*
+
+* [x] Pod mới không thể chạy mà thiếu request/limit tối thiểu — {{LimitRange}} auto-inject default cho container thiếu khai báo, verify qua định nghĩa {{techx-limits}} đang live.
+* [x] Namespace có quota tổng không vượt capacity thực tế quá xa — xác nhận gián tiếp qua Mandate 2 load test (PM-108), đỉnh tải chỉ ~47% limits.memory.
+* [ ] Deploy thử 1 workload cố tình sai resource → fail sớm đúng kỳ vọng — *chưa làm*, kế hoạch chạy theo runbook {{pm-93-resourcequota-limitrange-verify.md}}, sẽ đính bằng chứng sau khi test.
+* [ ] {{load-generator}} không thể vô tình chiếm hết namespace budget — *chỉ đạt mềm* (xem gap #2 ở trên), chưa có ràng buộc cứng; cần team quyết định có cần thêm sub-quota riêng hay chấp nhận mức bảo vệ hiện tại là đủ.
+
+*Ghi chú:* Chưa đủ điều kiện Done — còn 1 DoD chưa test (có kế hoạch cụ thể, chạy trong ngày mai) + {{deploy/quota.yaml}} cần quyết định dọn/sửa + DoD load-generator cần team xác nhận mức độ đủ hay chưa.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001ta:x,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),In Progress,7/13/2026 17:54
+[MANDATE 5] — Pod Security Standards + securityContext hardening (P1),PM-92,10402,Task,In Progress,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,,Ngọc Hiếu Lý,712020:fd591227-22c6-4046-99cd-b785cb6a9ded,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:19,7/15/2026 20:56,7/15/2026 21:21,,,0,P1,security,,,"*Làm cùng:* Truong Cong Tu (Người 7)
+*Backlog gốc:* mục #5, {{cd01-performance-security-week1-backlog.md}}
+*Phụ thuộc:* không bắt buộc, có thể làm song song T1-T5
+
+*Bối cảnh:* 28 container: {{readOnlyRootFilesystem}} 0/28, {{seccompProfile}} 0/28, {{allowPrivilegeEscalation=false}} chỉ 4/28, {{capabilities.drop}} chỉ 4/28. Namespace chưa có nhãn Pod Security Admission. {{default.securityContext: {}}} trong chart hiện rỗng hoàn toàn.
+
+*Yêu cầu:*
+
+* Bật Pod Security Admission ở namespace {{techx-tf3}}, mức {{baseline}}, chế độ {{audit}}/{{warn}} trước — KHÔNG bật {{enforce}}/{{restricted}} ngay.
+* Áp baseline securityContext cho service stateless: {{allowPrivilegeEscalation: false}}, {{capabilities.drop: [""ALL""]}}, {{seccompProfile.type: RuntimeDefault}}, {{runAsNonRoot: true}} nếu image hỗ trợ, {{readOnlyRootFilesystem: true}} nếu app không cần ghi root FS.
+* Test trước với nhóm rủi ro thấp: {{frontend}}, {{checkout}}, {{cart}}, {{currency}}, {{shipping}}, {{payment}}.
+* Với Postgres/Kafka/Valkey/observability: kiểm tra path ghi trước khi bật read-only root FS.
+* Ghi danh sách exception rõ ràng cho image chưa hỗ trợ (lưu ý: {{currency}}, {{llm}}, {{product-reviews}} hiện chạy container dưới quyền root do base image Alpine thiếu {{USER}} directive — cần vá base image song song hoặc liệt kê exception).
+
+*Output cần nộp:*
+
+# Namespace có nhãn PSA.
+# PR sửa securityContext trong {{techx-corp-chart/values.yaml}} cho từng component.
+# Danh sách exception kèm lý do.
+
+*Tiêu chí hoàn thành (DoD):*
+
+* [ ] Namespace có PSA {{audit}}/{{warn}} tối thiểu mức {{baseline}}.
+* [ ] ≥80% container app có {{allowPrivilegeEscalation=false}}, {{drop ALL}}, {{seccompProfile=RuntimeDefault}}.
+* [ ] Không có workload critical bị CrashLoop sau khi hardening.
+* [ ] Có danh sách exception rõ cho image chưa hỗ trợ.
+
+*Phạm vi đã làm:*
+
+Bật Pod Security Admission cho namespace {{techx-tf3}} ở chế độ {{audit/warn}} mức {{baseline}}.
+
+Thêm {{securityContext}} baseline cho nhóm service low-risk/hot-path.
+
+Cấu hình {{allowPrivilegeEscalation: false}} cho các service đã harden.
+
+Cấu hình {{capabilities.drop: [""ALL""]}} cho các service đã harden.
+
+Cấu hình {{seccompProfile.type: RuntimeDefault}} ở pod level cho các service đã harden.
+
+Bật {{runAsNonRoot: true}} và {{readOnlyRootFilesystem: true}} cho các service có image phù hợp.
+
+Harden một phần cho {{cart}} để giảm rủi ro nhưng chưa ép non-root/read-only root FS khi image chưa được xác minh đầy đủ.
+
+Giữ exception có chủ đích cho các image/service chưa đủ điều kiện harden an toàn.
+
+Không bật PSA {{enforce}} hoặc {{restricted}} để tránh chặn nhầm workload đang chạy.
+
+*Output đã nộp:*
+
+Add Pod Security Admission audit/warn baseline
+
+Commit:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/ba58acbdc2c8d5a3015a99960f0a60d88f34b4e4|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/ba58acbdc2c8d5a3015a99960f0a60d88f34b4e4|smart-link] 
+
+Files:
+
+* {{gitops/infrastructure/namespace-techx-tf3.yaml}}
+* {{phase3 - information/techx-corp-chart/values.yaml}}
+
+Add securityContext baseline for low-risk services
+
+Commit:
+{{ba58acb security: add pod security baseline hardening}}
+
+Services đã harden đầy đủ:
+
+* {{frontend}}
+* {{checkout}}
+* {{payment}}
+* {{shipping}}
+
+Service harden một phần:
+
+* {{cart}}
+
+Evidence/docs:
+
+* {{docs/pod-security-hardening-note.md}}
+Ghi rõ đã làm gì, lý do, exception, cách verify và rollback.
+Lưu ý: file này hiện là note local, chưa nằm trong commit {{ba58acb}}.
+
+*Tiêu chí hoàn thành (DoD):*
+
+[x] Namespace {{techx-tf3}} có PSA {{audit=baseline}}.
+
+[x] Namespace {{techx-tf3}} có PSA {{warn=baseline}}.
+
+[x] Không bật PSA {{enforce/restricted}} trong phase này.
+
+[x] {{frontend}} có {{allowPrivilegeEscalation=false}}, {{drop ALL}}, {{seccompProfile=RuntimeDefault}}.
+
+[x] {{checkout}} có {{allowPrivilegeEscalation=false}}, {{drop ALL}}, {{seccompProfile=RuntimeDefault}}.
+
+[x] {{payment}} có {{allowPrivilegeEscalation=false}}, {{drop ALL}}, {{seccompProfile=RuntimeDefault}}.
+
+[x] {{shipping}} có {{allowPrivilegeEscalation=false}}, {{drop ALL}}, {{seccompProfile=RuntimeDefault}}.
+
+[x] {{cart}} có hardening baseline một phần: {{allowPrivilegeEscalation=false}}, {{drop ALL}}, {{seccompProfile=RuntimeDefault}}.
+
+[x] Các deployment critical đã rollout thành công: {{frontend}}, {{checkout}}, {{cart}}, {{payment}}, {{shipping}}.
+
+[x] Không có pod non-running trong namespace tại thời điểm kiểm tra.
+
+[x] Storefront vẫn trả {{HTTP/1.1 200 OK}}.
+
+[x] Có danh sách exception rõ cho image/workload chưa harden đầy đủ.
+
+[ ] Chưa đạt tiêu chí {{≥80% container app}} có đủ baseline securityContext. Kết quả kiểm tra hiện tại: {{5/28 containers = 17.9%}}.
+
+evidence: 
+
+[docs: add pod security hardening note · tuu-ngo/Phase3-TF3-Infra-Sentinel@dcccec2|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/dcccec25c4043e05564e638707836d95b7a5c9d4]",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001ta:v,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),In Progress,7/14/2026 17:43
+T5 — CPU/memory requests đúng cho service critical (P1),PM-91,10401,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,Done,Quyên Trương Thị Mỹ,712020:038fa181-6029-4a82-984c-d60516b4fb4b,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:19,7/15/2026 23:05,7/15/2026 23:03,7/15/2026 23:05,,0,P1,performance,,,"*Làm cùng: Truong Cong Tu*
+
+*Backlog gốc:* mục #4, {{cd01-performance-security-week1-backlog.md}}
+*Phụ thuộc:* T4 (cần metrics-server chạy trước để có số liệu thật)
+
+*Bối cảnh:* Grafana từng OOMKilled (memory limit 300Mi), Jaeger OOMKilled (600Mi), {{product-catalog}} restart 3 lần (memory limit 20Mi), {{llm}} đang QoS BestEffort, nhiều service thiếu CPU request hoàn toàn.
+
+*Yêu cầu:*
+
+* Sau khi có metrics-server (T4), lập bảng usage/request/limit hiện tại theo từng service.
+* Ưu tiên: {{frontend-proxy}}, {{frontend}}, {{checkout}}, {{cart}}, {{product-catalog}}, {{payment}}, {{postgresql}}, {{valkey-cart}}.
+* Đưa {{llm}} ra khỏi QoS BestEffort (set CPU request/limit tối thiểu).
+* Review riêng nhóm memory thấp: {{product-catalog}}, {{checkout}}, {{currency}}, {{shipping}}.
+* KHÔNG đặt CPU limits cứng đại trà nếu chưa đo throttling — chỉ set CPU request trước.
+
+*Output cần nộp:*
+
+# Bảng request/limit đề xuất theo service kèm lý do (dựa trên số liệu T4, không đoán).
+# PR sửa {{techx-corp-chart/values.yaml}}.
+
+commit thật của Trương Công Tú (turuong) áp dụng request/memory cho service critical — dùng làm bằng chứng ""output đã nộp"" cho T5, thay cho PR #137 (chỉ là doc, số liệu đã lỗi thời — xem review bên dưới):
+
+
+
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/59a9f74f38de887bf477c9a736d2189e1cfb5fba|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/59a9f74f38de887bf477c9a736d2189e1cfb5fba|smart-link]  
+
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/a3c2cd6cbcdcf00b87eb3181d4fe785188e0bdfc|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/a3c2cd6cbcdcf00b87eb3181d4fe785188e0bdfc|smart-link]  — fix: tune production resource requests and limits (13/07 18:55)
+
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/eb00caf9cf0b1c93e97df8af55f797e3f400642c|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/eb00caf9cf0b1c93e97df8af55f797e3f400642c|smart-link]  — fix: raise prometheus memory headroom (13/07 19:11)
+
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/e2d7854fcb157080fa6ddd30172fb5b9f92d43a9|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/e2d7854fcb157080fa6ddd30172fb5b9f92d43a9|smart-link]  — fix: add grafana jaeger memory headroom (13/07 19:15)
+
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/699f85dfd751dfde4afac5934a931c31c9f95e0c|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/699f85dfd751dfde4afac5934a931c31c9f95e0c|smart-link]  — fix(ops): increase Grafana memory requests/limits & update walkthrough (14/07 08:08)
+
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/699f85dfd751dfde4afac5934a931c31c9f95e0c|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/699f85dfd751dfde4afac5934a931c31c9f95e0c|smart-link]  — fix(ops): increase Grafana memory requests/limits & update walkthrough (14/07 08:08)
+
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/d2d785ca4737bf77895a4e52e79f972b37f1a280|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/d2d785ca4737bf77895a4e52e79f972b37f1a280|smart-link]  — fix(reliability): add memory headroom for 200-user test (14/07 15:39)
+
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/fd3bade6e1a792e8741d55973b0a1559ef930530|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/fd3bade6e1a792e8741d55973b0a1559ef930530|smart-link]  — fix: add Mandate 2 capacity headroom (#105) (14/07 19:10)
+
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/f0e832a0df8c425671da148d83c3164b027cf123|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/f0e832a0df8c425671da148d83c3164b027cf123|smart-link]  — fix(reliability): increase Kafka and Otel-collector memory limits to prevent OOM (15/07 02:36)
+
+
+
+*Tiêu chí hoàn thành (DoD):*
+
+* [ ] Không còn pod critical ở QoS {{BestEffort}}.
+* [ ] Có bảng request/limit theo service với lý do rõ ràng (số liệu, không cảm tính).
+* [ ] Grafana/Jaeger không OOMKilled trong phiên load test sau thay đổi.
+* [ ] Node allocation cân bằng hơn giữa 3 node.",,HOANG TRONG TAN,Quyên Trương Thị Mỹ,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,712020:038fa181-6029-4a82-984c-d60516b4fb4b,,,,,,,,,,,,,,,,,,,,,,,0|i001ta:r,PM Sprint 2,,,,,,15/Jul/26 9:14 PM;712020:038fa181-6029-4a82-984c-d60516b4fb4b;[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/137|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/137|smart-link] ,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),Done,7/15/2026 23:05
+T4 — Khôi phục Metrics API (metrics-server) (P0),PM-90,10400,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Highest,Done,Tuấn Anh,712020:5fa151ef-8e66-46dc-ae8c-c5c0ae163d5f,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:18,7/15/2026 16:13,7/15/2026 20:23,7/14/2026 3:02,,0,blocking,P0,performance,,"*Backlog gốc:* mục #3, {{cd01-performance-security-week1-backlog.md}}
+*Phụ thuộc:* không có — làm sớm nhất, đây là dependency chặn đường cho T5, T6, T8
+
+*Bối cảnh:* {{kubectl top nodes}}/{{kubectl -n techx-tf3 top pods}} báo ""Metrics API not available"". Không có {{metrics-server}} trong cluster. Chặn toàn bộ khả năng chứng minh CPU/memory pressure, right-size, HPA, capacity plan.
+
+*Yêu cầu:*
+
+* Cài {{metrics-server}} — khuyến nghị qua *Amazon EKS Add-on managed* ({{aws eks create-addon}}) thay vì Helm cài tay, để tận dụng patch tự động + audit trail CloudTrail.
+* Lưu evidence {{kubectl top nodes}} / {{kubectl -n techx-tf3 top pods}} trước (fail) và sau (có số liệu).
+* Chạy baseline 2 lần: 1 lúc idle, 1 dưới tải {{load-generator}}.
+
+*Output cần nộp:*
+
+# metrics-server chạy ổn định trong cluster.
+# 2 bộ snapshot CPU/memory (idle + load), lưu lại trong task hoặc file evidence riêng.
+
+*Tiêu chí hoàn thành (DoD):*
+
+* [ ] {{kubectl top nodes}} trả số liệu cho cả 3 node.
+* [ ] {{kubectl -n techx-tf3 top pods}} trả số liệu cho app/observability pods.
+* [ ] Có snapshot CPU/memory idle và dưới load, đính kèm task.
+* [ ] Đã báo cho người phụ trách T5/T6/T8 khi xong để họ bắt đầu phần phụ thuộc.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001ta:i,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),Done,7/14/2026 3:02
+T2 — Giảm service surface nội bộ qua NetworkPolicy (P2),PM-88,10398,Task,In Progress,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,,hoàng công trí dũng,712020:6798efac-be55-4285-b94a-d17b2e8278db,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:18,7/15/2026 20:56,7/15/2026 22:19,,,0,networkpolicy,P2,security,,"*Làm cùng:* HOANG TRONG TAN (Người 2)
+*Backlog gốc:* mục #9, {{cd01-performance-security-week1-backlog.md}}
+*Phụ thuộc:* T1 (dùng chung kỹ thuật NetworkPolicy, làm nối tiếp)
+
+*Bối cảnh:* Mọi Service trong namespace là ClusterIP (điểm tốt), nhưng thiếu NetworkPolicy nên mọi pod vẫn thử kết nối được các port nội bộ: Jaeger (nhiều port UDP/TCP), OpenSearch (9200/9300/9600), Kafka (9092/9093), Postgres (5432), Valkey (6379), load-generator (8089).
+
+*Yêu cầu:*
+
+* Mở rộng NetworkPolicy từ T1 sang Jaeger/OpenSearch/Prometheus/Grafana: chỉ nhận traffic từ đúng component quan sát cần thiết (otel-collector, chính service đó), không phải mọi pod.
+* Rà soát {{load-generator}}: có cần expose service port liên tục ra ngoài phạm vi cần thiết không, thu hẹp nếu có thể.
+* KHÔNG xoá port bừa bãi nếu chart/operator cần — ưu tiên viết policy trước.
+
+*Output cần nộp:*
+
+# Bảng audit port/luồng nội bộ hiện tại.
+# NetworkPolicy mở rộng cho observability stack + load-generator (nếu cần).
+# Bằng chứng trước/sau bằng lệnh connect thử.
+
+*Tiêu chí hoàn thành (DoD):*
+
+* [ ] Pod app thường (vd {{frontend}}, {{cart}}) không gọi được Jaeger UI/OpenSearch/Grafana nếu không cần.
+* [ ] Chỉ collector/observability component gọi được port ingest/metrics cần thiết.
+* [ ] {{load-generator}} không còn là entrypoint nội bộ không kiểm soát.
+* [ ] Smoke test xác nhận trace/metrics vẫn ghi nhận bình thường sau khi áp policy.",,hoàng công trí dũng,HOANG TRONG TAN,712020:6798efac-be55-4285-b94a-d17b2e8278db,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,15/Jul/26 2:42 PM;ug:153341ec-bf3c-4050-9ccf-802d4110f002;t2-network-policy-audit.md;https://laynitroepic.atlassian.net/rest/api/3/attachment/content/10097,,,,,,0|i001t9:,PM Sprint 2,,,,,,"15/Jul/26 2:42 PM;712020:6798efac-be55-4285-b94a-d17b2e8278db;[^t2-network-policy-audit.md]
+
+",,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),In Progress,7/13/2026 17:54
+T1 — NetworkPolicy chặn lateral movement tối thiểu (P0),PM-87,10397,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Highest,Done,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:17,7/15/2026 11:51,7/15/2026 20:23,7/14/2026 12:08,,0,networkpolicy,P0,security,,"*Làm cùng:* HOANG TRONG TAN (Người 2)
+*Backlog gốc:* mục #1, cd01-performance-security-week1-backlog.md
+*Phụ thuộc:* không có — làm sớm nhất (24-48h quanh Pitch)
+
+*Bối cảnh:*
+
+Namespace techx-tf3 trước đó chưa có NetworkPolicy enforce thật. Đã có PoC: image-provider (không cần datastore) vẫn connect được postgresql:5432, valkey-cart:6379, grafana:80.
+
+*Yêu cầu:*
+
+KHÔNG bật deny-all toàn namespace ngay lập tức.
+
+Triển khai NetworkPolicy allowlist theo từng surface nội bộ:
+
+* Postgres: chỉ nhận từ product-catalog, product-reviews, accounting.
+* Valkey: chỉ nhận từ cart và otel-collector nếu cần scrape metrics.
+* Kafka: chỉ nhận từ checkout, accounting, fraud-detection và otel-collector nếu cần scrape metrics.
+* Grafana: chặn generic pod-to-pod access.
+
+Áp dụng từng policy một và smoke test sau khi áp, tránh làm gãy browse/cart/checkout.
+
+*Phạm vi đã làm:*
+
+* Bật NetworkPolicy enforcement thật trên EKS VPC CNI.
+* Thêm NetworkPolicy cho PostgreSQL.
+* Thêm NetworkPolicy cho Valkey.
+* Thêm NetworkPolicy cho Kafka.
+* Thêm NetworkPolicy cho Grafana.
+* Verify unauthorized pod access bị chặn.
+* Verify required service flows vẫn hoạt động.
+
+*Output đã nộp:*
+
+Enable EKS NetworkPolicy enforcement
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/aae312b6859c28606db7b50b0589cace92bd76f2|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/aae312b6859c28606db7b50b0589cace92bd76f2|smart-link] 
+
+Restrict internal datastore and Grafana traffic
+
+Commits:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/7d4750a0479d9c0853d9733613b7ca4ea31d1913|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/7d4750a0479d9c0853d9733613b7ca4ea31d1913|smart-link] 
+
+Evidence/docs:
+[https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/efa87b5c7b5b744e155fdb7707468c59c15396c4|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/efa87b5c7b5b744e155fdb7707468c59c15396c4|smart-link] 
+
+*Tiêu chí hoàn thành (DoD):*
+
+[x] EKS VPC CNI NetworkPolicy enforcement đã bật.
+[x] NetworkPolicy tồn tại cho PostgreSQL, Valkey, Kafka, Grafana.
+[x] image-provider không còn connect được Postgres/Valkey/Grafana.
+[x] Browse/cart/checkout vẫn pass sau khi áp policy.
+[x] Required flows tới datastore vẫn hoạt động.
+[x] Có rollback command trong docs/evidence.
+
+*Ghi chú:*
+
+Đây là NetworkPolicy phase 1. Các internal surfaces còn lại như Jaeger, Prometheus, OpenSearch, load-generator, flagd, otel-collector vẫn cần follow-up allowlist mapping trước khi áp dụng deny policy rộng hơn.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001t7:,PM Sprint 2,,,,,,,,,,10396,PM-86,CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),Done,7/14/2026 12:08
+CDO01 — Backlog Performance + Security Tuần 1 (techx-corp-tf3),PM-86,10396,Epic,In Progress,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,,,,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/12/2026 16:15,7/15/2026 23:26,7/12/2026 16:24,,,0,,,,,"*Nguồn:* {{Phase3-TF3-Infra-Sentinel/docs/backlog/cd01-performance-security-week1-backlog.md}}
+
+Epic gom toàn bộ 13 task được chia từ backlog ưu tiên Tuần 1 của CDO01 (trụ Performance Efficiency + Security), dựa trên bằng chứng đọc trực tiếp từ cluster {{techx-corp-tf3}} sống (namespace {{techx-tf3}}).
+
+*Nguyên tắc chung áp dụng cho MỌI task con (tương đương mục #14 ""Rollout evidence"" trong backlog gốc — không tách task riêng vì áp dụng cho tất cả):*
+
+* Mỗi thay đổi phải có bằng chứng *trước* (before evidence) và *sau* (after evidence) — chụp lại {{kubectl get/describe}}, log, hoặc dashboard liên quan.
+* Phải chạy smoke test tối thiểu: browse sản phẩm, thêm giỏ hàng, checkout thử — xác nhận không bị gãy sau thay đổi.
+* Phải có *rollback command* ghi rõ trong task/PR trước khi merge — không thay đổi nào được coi là xong nếu không biết cách lùi lại.
+* Không tự ý gỡ/đổi hướng/vô hiệu hoá {{flagd}} hoặc các hook đọc flag trong service dưới bất kỳ lý do gì (luật cấm tuyệt đối của Phase 3 — vi phạm bị loại cả TF).
+* Không commit secret thật (AWS creds, flagd sync token, LLM API key) vào file tracked.
+
+*Timeline tham khảo (theo backlog gốc):* 24–48h quanh Pitch → T1, T3, T4 trước. Tuần 1 → T5, T6, T7, T12. Tuần 2–3 → T2, T8, T9, T10, T11, T13.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001tb:,,,,,,,,,,,,,,In Progress,7/15/2026 23:26
+[SEC] PoC Grafana anonymous admin — lỗ hổng auth observability,PM-84,10394,Task,In Progress,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Highest,,Lê Hoàng Việt,712020:e4b88991-3f10-4b8c-9d74-77c3adf48075,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/9/2026 10:00,7/15/2026 23:04,7/15/2026 22:01,,,0,audit,security,,,"* Làm gì: xác nhận sống lỗ hổng *Grafana anonymous Org Admin* ({{curl}} không auth gọi được API admin-only, đã có PoC HTTP 200 sẵn — verify lại), rà Jaeger UI/Prometheus UI có đòi login không, xác nhận {{flagd-ui}} hiện *không deploy* (đúng, đã kiểm chứng) nhưng ghi điều kiện rủi ro nếu ai bật lên sau.
+* Vì sao đáng làm: đây là lỗ hổng *nghiêm trọng nhất đã verify được trong toàn bộ audit tới giờ* — không cần bước trung gian nào, một request HTTP trần trụi là đủ lấy quyền Org Admin, và kết hợp với S1 (Grafana SA đọc secrets toàn cluster) thành 1 chuỗi leo thang quyền hoàn chỉnh từ ""không cần đăng nhập"" tới ""đọc được mọi secret trong cluster"".
+* Output: PoC đầy đủ + đề xuất fix (tắt anonymous Admin, còn Viewer nếu cần demo nhanh) — chi phí = 0, nên đây gần như chắc chắn là *dòng backlog xếp hạng cao nhất của cả team*, không riêng trụ Security.",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001t3:,PM Sprint 2,,,,,,,,,,,,,In Progress,7/13/2026 17:56
+[SEC] Audit container hardening & ECR supply chain,PM-83,10393,Task,In Progress,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,,Tuấn Anh,712020:5fa151ef-8e66-46dc-ae8c-c5c0ae163d5f,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/9/2026 9:50,7/15/2026 23:24,7/15/2026 21:57,,,0,audit,security,,,"* Làm gì: rà {{securityContext}} từng Deployment ({{runAsNonRoot}}, {{allowPrivilegeEscalation}}, {{readOnlyRootFilesystem}}), rà ECR ({{scanOnPush}} bật, nhưng {{tagMutability=MUTABLE}}).
+* Vì sao đáng làm: nếu S2 chứng minh ""lan được"", S3 trả lời tiếp ""lan tới rồi thì làm được gì trong chính container đó"" — 2 task này khi đặt cạnh nhau kể trọn 1 câu chuyện tấn công đủ mạnh để thuyết phục SRE, không phải liệt kê rời rạc.
+* Output: bảng gap theo mức nghiêm trọng + đề xuất baseline securityContext áp toàn chart (chi phí ~0, chỉ risk regression nếu image nào cần root — cần note rõ để không applied mù).",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001tz:,PM Sprint 2,,,,,,,,,,,,,In Progress,7/13/2026 17:54
+"[SEC] PoC lateral movement — 0 NetworkPolicy, image-provider gọi thẳng Postgres/Valkey/Grafana",PM-82,10392,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Highest,Done,Truong Cong Tu,712020:b6ce0571-393d-4992-9f18-c182f93d4560,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/9/2026 9:42,7/15/2026 16:24,7/15/2026 20:22,7/14/2026 12:16,,0,audit,security,,,"* Làm gì: xác nhận *0 NetworkPolicy* trong namespace, làm PoC: từ pod không liên quan ({{load-generator}}/{{image-provider}}) gọi thẳng {{postgresql:5432}}/{{valkey-cart:6379}}/{{grafana}}.
+* Vì sao đáng làm: đây là ""chặn xâm nhập"" theo đúng định nghĩa trụ — không có nó thì 1 lỗ hổng nhỏ ở 1 service (vd 1 dependency cũ) lan ra toàn hệ thống ngay lập tức, kể cả tới data store chứa dữ liệu khách ({{postgresql}} có {{product-reviews}}/{{accounting}}/{{product-catalog}}).
+* Output: PoC lateral movement chạy được thật + đề xuất NetworkPolicy tối thiểu (deny-all + allow theo đúng bản đồ luồng ở {{ARCHITECTURE.md}}) — chi phí fix = 0 (thuần config K8s).
+
+----
+
+h1. Evidence - NetworkPolicy và lateral movement trong namespace {{techx-tf3}}
+
+*Ngày kiểm tra:* 09/07/2026  
+*Mục tiêu:* xác minh tình trạng NetworkPolicy hiện tại và chứng minh pod không có nhu cầu truy cập trực tiếp datastore/observability vẫn có thể kết nối tới các backend nhạy cảm.  
+*Phạm vi:* kiểm tra read-only/PoC kết nối TCP nhẹ, không apply NetworkPolicy, không thay đổi cluster.
+
+h2. 1. Kết luận ngắn
+
+Namespace {{techx-tf3}} hiện có *0 NetworkPolicy*. PoC cho thấy các workload như {{image-provider}} và {{load-generator}} có thể kết nối trực tiếp tới:
+
+* {{postgresql:5432}}
+* {{valkey-cart:6379}}
+* {{grafana:80}}
+
+Điều này chứng minh rủi ro *lateral movement* đang tồn tại thật: nếu một pod bị compromise, attacker có thể thử di chuyển ngang trong namespace để chạm tới database/cache/observability backend.
+
+h2. 2. Evidence 1 - Namespace không có NetworkPolicy
+
+Command:
+
+{code:bash}kubectl -n techx-tf3 get networkpolicy{code}
+
+Output:
+
+{noformat}No resources found in techx-tf3 namespace.{noformat}
+
+Kết luận:
+
+{noformat}Hiện namespace techx-tf3 chưa có network segmentation ở tầng Kubernetes NetworkPolicy.
+Theo mặc định, pod trong namespace có thể kết nối tới service khác nếu DNS/service/port mở.{noformat}
+
+h2. 3. Evidence 2 - Đối chiếu với {{ARCHITECTURE.md}}
+
+Theo {{phase3 - information/onboarding/ARCHITECTURE.md}}:
+
+{noformat}image-provider: phục vụ ảnh tĩnh, phụ thuộc chính: -
+load-generator: sinh tải mô phỏng người dùng, phụ thuộc chính: frontend-proxy
+postgresql: dùng bởi product-catalog, product-reviews, accounting
+valkey-cart: dùng bởi cart
+Grafana: observability UI, truy cập qua frontend-proxy{noformat}
+
+Diễn giải:
+
+* {{image-provider}} không có nhu cầu truy cập trực tiếp {{postgresql}}, {{valkey-cart}}, hoặc {{grafana}}.
+* {{load-generator}} có liên quan tới hệ thống vì nó sinh traffic mô phỏng user, nhưng dependency đúng của nó là {{frontend-proxy}}, không phải datastore/observability backend.
+
+Vì vậy PoC bên dưới không nói rằng {{load-generator}} là ""không liên quan"", mà nói chính xác hơn:
+
+{noformat}Các workload không có nhu cầu truy cập trực tiếp datastore/observability backend vẫn kết nối được tới các backend đó.{noformat}
+
+h2. 4. Evidence 3 - PoC từ {{image-provider}}
+
+Command:
+
+{code:bash}kubectl -n techx-tf3 exec deploy/image-provider -- nc -vz -w 3 postgresql 5432
+kubectl -n techx-tf3 exec deploy/image-provider -- nc -vz -w 3 valkey-cart 6379
+kubectl -n techx-tf3 exec deploy/image-provider -- nc -vz -w 3 grafana 80{code}
+
+Output:
+
+{noformat}postgresql (172.20.11.4:5432) open
+valkey-cart (172.20.129.166:6379) open
+grafana (172.20.211.111:80) open{noformat}
+
+Kết luận:
+
+{noformat}image-provider là service phục vụ ảnh tĩnh, nhưng vẫn mở TCP được tới database, cache và Grafana.
+Đây là bằng chứng mạnh cho việc namespace chưa có boundary nội bộ.{noformat}
+
+h2. 5. Evidence 4 - PoC từ {{load-generator}}
+
+Command:
+
+{code:bash}kubectl -n techx-tf3 exec deploy/load-generator -- python -c ""import socket; targets=[('postgresql',5432),('valkey-cart',6379),('grafana',80)];
+for host,port in targets:
+ s=socket.socket(); s.settimeout(3); s.connect((host,port)); print(f'OK load-generator -> {host}:{port}'); s.close()""{code}
+
+Output:
+
+{noformat}OK load-generator -> postgresql:5432
+OK load-generator -> valkey-cart:6379
+OK load-generator -> grafana:80{noformat}
+
+Kết luận:
+
+{noformat}load-generator chỉ cần sinh traffic qua frontend-proxy, nhưng vẫn connect trực tiếp được tới datastore/observability backend.
+Điều này mở rộng blast radius nếu load-generator hoặc dependency của nó bị compromise.{noformat}
+
+h2. 6. Security impact
+
+Nếu một pod ít quan trọng hơn bị compromise, attacker có thể:
+
+* scan service nội bộ trong namespace,
+* thử kết nối trực tiếp tới {{postgresql}},
+* thử truy cập cache {{valkey-cart}},
+* truy cập observability UI/service nội bộ như {{grafana}},
+* mở rộng blast radius từ một service nhỏ sang tầng dữ liệu hoặc vận hành.
+
+Đây là risk đúng với trụ *Security*: thiếu network segmentation, không giới hạn đường đi giữa các workload theo nhu cầu thật.
+
+h2. 7. Đề xuất NetworkPolicy tối thiểu
+
+Đề xuất fix theo hướng chi phí hạ tầng gần như bằng 0 vì chỉ là Kubernetes config:
+
+# Tạo default deny ingress cho namespace {{techx-tf3}}.
+# Allow traffic theo service flow trong {{ARCHITECTURE.md}}.
+# Apply từng bước, smoke test sau mỗi bước, không apply một lần toàn bộ.
+
+Allowlist tối thiểu cần thiết:
+
+{noformat}frontend-proxy -> frontend
+frontend-proxy -> grafana/jaeger/load-generator UI nếu vẫn truy cập observability qua proxy
+
+frontend -> product-catalog
+frontend -> product-reviews
+frontend -> cart
+frontend -> checkout
+frontend -> recommendation
+frontend -> ad
+frontend -> image-provider
+
+product-catalog -> postgresql
+product-reviews -> postgresql
+product-reviews -> llm
+accounting -> postgresql
+
+cart -> valkey-cart
+
+checkout -> cart
+checkout -> product-catalog
+checkout -> currency
+checkout -> shipping
+checkout -> quote
+checkout -> payment
+checkout -> email
+checkout -> kafka
+
+shipping -> quote
+recommendation -> product-catalog
+
+accounting -> kafka
+fraud-detection -> kafka
+
+service telemetry -> otel-collector
+otel-collector/prometheus/jaeger/opensearch/grafana -> allow theo nhu cầu observability thực tế{noformat}
+
+h2. 8. Acceptance criteria cho task
+
+Task kiểm tra hiện tại được xem là đạt nếu có:
+
+* bằng chứng {{0 NetworkPolicy}},
+* PoC kết nối được từ ít nhất một workload không có nhu cầu trực tiếp tới datastore,
+* đối chiếu với {{ARCHITECTURE.md}} để chứng minh kết nối đó không nằm trong dependency hợp lệ,
+* đề xuất default deny + allowlist tối thiểu,
+* ghi rõ chưa apply policy trong bước kiểm tra này.
+
+Task triển khai sau này chỉ được xem là đạt nếu:
+
+* {{kubectl -n techx-tf3 get networkpolicy}} có policy được apply,
+* các kết nối không hợp lệ như {{image-provider -> postgresql}} bị block,
+* các luồng hợp lệ trong {{ARCHITECTURE.md}} vẫn hoạt động,
+* smoke test storefront/product/cart/checkout/observability không bị gãy,
+* có rollback command.
+
+h2. 9. Câu dùng trong pitch
+
+{noformat}Đây không còn là giả định. Team đã kiểm tra live cluster: namespace techx-tf3 có 0 NetworkPolicy. PoC cho thấy image-provider và load-generator vẫn connect trực tiếp được tới postgresql, valkey-cart và grafana, dù theo ARCHITECTURE.md chúng không cần truy cập trực tiếp các backend này. Vì vậy risk lateral movement là có thật. Fix đề xuất là default deny + allowlist theo service flow, chi phí hạ tầng gần như bằng 0 vì chỉ là Kubernetes config.{noformat}",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001sn:,PM Sprint 2,,,,,,,,,,,,,Done,7/14/2026 12:16
+[SEC] Audit RBAC & ServiceAccount — Grafana đọc được secrets toàn cluster,PM-81,10391,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Highest,Done,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/9/2026 9:41,7/15/2026 20:33,7/15/2026 20:33,7/15/2026 20:33,,0,audit,security,,,"* Làm gì: liệt kê toàn bộ SA/Role/ClusterRole/binding, xác nhận lại + đào sâu 2 phát hiện đã verify sống: {{grafana-clusterrole}} đọc được {{secrets}} toàn cluster; toàn bộ pod business không tắt {{automountServiceAccountToken}}. Test thêm {{kubectl auth can-i --list --as=<sa>}} cho SA {{techx-corp}} để biết thực tế làm được gì nếu token đó bị lộ.
+* Vì sao đáng làm: đây là *least-privilege* — đúng tâm trụ Security theo định nghĩa {{RULES.md}}, và là phát hiện có sẵn bằng chứng sống (không phải lý thuyết).
+* Output: PoC lệnh cho từng lỗ hổng + đề xuất fix gần như miễn phí (sửa Role, set {{automountServiceAccountToken: false}}) — điểm bán tốt với CFO (rủi ro cao, chi phí fix ~0).",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001sf:,PM Sprint 2,,,,,,,,,,,,,Done,7/15/2026 20:33
+[AUDIT] E2E luồng doanh thu còn lại (browse + giỏ hàng) — đối chiếu SLO.md,PM-80,10390,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,Done,hoàng công trí dũng,712020:6798efac-be55-4285-b94a-d17b2e8278db,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/9/2026 9:32,7/15/2026 16:11,7/15/2026 20:22,7/14/2026 18:29,,0,audit,performance,,,"* Làm gì: đặt 1 đơn hàng E2E thật, đối chiếu số liệu 2 luồng còn lại trong {{SLO.md}} (browse ≥99.5%, giỏ hàng ≥99.5%) qua dashboard mở rộng ở task tạo dashboard PM-75 + Jaeger, xác nhận chúng đang khoẻ hay có rủi ro ẩn tương tự INC-1/2/3 (vd {{recommendation}}/{{ad}} là phụ, nhưng {{product-catalog}} là đường găng browse — nó cũng dính chung root cause INC-1 vì cùng dùng Postgres không giới hạn pool).
+* Output: có hình ảnh jaeger xác nhận luồng qua các service nào, latency ra sao, xác nhận trạng thái 2 (khoẻ/có rủi ro) + nếu phát hiện thêm rủi ro ẩn (vd product-catalog cũng bị ảnh hưởng bởi cùng root cause Postgres pool) thì đó là 1 dòng backlog mới, không trùng P2",,hoàng công trí dũng,HOANG TRONG TAN,712020:6798efac-be55-4285-b94a-d17b2e8278db,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,10/Jul/26 8:19 AM;ug:153341ec-bf3c-4050-9ccf-802d4110f002;Screenshot 2026-07-09 160722.png;https://laynitroepic.atlassian.net/rest/api/3/attachment/content/10092,10/Jul/26 8:19 AM;ug:153341ec-bf3c-4050-9ccf-802d4110f002;Screenshot 2026-07-09 163517.png;https://laynitroepic.atlassian.net/rest/api/3/attachment/content/10093,,,,,0|i001s7:,PM Sprint 2,,,,,,"10/Jul/26 8:19 AM;712020:6798efac-be55-4285-b94a-d17b2e8278db;!Screenshot 2026-07-09 160722.png|width=646,alt=""Screenshot 2026-07-09 160722.png""!
+
+!Screenshot 2026-07-09 163517.png|width=646,alt=""Screenshot 2026-07-09 163517.png""!
+
+h3. Hình Grafana Dashboard:
+
+* Chứng minh được các chỉ số SLO thực tế:
+** *Browse - Success Rate*: Đang ở mức {{99.5012%}} (vừa chạm ngưỡng an toàn 99.5%, chuyển màu xanh lá cây).
+** *Checkout - Success Rate*: Đang ở mức {{98.1470%}} (vẫn đang bị lỗi dưới ngưỡng 99%, màu cam).
+** *Cart - Success Rate*: Ổn định ở mức {{100.0000%}}.
+
+h3. Hình Jaeger Trace:
+
+* *Thể hiện đúng luồng Browse*: Luồng đi từ {{load-generator}} -> {{frontend-proxy}} -> {{frontend}} -> gọi gRPC {{GetProduct}} sang {{product-catalog}} -> thực thi truy vấn trên Database {{postgresql}} (mất {{2.24ms}} cho chặng database).
+* *Thể hiện đúng luồng Cart*: Luồng {{POST}} đi từ {{frontend}} -> gọi gRPC {{AddItem}} sang {{cart}} -> ghi dữ liệu vào {{cart}} (sử dụng cache/db {{valkey}}).",,,,,,,Done,7/14/2026 18:29
+"[AUDIT] Cart/Valkey ownership — persistence, replication, memory limit",PM-79,10389,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,Medium,Done,Long Trần,712020:e45ee2b5-d597-45d7-9c65-2bf518c324bb,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/9/2026 9:27,7/15/2026 16:11,7/15/2026 20:22,7/14/2026 18:23,,0,audit,reliability,,,"Mục tiêu: hiểu cart state và rủi ro vận hành của Valkey.
+
+Lệnh cần chạy:
+
+{noformat}kubectl -n techx-tf3 logs deploy/cart --tail=100
+kubectl -n techx-tf3 describe deploy cart
+kubectl -n techx-tf3 describe deploy valkey-cart
+{noformat}
+
+Câu hỏi cần trả lời:
+
+* Valkey đang lưu gì?
+* Cart state có còn sau khi refresh không?
+* Sau checkout cart xử lý thế nào?
+* {{valkey-cart}} có phải single instance không?
+* Memory limit là bao nhiêu?
+* Baseline có persistence/replication không?
+
+Evidence cần có:
+
+* Kết quả test cart.
+* Evidence deployment/resource của Valkey.
+* Risk statement về mất cart state, OOM, timeout hoặc single point of failure.
+
+Deliverable: {{docs/evidence/06-cart-valkey.md}}",,HOANG TRONG TAN,Long Trần,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,712020:e45ee2b5-d597-45d7-9c65-2bf518c324bb,,,,,,,,,,,,,,,,,,,,,,,0|i001rz:,PM Sprint 2,,,,,,13/Jul/26 10:45 AM;712020:e45ee2b5-d597-45d7-9c65-2bf518c324bb;[https://github.com/LongITer/Test-Owner-Cart-Valkey/blob/main/docs/evidence/06-cart-valkey.md|https://github.com/LongITer/Test-Owner-Cart-Valkey/blob/main/docs/evidence/06-cart-valkey.md|smart-link] ,,,,,,,Done,7/14/2026 18:23
+[AUDIT] Rollout test INC-3 — đo khoảng lỗi khi deploy thiếu readiness gating,PM-78,10388,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,Done,Quyên Trương Thị Mỹ,712020:038fa181-6029-4a82-984c-d60516b4fb4b,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/9/2026 9:23,7/15/2026 21:14,7/15/2026 22:29,7/14/2026 18:23,,0,audit,incident,reliability,,"* Làm gì: chạy playbook INC-3, {{rollout restart deploy/checkout}} trong lúc có traffic liên tục, đo khoảng lỗi.
+* Vì sao đáng làm: đây là rủi ro *tự đội tạo ra cho chính mình* mỗi lần deploy cải tiến trong 2 tuần còn lại — không phải ""có thể xảy ra"", mà ""chắc chắn xảy ra lần deploy tới"" nếu không fix. Mức độ chắc chắn (khả năng xảy ra) cao bất thường so với các rủi ro khác → đẩy điểm ưu tiên lên dù mức nghiêm trọng từng lần không lớn.
+* Output: khoảng lỗi đo được quanh mốc rollout + đề xuất fix (thêm readinessProbe cho checkout/payment) gần như miễn phí (chỉ sửa manifest, không tốn thêm tài nguyên đáng kể).",,HOANG TRONG TAN,Quyên Trương Thị Mỹ,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,712020:038fa181-6029-4a82-984c-d60516b4fb4b,,,,,,,,,,,,,,,,,,,,,,,0|i001rr:,PM Sprint 2,,,,,,09/Jul/26 1:35 PM;712020:038fa181-6029-4a82-984c-d60516b4fb4b;{noformat}https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/137{noformat},,,,,,,Done,7/14/2026 18:23
+"[AUDIT] Capacity toàn hệ thống — 25 Deployment vs 3 node, phát hiện thiếu requests/HPA/metrics-server",PM-76,10386,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,Done,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/9/2026 9:17,7/15/2026 16:10,7/15/2026 20:20,7/14/2026 18:22,,0,audit,performance,,,"* Làm gì: với cả 25 Deployment — ghi {{requests}}/{{limits}}/replicas hiện tại vào 1 file, cài tạm metrics-server để đo usage thật, đối chiếu với 3 node t3.large (~5.8 vCPU/~21GB tổng). Từ đó chỉ ra: service nào đang risk OOMKill (usage sát/vượt limit), toàn hệ thống có Bin-pack/scale được không khi *0 request + 0 HPA + không metrics-server* (đã xác nhận sống).
+* Output: theo khuôn chung (cuối file) — ít nhất 2-3 dòng backlog ứng viên (vd ""thêm requests cho toàn hệ thống để bin-pack/HPA hoạt động được"", ""container X đang sát limit, risk OOM khi tải tăng"").
+
+
+
+Ví dụ:
+
+# *Phát hiện / số đo được* — có lệnh + kết quả, hình ảnh, không mô tả chung chung.
+# *Rủi ro* — khả năng xảy ra (đã xảy ra thật/dễ tái diễn/hiếm) × mức nghiêm trọng (ảnh hưởng gì nếu xảy ra).
+# *Tác động business* — nối vào SLO nào, hay incident nào từng xảy ra, hay khách/doanh thu bị gì (câu trả lời sẵn cho PM).
+# *Chi phí ước tính để fix* — có tốn thêm hạ tầng không, đối chiếu trần $300/tuần (câu trả lời sẵn cho CFO).
+# *1 dòng backlog nháp* — đúng mẫu trong {{PITCH_GUIDE.md}}: _""Ưu tiên N: [việc] — hiện tại [rủi ro cụ thể], nếu [xảy ra] thì [tác động business] → impact [cao/trung/thấp], chi phí [thấp/trung/cao], nằm [trong/ngoài] ngân sách.""_",,HOANG TRONG TAN,,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,,,,,,,,,,,,,,,,,,,,,,,,0|i001rb:,PM Sprint 2,,,,,,,,,,,,,Done,7/14/2026 18:22
+[AUDIT] Dựng dashboard Grafana đo SLO 4 luồng (browse/cart/checkout/latency),PM-75,10385,Task,Done,PM,CDO-01 Project,software,Thùy Trang,712020:fe6e19ff-9e7c-4a24-a9b7-99a48dcbde22,,High,Done,Lê Hoàng Việt,712020:e4b88991-3f10-4b8c-9d74-77c3adf48075,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,HOANG TRONG TAN,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,7/9/2026 9:14,7/15/2026 16:10,7/15/2026 20:03,7/10/2026 15:52,,0,audit,performance,,,"|Duyệt / tìm sản phẩm|Tỉ lệ request không lỗi (non-5xx)|*≥ 99.5%*|
+|Duyệt sản phẩm - độ trễ|p95 latency ở storefront|*< 1s*|
+|Giỏ hàng|Tỉ lệ thao tác giỏ thành công|*≥ 99.5%*|
+|*Đặt hàng (checkout)*|Tỉ lệ đặt hàng thành công|*≥ 99.0%*|
+
+output: thấy được thông số các luồng này ",,HOANG TRONG TAN,Lê Hoàng Việt,712020:3e991265-26a5-4014-a4dd-b3cda60d2567,712020:e4b88991-3f10-4b8c-9d74-77c3adf48075,,,,,,,,,,,,,,,,,,,,,,,0|i001r3:,PM Sprint 2,,,,,,15/Jul/26 2:18 PM;712020:e4b88991-3f10-4b8c-9d74-77c3adf48075;[feats: add Dashboard Grafana · tuu-ngo/Phase3-TF3-Infra-Sentinel@c8b2c56|https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/commit/c8b2c562ece75985feee3b5de4366d1b83dd5074],,,,,,,Done,7/10/2026 15:52
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

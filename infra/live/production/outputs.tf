@@ -46,6 +46,10 @@ output "external_secrets_role_arn" {
   value = module.eks_platform.external_secrets_role_arn
 }
 
+output "product_reviews_bedrock_role_arn" {
+  value = module.eks_platform.product_reviews_bedrock_role_arn
+}
+
 output "flagd_sync_secret_name" {
   value = module.eks_platform.flagd_sync_secret_name
 }
