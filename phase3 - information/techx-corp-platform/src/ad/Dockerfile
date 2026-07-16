@@ -20,16 +20,17 @@ RUN ./gradlew installDist -PprotoSourceDir=./proto
 
 # -----------------------------------------------------------------------------
 
-FROM eclipse-temurin:21-jre
+FROM gcr.io/distroless/java21-debian12:nonroot
 
 ARG OTEL_JAVA_AGENT_VERSION
 ARG _JAVA_OPTIONS
 
 WORKDIR /usr/src/app/
 
-COPY --from=builder /usr/src/app/ ./
+COPY --from=builder --chown=nonroot:nonroot \
+  /usr/src/app/build/install/techx-corp-ad/ ./build/install/techx-corp-ad/
 ADD --chmod=644 https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v$OTEL_JAVA_AGENT_VERSION/opentelemetry-javaagent.jar /usr/src/app/opentelemetry-javaagent.jar
 ENV JAVA_TOOL_OPTIONS=-javaagent:/usr/src/app/opentelemetry-javaagent.jar
 
 EXPOSE ${AD_PORT}
-ENTRYPOINT [ "./build/install/techx-corp-ad/bin/Ad" ]
+ENTRYPOINT [ "java", "-cp", "build/install/techx-corp-ad/lib/*", "oteldemo.AdService" ]
