@@ -26,7 +26,8 @@ spec:
           port: 6831
         - protocol: UDP
           port: 6832
-    # Query API / UI: restricted to Grafana and AIOps Engine
+    # Query API / UI: restricted to Grafana, AIOps Engine, and cloudflared
+    # (cloudflared serves the jaeger.arthur-ngo.org Zero Trust route — REL-17)
     - from:
         - podSelector:
             matchLabels:
@@ -34,6 +35,9 @@ spec:
         - podSelector:
             matchLabels:
               app: aiops-engine
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudflared
       ports:
         - protocol: TCP
           port: 16686
