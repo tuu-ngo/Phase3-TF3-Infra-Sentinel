@@ -208,14 +208,23 @@ jobs:
           fi
 
           mkdir -p "$GITHUB_WORKSPACE/trivy-reports/app"
+          gate_failed=0
           for svc in $SERVICES; do
             IMAGE="${IMAGE_NAME}:${IMAGE_VERSION}-${svc}"
             REPORT="$GITHUB_WORKSPACE/trivy-reports/app/${svc}.json"
             echo "Writing vulnerability evidence for $IMAGE to $REPORT"
             trivy image --scanners vuln --format json --output "$REPORT" --no-progress "$IMAGE"
             echo "Enforcing zero ${TRIVY_SEVERITIES} findings for $IMAGE"
-            trivy image --scanners vuln --severity "$TRIVY_SEVERITIES" --exit-code 1 --no-progress "$IMAGE"
+            if ! trivy image --scanners vuln --severity "$TRIVY_SEVERITIES" --exit-code 1 --no-progress "$IMAGE"; then
+              gate_failed=1
+              echo "::error title=Trivy release gate rejected ${svc}::${IMAGE} contains a HIGH or CRITICAL vulnerability"
+            fi
           done
+
+          if [ "$gate_failed" -ne 0 ]; then
+            echo "One or more images failed the zero HIGH/CRITICAL release gate." >&2
+            exit 1
+          fi
 
       - name: Upload Trivy app-image reports
         if: always() && steps.scope.outputs.mode != 'none'
