@@ -76,13 +76,13 @@ helm upgrade --install techx-corp ./techx-corp-chart -n $NS --create-namespace \
 
 Các values file mẫu trong `deploy/` (điểm khởi đầu, tune theo nhu cầu):
 
-| File | Dùng để |
-|---|---|
-| `values-observability.yaml` | Bật stack observability (collector, metrics, logs, traces, dashboards) |
-| `values-app-stamp.yaml` | Chạy app-only (khi observability tách riêng) |
-| `values-flagd-sync.yaml` | **Bắt buộc**: cắm flagd của TF vào nguồn cấu hình trung tâm (xem mục 5) |
-| `values-aio-llm.yaml` | (AIO) cắm LLM thật thay mock cho `product-reviews` |
-| `quota.yaml` | ResourceQuota mẫu cho namespace |
+| File                        | Dùng để                                                                 |
+| --------------------------- | ----------------------------------------------------------------------- |
+| `values-observability.yaml` | Bật stack observability (collector, metrics, logs, traces, dashboards)  |
+| `values-app-stamp.yaml`     | Chạy app-only (khi observability tách riêng)                            |
+| `values-flagd-sync.yaml`    | **Bắt buộc**: cắm flagd của TF vào nguồn cấu hình trung tâm (xem mục 5) |
+| `values-aio-llm.yaml`       | (AIO) cắm LLM thật thay mock cho `product-reviews`                      |
+| `quota.yaml`                | ResourceQuota mẫu cho namespace                                         |
 
 ### AIO - cắm LLM thật
 

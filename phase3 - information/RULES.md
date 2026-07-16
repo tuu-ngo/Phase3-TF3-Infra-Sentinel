@@ -45,11 +45,27 @@ Công việc CDO xoay quanh **5 trụ**:
 
 Xuyên suốt cả 5 trụ là **Operational Excellence** - vận hành hướng tới kết quả kinh doanh. Đây là xương sống của Phase 3: luồng Operate hằng ngày của bạn (on-call, ADR, Ops Review, quy mọi quyết định về khách và doanh thu). Cả TF cùng thực hành, không nhóm nào "sở hữu" riêng.
 
-Nhóm AIO giữ **trụ AI** riêng, làm việc theo hai hướng:
-- **Dùng AI để vận hành hệ thống (AIOps)** - phát hiện bất thường, phân tích nguyên nhân sự cố, tự động hóa xử lý; dựa trên observability đang có (metrics/logs/traces).
-- **Làm AI trong sản phẩm (AIE)** - chất lượng, an toàn (guardrail), eval, chi phí model, độ tin cậy của tính năng AI.
+Nhóm AIO giữ **trụ AI** riêng (nằm ngoài 5 trụ CDO), làm việc theo hai hướng. Mỗi hướng có phần **cốt lõi** (phải làm để giữ tầng AI khoẻ) và phần **mở rộng** (đề xuất trong backlog, bảo vệ ở pitch - nơi tạo khác biệt để đánh giá). Giống CDO chọn trụ, AIO **tự đánh giá tầng AI rồi đề xuất mình tập trung vào đâu**. Khi on-call, AIO xử lý cả sự cố hạ tầng lẫn tầng AI ập tới.
 
-Trụ AI nằm ngoài 5 trụ CDO.
+### Hướng AIOps - dùng AI để vận hành hệ thống
+Dựa trên observability sẵn có (Prometheus metrics / Jaeger traces / OpenSearch logs).
+- **Cốt lõi:** phát hiện bất thường đa tín hiệu (latency, error rate, saturation, queue lag, cost…) + **vòng tự động hoá xử lý sự cố** (phát hiện → kiểm tra an toàn: dry-run/blast-radius → xử lý → verify qua telemetry → rollback/escalate), chạy liên tục trong lúc vận hành.
+- **Mở rộng:** phân tích nguyên nhân (RCA) cross-service, dự báo capacity/cost, phát hiện drift.
+
+### Hướng AIE - làm AI trong sản phẩm
+Bề mặt AI hiện tại là **tóm tắt review** (`product-reviews` + `llm`). Nhiệm vụ AIE gồm cả **vận hành/nâng chất tính năng có sẵn** lẫn **tự dựng một trợ lý AI agentic** trên chính sản phẩm này.
+
+- **Cốt lõi 1 - Chất lượng & an toàn tính năng AI có sẵn:** **không hiển thị tóm tắt sai lệch** cho khách (eval độ trung thực + fallback khi LLM lỗi/chậm); **guardrail** chặn prompt-injection nhét trong review, lọc PII, chặn lộ system prompt; tối ưu **chi phí + độ trễ** (cache, route model rẻ, giảm token, timeout/retry).
+- **Cốt lõi 2 - Trợ lý AI agentic (tự dựng):** dựng một trợ lý biết **gọi công cụ** (product-catalog, cart, reviews…) để giúp khách - **BTC không phát sẵn code agent, các bạn tự xây** trên source hiện có. Ví dụ trợ lý cần làm được:
+  - *"Tìm tai nghe dưới $50 giao nhanh"* → gọi search catalog + lọc → gợi ý.
+  - *"Pin sản phẩm này dùng bao lâu?"* → trả lời **grounded trên review thật** (RAG), không bịa.
+  - *"So sánh A với B"* → gom catalog + review 2 sản phẩm → tổng hợp ưu/nhược.
+  - *"Thêm 2 cái vào giỏ"* → gọi cart, **nhưng phải xác nhận trước khi checkout**.
+
+  Được đánh giá **không phải "trả lời trôi chảy"**, mà: gọi **đúng công cụ trong phạm vi cho phép** (không tự ý checkout/xoá giỏ - **guardrail excessive-agency**), trả lời **grounded không hallucinate**, có **eval task-success**. Chi tiết bề mặt AI + gợi ý cách dựng: [onboarding/AI_FEATURE.md](onboarding/AI_FEATURE.md).
+- **Mở rộng (đua top):** semantic search nâng cao, recommendation bằng tín hiệu AI, model gateway + A/B khi đổi model.
+
+> Với mọi hạng mục AIE: phải **chạy thật** trong hệ thống của TF (không mockup), có **eval** chứng minh chất lượng/an toàn, không phá SLO/ngân sách.
 
 **Phân trụ trong mỗi TF** (Auditability là trụ xuyên suốt mọi thay đổi, nhẹ hơn nên linh hoạt):
 

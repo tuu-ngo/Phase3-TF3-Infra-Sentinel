@@ -10,27 +10,27 @@ Mọi request vào qua một cổng duy nhất: **frontend-proxy (Envoy)** ở p
 
 ## Bản đồ service
 
-| Service | Vai trò | Ngôn ngữ | Phụ thuộc chính |
-|---|---|---|---|
-| `frontend-proxy` | Envoy - cổng vào duy nhất (:8080), route tới frontend + observability UI | Envoy | tất cả |
-| `frontend` | Storefront (web) | TypeScript / Next.js | các service gRPC bên dưới |
-| `product-catalog` | Danh mục sản phẩm: list / get / **search** | Go | postgresql |
-| `product-reviews` | Review sản phẩm + **tóm tắt AI** + hỏi-đáp AI | Python | postgresql, llm |
-| `llm` | Backend AI (sinh tóm tắt review / trả lời) | Python | (mock, hoặc LLM thật khi AIO cắm) |
-| `cart` | Giỏ hàng | .NET / C# | valkey-cart |
-| `checkout` | Điều phối đặt hàng (gom cart, giá, ship, payment, email) | Go | cart, product-catalog, currency, shipping, quote, payment, email, kafka |
-| `payment` | Xử lý thanh toán | Node.js | - |
-| `shipping` | Tính phí + theo dõi ship | Rust | quote |
-| `quote` | Báo giá ship | PHP | - |
-| `currency` | Quy đổi tiền tệ | C++ | - |
-| `email` | Gửi email xác nhận | Ruby | - |
-| `recommendation` | Gợi ý sản phẩm | Python | product-catalog |
-| `ad` | Quảng cáo theo ngữ cảnh | Java | - |
-| `accounting` | Ghi sổ đơn hàng (consumer Kafka) | .NET / C# | kafka, postgresql |
-| `fraud-detection` | Phát hiện gian lận (consumer Kafka) | Kotlin / JVM | kafka |
-| `image-provider` | Phục vụ ảnh tĩnh | Nginx | - |
-| `load-generator` | Sinh tải mô phỏng người dùng | Python / Locust | frontend-proxy |
-| `flagd` | Feature flags (điều khiển nhánh hành vi) | flagd | nguồn cấu hình (xem RULES) |
+| Service           | Vai trò                                                                  | Ngôn ngữ             | Phụ thuộc chính                                                         |
+| ----------------- | ------------------------------------------------------------------------ | -------------------- | ----------------------------------------------------------------------- |
+| `frontend-proxy`  | Envoy - cổng vào duy nhất (:8080), route tới frontend + observability UI | Envoy                | tất cả                                                                  |
+| `frontend`        | Storefront (web)                                                         | TypeScript / Next.js | các service gRPC bên dưới                                               |
+| `product-catalog` | Danh mục sản phẩm: list / get / **search**                               | Go                   | postgresql                                                              |
+| `product-reviews` | Review sản phẩm + **tóm tắt AI** + hỏi-đáp AI                            | Python               | postgresql, llm                                                         |
+| `llm`             | Backend AI (sinh tóm tắt review / trả lời)                               | Python               | (mock, hoặc LLM thật khi AIO cắm)                                       |
+| `cart`            | Giỏ hàng                                                                 | .NET / C#            | valkey-cart                                                             |
+| `checkout`        | Điều phối đặt hàng (gom cart, giá, ship, payment, email)                 | Go                   | cart, product-catalog, currency, shipping, quote, payment, email, kafka |
+| `payment`         | Xử lý thanh toán                                                         | Node.js              | -                                                                       |
+| `shipping`        | Tính phí + theo dõi ship                                                 | Rust                 | quote                                                                   |
+| `quote`           | Báo giá ship                                                             | PHP                  | -                                                                       |
+| `currency`        | Quy đổi tiền tệ                                                          | C++                  | -                                                                       |
+| `email`           | Gửi email xác nhận                                                       | Ruby                 | -                                                                       |
+| `recommendation`  | Gợi ý sản phẩm                                                           | Python               | product-catalog                                                         |
+| `ad`              | Quảng cáo theo ngữ cảnh                                                  | Java                 | -                                                                       |
+| `accounting`      | Ghi sổ đơn hàng (consumer Kafka)                                         | .NET / C#            | kafka, postgresql                                                       |
+| `fraud-detection` | Phát hiện gian lận (consumer Kafka)                                      | Kotlin / JVM         | kafka                                                                   |
+| `image-provider`  | Phục vụ ảnh tĩnh                                                         | Nginx                | -                                                                       |
+| `load-generator`  | Sinh tải mô phỏng người dùng                                             | Python / Locust      | frontend-proxy                                                          |
+| `flagd`           | Feature flags (điều khiển nhánh hành vi)                                 | flagd                | nguồn cấu hình (xem RULES)                                              |
 
 ## Các luồng chính (request flow)
 
