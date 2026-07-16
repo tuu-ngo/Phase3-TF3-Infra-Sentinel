@@ -290,6 +290,9 @@
         "podSecurityContext": {
           "type": "object"
         },
+        "disableDefaultRuntimeSecurity": {
+          "type": "boolean"
+        },
         "ingress": {
           "$ref": "#/definitions/Ingress"
         },
@@ -394,6 +397,9 @@
         },
         "securityContext": {
           "type": "object"
+        },
+        "resources": {
+          "$ref": "#/definitions/ContainerResources"
         },
         "podSecurityContext": {
           "type": "object"

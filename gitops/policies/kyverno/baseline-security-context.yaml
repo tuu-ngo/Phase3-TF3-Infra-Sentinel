@@ -4,109 +4,192 @@ metadata:
   name: custom-baseline-security-context
   annotations:
     policies.kyverno.io/title: Baseline Security Context
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/description: >-
+      Enforces non-root execution, no privilege escalation, dropped Linux
+      capabilities, and RuntimeDefault seccomp for TechX workloads.
 spec:
+  # Phase 1 remains Audit. This is changed to Enforce only after the rendered
+  # workload inventory and live PolicyReport have no unexplained violations.
   validationFailureAction: Audit
   background: true
   rules:
-    - name: require-allow-privilege-escalation-false
+    - name: require-pod-seccomp-runtime-default
       match:
         any:
-        - resources:
-            kinds:
-              - Pod
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
       exclude:
         any:
-        - resources:
-            namespaces:
-              - kube-system
-              - argocd
-              - kyverno
-        - resources:
-            namespaces:
-              - techx-tf3
-            selector:
-              matchExpressions:
-              - key: app.kubernetes.io/name
-                operator: In
-                values:
-                - currency
-                - llm
-                - product-reviews
+          # Third-party/stateful and separately owned workloads are tracked in
+          # ADR 0010. These are baseline-context exceptions only; resource and
+          # image rules still apply.
+          - resources:
+              namespaces:
+                - techx-tf3
+              selector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - cloudflared
+                      - flagd
+                      - jaeger
+                      - opensearch
+                      - opentelemetry-collector
+                      - prometheus
+          - resources:
+              namespaces:
+                - techx-tf3
+              selector:
+                matchLabels:
+                  app: aiops-engine
       validate:
-        message: "allowPrivilegeEscalation must be set to false."
+        message: "Pod seccompProfile.type must be RuntimeDefault."
         pattern:
           spec:
-            containers:
-              - securityContext:
-                  allowPrivilegeEscalation: false
+            securityContext:
+              seccompProfile:
+                type: RuntimeDefault
 
-    - name: drop-all-capabilities
+    - name: require-nonroot-container-baseline
       match:
         any:
-        - resources:
-            kinds:
-              - Pod
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
       exclude:
         any:
-        - resources:
-            namespaces:
-              - kube-system
-              - argocd
-              - kyverno
-        - resources:
-            namespaces:
-              - techx-tf3
-            selector:
-              matchExpressions:
-              - key: app.kubernetes.io/name
-                operator: In
-                values:
-                - currency
-                - llm
-                - product-reviews
+          - resources:
+              namespaces:
+                - techx-tf3
+              selector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - cloudflared
+                      - flagd
+                      - jaeger
+                      - opensearch
+                      - opentelemetry-collector
+                      - prometheus
+          - resources:
+              namespaces:
+                - techx-tf3
+              selector:
+                matchLabels:
+                  app: aiops-engine
       validate:
-        message: "Containers must drop all capabilities."
-        pattern:
-          spec:
-            containers:
-              - securityContext:
-                  capabilities:
-                    drop:
-                      - ALL
-
-    - name: require-seccomp-profile-runtime-default
-      match:
-        any:
-        - resources:
-            kinds:
-              - Pod
-      exclude:
-        any:
-        - resources:
-            namespaces:
-              - kube-system
-              - argocd
-              - kyverno
-        - resources:
-            namespaces:
-              - techx-tf3
-            selector:
-              matchExpressions:
-              - key: app.kubernetes.io/name
-                operator: In
-                values:
-                - currency
-                - llm
-                - product-reviews
-      validate:
-        message: "seccompProfile must be set to RuntimeDefault."
-        anyPattern:
-          - spec:
+        message: >-
+          Every container and init container must set runAsNonRoot=true,
+          allowPrivilegeEscalation=false, and drop ALL capabilities.
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
               securityContext:
-                seccompProfile:
-                  type: RuntimeDefault
-          - spec:
-              containers:
-                - securityContext:
-                    seccompProfile:
-                      type: RuntimeDefault
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+          - list: "request.object.spec.initContainers || `[]`"
+            pattern:
+              securityContext:
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+
+    - name: deny-root-pod-user
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - techx-tf3
+              selector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - cloudflared
+                      - flagd
+                      - jaeger
+                      - opensearch
+                      - opentelemetry-collector
+                      - prometheus
+          - resources:
+              namespaces:
+                - techx-tf3
+              selector:
+                matchLabels:
+                  app: aiops-engine
+      validate:
+        message: "runAsUser=0 is forbidden at Pod level."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.securityContext.runAsUser || `-1` }}"
+                operator: Equals
+                value: 0
+
+    - name: deny-root-container-user
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - techx-tf3
+              selector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - cloudflared
+                      - flagd
+                      - jaeger
+                      - opensearch
+                      - opentelemetry-collector
+                      - prometheus
+          - resources:
+              namespaces:
+                - techx-tf3
+              selector:
+                matchLabels:
+                  app: aiops-engine
+      validate:
+        message: "runAsUser=0 is forbidden for containers and init containers."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.securityContext.runAsUser || `-1` }}"
+                    operator: Equals
+                    value: 0
+          - list: "request.object.spec.initContainers || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.securityContext.runAsUser || `-1` }}"
+                    operator: Equals
+                    value: 0

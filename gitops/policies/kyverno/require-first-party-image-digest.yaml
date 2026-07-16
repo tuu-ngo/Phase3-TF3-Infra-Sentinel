@@ -1,0 +1,51 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-first-party-image-digest
+  annotations:
+    policies.kyverno.io/title: Require Digest-Pinned First-Party Images
+    policies.kyverno.io/category: Security
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-techx-ecr-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
+              selector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - accounting
+                      - ad
+                      - cart
+                      - checkout
+                      - currency
+                      - email
+                      - fraud-detection
+                      - frontend
+                      - frontend-proxy
+                      - image-provider
+                      - llm
+                      - load-generator
+                      - payment
+                      - product-catalog
+                      - product-reviews
+                      - quote
+                      - recommendation
+                      - shipping
+      validate:
+        message: "First-party TechX images must be pinned to an ECR sha256 digest."
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:*"
+          - list: "request.object.spec.initContainers || `[]`"
+            pattern:
+              image: "197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:*"

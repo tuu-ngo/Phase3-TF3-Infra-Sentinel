@@ -72,7 +72,11 @@ prometheus:
 
 opentelemetry-collector:
   resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
     limits:
+      cpu: 300m
       memory: 350Mi
 
 components:
@@ -762,6 +766,11 @@ components:
       limits:
         cpu: 500m
         memory: 1.5Gi
+    imageOverride:
+      # PM-95 / Mandate 5: ECR tag is immutable, but production consumes the
+      # resolved digest so an admission rule can reject tag-only first-party
+      # image references.
+      digest: sha256:afc05edcd00b7f56c8331d5e4a83c7ff6bf46182fd0667033529c964bccc2e68
     # REL-10: PVC persistence cho Kafka (KRaft). image apache/kafka 3.9.1, chay uid/gid 1000,
     # CLUSTER_ID co dinh qua env -> format KRaft idempotent (launch script skip "already formatted").
     envOverrides:
@@ -772,14 +781,20 @@ components:
                                       # default doi khac) -> pin tuong minh de deterministic qua restart/redeploy
     podSecurityContext:
       fsGroup: 1000                   # kafka ghi duoc vao EBS volume moi (thieu -> "Permission denied", nhu valkey da dinh)
+      fsGroupChangePolicy: OnRootMismatch
     initContainers:
-      # Tao + chown subdir data truoc khi kafka chay. Chu dich thay vi subPath: subPath + fsGroup
-      # co bug kubelet khong chown subpath dir -> uid 1000 khong ghi duoc. Mount thang + initContainer chown la chac an.
+      # Kubelet applies fsGroup to the mounted PVC. The init container only
+      # creates the data subdirectory as the Kafka user; it never runs root.
       - name: init-kafka-data
         image: busybox:1.36
-        command: ["sh", "-c", "mkdir -p /var/lib/kafka/data && chown -R 1000:1000 /var/lib/kafka/data"]
+        command: ["sh", "-c", "mkdir -p /var/lib/kafka/data"]
         securityContext:
-          runAsUser: 0
+          runAsUser: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         volumeMounts:
           - name: kafka-data
             mountPath: /var/lib/kafka

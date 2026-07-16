@@ -1,0 +1,48 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest and Implicit Latest Images
+    policies.kyverno.io/category: Security
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: disallow-explicit-latest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
+      validate:
+        message: "Images must not use the latest tag."
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "!*:latest"
+          - list: "request.object.spec.initContainers || `[]`"
+            pattern:
+              image: "!*:latest"
+
+    - name: require-explicit-tag-or-digest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
+      validate:
+        message: "Images must use an explicit version tag or a sha256 digest."
+        foreach:
+          - list: "request.object.spec.containers"
+            anyPattern:
+              - image: "*@sha256:*"
+              - image: "*:*"
+          - list: "request.object.spec.initContainers || `[]`"
+            anyPattern:
+              - image: "*@sha256:*"
+              - image: "*:*"

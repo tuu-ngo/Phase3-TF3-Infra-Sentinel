@@ -34,7 +34,27 @@ default:
     affinity: {}
     tolerations: []
   # Default securityContext for all components
-  securityContext: {}
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+  # Default pod security context for all first-party components. Individual
+  # components may add fsGroup/runAsUser, but cannot drop these baseline fields.
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  # Explicit defaults are rendered into every first-party container and init
+  # container. Component values may override these sizing defaults but must not
+  # omit any CPU/memory request or limit.
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
 
 serviceAccount:
   # Specifies whether a service account should be created
@@ -195,7 +215,7 @@ components:
         memory: 120Mi
     initContainers:
       - name: wait-for-kafka
-        image: busybox:latest
+        image: busybox:1.36
         command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
         securityContext:
           runAsUser: 65534
@@ -274,7 +294,7 @@ components:
         memory: 160Mi
     initContainers:
       - name: wait-for-valkey-cart
-        image: busybox:latest
+        image: busybox:1.36
         command: ["sh", "-c", "until nc -z -v -w30 valkey-cart 6379; do echo waiting for valkey-cart; sleep 2; done;"]
         securityContext:
           runAsUser: 65534
@@ -336,7 +356,7 @@ components:
         memory: 20Mi
     initContainers:
       - name: wait-for-kafka
-        image: busybox:latest
+        image: busybox:1.36
         command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
     securityContext:
       runAsUser: 65532
@@ -438,7 +458,7 @@ components:
         memory: 300Mi
     initContainers:
       - name: wait-for-kafka
-        image: busybox:latest
+        image: busybox:1.36
         command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
         securityContext:
           runAsUser: 65534
@@ -897,6 +917,10 @@ components:
 
   flagd:
     enabled: true
+    # flagd is a protected third-party incident component. It remains under a
+    # tightly-scoped Kyverno baseline exception until its upstream chart values
+    # are compatibility-tested; do not disable its service or OpenFeature path.
+    disableDefaultRuntimeSecurity: true
     imageOverride:
       repository: "ghcr.io/open-feature/flagd"
       tag: "v0.12.9"
@@ -958,7 +982,7 @@ components:
             mountPath: /app/data
     initContainers:
       - name: init-config
-        image: busybox
+        image: busybox:1.36
         command: ["sh", "-c", "cp /config-ro/demo.flagd.json /config-rw/demo.flagd.json && cat /config-rw/demo.flagd.json"]
         volumeMounts:
           - mountPath: /config-ro
@@ -1083,6 +1107,22 @@ components:
     resources:
       limits:
         memory: 100Mi
+    # The upstream postgres image starts as root when no Kubernetes security
+    # context is supplied. Run its server as the image's postgres UID and let
+    # kubelet apply fsGroup to the mounted PVC during the controlled rollout.
+    securityContext:
+      runAsUser: 999
+      runAsGroup: 999
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+    podSecurityContext:
+      fsGroup: 999
+      fsGroupChangePolicy: OnRootMismatch
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
 
   valkey-cart:
     enabled: true

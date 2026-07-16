@@ -3,56 +3,52 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-requests
   annotations:
-    policies.kyverno.io/title: Require Resource Requests and Limits
+    policies.kyverno.io/title: Require CPU and Memory Requests and Limits
+    policies.kyverno.io/category: Cost Optimization
 spec:
+  # Phase 1 remains Audit. Promote only after controller templates and init
+  # containers pass the rendered-manifest pre-flight check.
   validationFailureAction: Audit
   background: true
   rules:
-    - name: check-memory-requests-limits
+    - name: require-container-resources
       match:
         any:
-        - resources:
-            kinds:
-              - Pod
-      exclude:
-        any:
-        - resources:
-            namespaces:
-              - kube-system
-              - argocd
-              - kyverno
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
       validate:
-        message: "Containers must have memory requests and limits defined."
-        pattern:
-          spec:
-            containers:
-              - resources:
-                  requests:
-                    memory: "?*"
-                  limits:
-                    memory: "?*"
+        message: "Every container must define CPU/memory requests and limits."
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
+              resources:
+                requests:
+                  cpu: "?*"
+                  memory: "?*"
+                limits:
+                  cpu: "?*"
+                  memory: "?*"
 
-    - name: check-cpu-requests
+    - name: require-init-container-resources
       match:
         any:
-        - resources:
-            kinds:
-              - Pod
-      exclude:
-        any:
-        - resources:
-            namespaces:
-              - kube-system
-              - argocd
-              - kyverno
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
       validate:
-        message: "Containers must have CPU requests defined."
-        pattern:
-          spec:
-            containers:
-              - resources:
-                  requests:
-                    cpu: "?*"
-                  # CPU limits are optional in many environments, but if required we can add it. User asked for: "Bắt buộc container có resources.requests/resources.limits"
-                  limits:
-                    cpu: "?*"
+        message: "Every init container must define CPU/memory requests and limits."
+        foreach:
+          - list: "request.object.spec.initContainers || `[]`"
+            pattern:
+              resources:
+                requests:
+                  cpu: "?*"
+                  memory: "?*"
+                limits:
+                  cpu: "?*"
+                  memory: "?*"

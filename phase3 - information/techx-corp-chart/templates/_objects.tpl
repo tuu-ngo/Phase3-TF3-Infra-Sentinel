@@ -59,10 +59,19 @@ spec:
       topologySpreadConstraints:
         {{- $schedulingRules.topologySpreadConstraints | default .defaultValues.schedulingRules.topologySpreadConstraints | toYaml | nindent 8 }}
       {{- end }}
-      {{- if or .defaultValues.podSecurityContext .podSecurityContext }}
+      {{- $runtimeSecurityDefaults := .defaultValues.securityContext }}
+      {{- $runtimePodSecurityDefaults := .defaultValues.podSecurityContext }}
+      {{- if .disableDefaultRuntimeSecurity }}
+      {{- $runtimeSecurityDefaults = dict }}
+      {{- $runtimePodSecurityDefaults = dict }}
+      {{- end }}
+      {{- $podSecurityContext := mergeOverwrite (deepCopy (default dict $runtimePodSecurityDefaults)) (default dict .podSecurityContext) }}
+      {{- if $podSecurityContext }}
       securityContext:
-        {{- .podSecurityContext | default .defaultValues.podSecurityContext | toYaml | nindent 8 }}
+        {{- $podSecurityContext | toYaml | nindent 8 }}
       {{- end}}
+      {{- $resources := mergeOverwrite (deepCopy (default dict .defaultValues.resources)) (default dict .resources) }}
+      {{- $securityContext := mergeOverwrite (deepCopy (default dict $runtimeSecurityDefaults)) (default dict .securityContext) }}
       containers:
         - name: {{ .name }}
           {{- $repo := ((.imageOverride).repository) | default .defaultValues.image.repository }}
@@ -83,10 +92,10 @@ spec:
           env:
             {{- include "techx-corp.pod.env" . | nindent 12 }}
           resources:
-            {{- .resources | toYaml | nindent 12 }}
-          {{- if or .defaultValues.securityContext .securityContext }}
+            {{- $resources | toYaml | nindent 12 }}
+          {{- if $securityContext }}
           securityContext:
-            {{- .securityContext | default .defaultValues.securityContext | toYaml | nindent 12 }}
+            {{- $securityContext | toYaml | nindent 12 }}
           {{- end}}
           {{- if .livenessProbe }}
           livenessProbe:
@@ -127,6 +136,8 @@ spec:
         {{- $sidecar := set . "Chart" $.Chart }}
         {{- $sidecar := set . "Release" $.Release }}
         {{- $sidecar := set . "defaultValues" $.defaultValues }}
+        {{- $sidecarResources := mergeOverwrite (deepCopy (default dict $.defaultValues.resources)) (default dict .resources) }}
+        {{- $sidecarSecurityContext := mergeOverwrite (deepCopy (default dict $runtimeSecurityDefaults)) (default dict .securityContext) }}
         - name: {{ .name   }}
           {{- $repo := ((.imageOverride).repository) | default .defaultValues.image.repository }}
           {{- if ((.imageOverride).digest) }}
@@ -145,13 +156,11 @@ spec:
           {{- end }}
           env:
             {{- include "techx-corp.pod.env" . | nindent 12 }}
-          {{- if .resources }}
           resources:
-            {{- .resources | toYaml | nindent 12 }}
-          {{- end }}
-          {{- if or .defaultValues.securityContext .securityContext }}
+            {{- $sidecarResources | toYaml | nindent 12 }}
+          {{- if $sidecarSecurityContext }}
           securityContext:
-            {{- .securityContext | default .defaultValues.securityContext | toYaml | nindent 12 }}
+            {{- $sidecarSecurityContext | toYaml | nindent 12 }}
           {{- end}}
           {{- if .livenessProbe }}
           livenessProbe:
@@ -172,7 +181,13 @@ spec:
         {{- end }}
       {{- if .initContainers }}
       initContainers:
-        {{- tpl (toYaml .initContainers) . | nindent 8 }}
+        {{- $component := . }}
+        {{- range .initContainers }}
+        {{- $initContainer := deepCopy . }}
+        {{- $_ := set $initContainer "resources" (mergeOverwrite (deepCopy (default dict $component.defaultValues.resources)) (default dict $initContainer.resources)) }}
+        {{- $_ := set $initContainer "securityContext" (mergeOverwrite (deepCopy (default dict $runtimeSecurityDefaults)) (default dict $initContainer.securityContext)) }}
+        {{- tpl (toYaml $initContainer) $component | nindent 8 }}
+        {{- end }}
       {{- end}}
       volumes:
         {{- range .mountedConfigMaps }}
