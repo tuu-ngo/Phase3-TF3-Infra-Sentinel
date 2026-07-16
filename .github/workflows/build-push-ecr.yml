@@ -46,15 +46,19 @@ jobs:
       source_sha: ${{ steps.scope.outputs.source_sha }}
       source_short_sha: ${{ steps.scope.outputs.source_short_sha }}
       base_tag: ${{ steps.vars.outputs.tag }}
+      platforms: ${{ steps.vars.outputs.platforms }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Resolve image tag
+      - name: Resolve variables
         id: vars
+        env:
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+          INPUT_PLATFORMS: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
         run: |
-          INPUT_IMAGE_TAG="${{ inputs.image_tag }}"
+          set -euo pipefail
           if [ -n "$INPUT_IMAGE_TAG" ]; then
             if ! [[ "$INPUT_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
               echo "FAIL: invalid image tag" >&2
@@ -64,11 +68,17 @@ jobs:
           else
             BASE_TAG="$(git rev-parse --short=7 HEAD)"
           fi
+          
+          # Normalize platforms (sort)
+          NORMALIZED_PLATFORMS=$(echo "$INPUT_PLATFORMS" | tr ',' '\n' | sort | tr '\n' ',' | sed 's/,$//')
+          
           echo "tag=$BASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "platforms=$NORMALIZED_PLATFORMS" >> "$GITHUB_OUTPUT"
 
       - name: Detect which services changed
         id: scope
         run: |
+          set -euo pipefail
           echo "source_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "source_short_sha=$(git rev-parse --short=7 ${{ github.sha }})" >> "$GITHUB_OUTPUT"
           
@@ -140,6 +150,7 @@ jobs:
       - name: Point registry at TF3 ECR repo
         if: steps.scope.outputs.mode != 'none'
         run: |
+          set -euo pipefail
           cat > .env.override <<EOF
           IMAGE_NAME=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
           IMAGE_VERSION=${{ steps.vars.outputs.tag }}
@@ -152,31 +163,36 @@ jobs:
 
       - name: Create multiplatform builder
         if: steps.scope.outputs.mode != 'none'
-        run: make create-multiplatform-builder || true
+        run: |
+          set -euo pipefail
+          # Remove || true, replace with retries if it's flaky, but generally should just fail if it fails
+          make create-multiplatform-builder
 
       - name: Build & push all app images
         if: steps.scope.outputs.mode == 'full'
         run: |
+          set -euo pipefail
           set -a; . ./.env.override; set +a
           docker buildx bake -f docker-compose.yml --push \
-            --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
+            --set "*.platform=${{ steps.vars.outputs.platforms }}" \
             $ALL_SERVICES
 
       - name: Build & push changed service images only
         if: steps.scope.outputs.mode == 'scoped'
         run: |
+          set -euo pipefail
           set -a; . ./.env.override; set +a
           docker buildx bake -f docker-compose.yml --push \
-            --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
+            --set "*.platform=${{ steps.vars.outputs.platforms }}" \
             ${{ steps.scope.outputs.services }}
 
       - name: Resolve Pushed Image Metadata
         if: steps.scope.outputs.mode != 'none'
         run: |
+          set -euo pipefail
           SERVICES="${{ steps.scope.outputs.services }}"
           BASE_TAG="${{ steps.vars.outputs.tag }}"
           
-          # Initialize manifest
           cat > approved-images.json <<EOF
           {
             "schemaVersion": 1,
@@ -188,6 +204,7 @@ jobs:
             "workflowRunAttempt": "${{ github.run_attempt }}",
             "mode": "${{ steps.scope.outputs.mode }}",
             "baseTag": "$BASE_TAG",
+            "platforms": "${{ steps.vars.outputs.platforms }}",
             "services": []
           }
           EOF
@@ -203,34 +220,33 @@ jobs:
             success=false
             for i in {1..12}; do
               echo "Resolving digest for $FULL_TAG (attempt $i)..."
-              meta=$(aws ecr describe-images \
+              if meta=$(aws ecr describe-images \
                 --repository-name "${{ env.ECR_REPOSITORY }}" \
                 --image-ids "imageTag=$FULL_TAG" \
                 --region "${{ env.AWS_REGION }}" \
                 --query 'imageDetails[0].{digest:imageDigest, mediaType:imageManifestMediaType}' \
-                --output json 2>/dev/null) || true
-              
-              if [ -n "$meta" ] && [ "$meta" != "null" ]; then
-                digest=$(echo "$meta" | jq -r .digest)
-                mediaType=$(echo "$meta" | jq -r .mediaType)
+                --output json 2>/dev/null); then
                 
-                if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-                  # validate media type for multi-platform
-                  platforms="${{ inputs.platforms || 'linux/amd64,linux/arm64' }}"
-                  if [[ "$platforms" == *","* ]]; then
-                    if [[ "$mediaType" != "application/vnd.oci.image.index.v1+json" && "$mediaType" != "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
-                      echo "FAIL: invalid media type $mediaType for multi-platform build" >&2
-                      exit 1
-                    fi
-                  fi
+                if [ -n "$meta" ] && [ "$meta" != "null" ]; then
+                  digest=$(echo "$meta" | jq -r .digest)
+                  mediaType=$(echo "$meta" | jq -r .mediaType)
                   
-                  # Append to manifest
-                  jq --arg name "$svc" --arg tag "$FULL_TAG" --arg dig "$digest" --arg mt "$mediaType" \
-                    '.services += [{"name": $name, "tag": $tag, "digest": $dig, "manifestMediaType": $mt}]' \
-                    approved-images.json > tmp.json && mv tmp.json approved-images.json
+                  if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                    platforms="${{ steps.vars.outputs.platforms }}"
+                    if [[ "$platforms" == *","* ]]; then
+                      if [[ "$mediaType" != "application/vnd.oci.image.index.v1+json" && "$mediaType" != "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
+                        echo "FAIL: invalid media type $mediaType for multi-platform build" >&2
+                        exit 1
+                      fi
+                    fi
                     
-                  success=true
-                  break
+                    jq --arg name "$svc" --arg tag "$FULL_TAG" --arg dig "$digest" --arg mt "$mediaType" \
+                      '.services += [{"name": $name, "tag": $tag, "digest": $dig, "manifestMediaType": $mt}]' \
+                      approved-images.json > tmp.json && mv tmp.json approved-images.json
+                      
+                    success=true
+                    break
+                  fi
                 fi
               fi
               sleep 5
@@ -241,20 +257,23 @@ jobs:
               exit 1
             fi
           done
+          
+          # Strictly validate producer JSON before upload/scan
+          jq -e . approved-images.json > /dev/null
 
       - name: Scan pushed images with Trivy (Security Gate)
         if: steps.scope.outputs.mode != 'none'
         run: |
-          echo "Installing Trivy..."
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          set -euo pipefail
+          echo "Installing Trivy v0.72.0..."
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.72.0
           
           len=$(jq '.services | length' approved-images.json)
           for (( i=0; i<$len; i++ )); do
-            tag=$(jq -r ".services[$i].tag" approved-images.json)
             digest=$(jq -r ".services[$i].digest" approved-images.json)
             
             IMAGE="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}@${digest}"
-            echo "Scanning $IMAGE (tag: $tag) for HIGH/CRITICAL vulnerabilities..."
+            echo "Scanning $IMAGE for HIGH/CRITICAL vulnerabilities..."
             
             trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --no-progress "$IMAGE"
           done
@@ -288,56 +307,72 @@ jobs:
           python-version: "3.10"
 
       - name: Install dependencies
-        run: pip install ruamel.yaml==0.18.6
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r scripts/ci/requirements-image-bump.txt
+
+      - name: Run unit tests
+        run: |
+          set -euo pipefail
+          python -m pytest -q scripts/ci
 
       - name: Download approved image manifest
         uses: actions/download-artifact@v4
         with:
           name: approved-images-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Validate Artifact
+      - name: Validate Artifact (Shell)
         run: |
+          set -euo pipefail
           if [ ! -f approved-images.json ]; then
             echo "FAIL: Artifact not found"
-            exit 1
-          fi
-          
-          SHA=$(jq -r .sourceSha approved-images.json)
-          if [ "$SHA" != "${{ needs.build-scan.outputs.source_sha }}" ]; then
-            echo "FAIL: SHA mismatch in artifact"
-            exit 1
-          fi
-          
-          MODE=$(jq -r .mode approved-images.json)
-          if [ "$MODE" == "none" ]; then
-            echo "FAIL: Mode is none"
             exit 1
           fi
 
       - name: Update values-prod.yaml
         run: |
+          set -euo pipefail
           python3 scripts/ci/update-image-overrides.py \
             --values "phase3 - information/deploy/values-prod.yaml" \
             --manifest approved-images.json \
             --excluded-service flagd-ui \
-            --summary-output image-bump-summary.json
+            --summary-output image-bump-summary.json \
+            --expected-source-sha "${{ needs.build-scan.outputs.source_sha }}" \
+            --expected-source-short-sha "${{ needs.build-scan.outputs.source_short_sha }}" \
+            --expected-run-id "${{ github.run_id }}" \
+            --expected-run-attempt "${{ github.run_attempt }}" \
+            --expected-mode "${{ needs.build-scan.outputs.mode }}" \
+            --expected-registry "${{ env.ECR_REGISTRY }}" \
+            --expected-repository "${{ env.ECR_REPOSITORY }}" \
+            --expected-base-tag "${{ needs.build-scan.outputs.base_tag }}" \
+            --expected-platforms "${{ needs.build-scan.outputs.platforms }}" \
+            --expected-services "${{ needs.build-scan.outputs.services }}"
 
       - name: Validate diff exactness
         run: |
+          set -euo pipefail
+          git diff --check
+          
           CHANGES=$(git diff --name-only)
           if [ -z "$CHANGES" ]; then
-            echo "NO_CHANGES"
             echo "no_changes=true" >> "$GITHUB_ENV"
             exit 0
           fi
+          
           if [ "$CHANGES" != "phase3 - information/deploy/values-prod.yaml" ]; then
             echo "FAIL: Unexpected files changed: $CHANGES"
+            exit 1
+          fi
+          
+          if git diff -- "phase3 - information/deploy/values-prod.yaml" | grep -q "default.image.tag"; then
+            echo "FAIL: default.image.tag was modified"
             exit 1
           fi
 
       - name: Helm lint and template
         if: env.no_changes != 'true'
         run: |
+          set -euo pipefail
           helm dependency build "phase3 - information/techx-corp-chart"
           helm lint "phase3 - information/techx-corp-chart" \
             -f "phase3 - information/techx-corp-chart/values.yaml" \
@@ -348,55 +383,60 @@ jobs:
             --namespace techx-tf3 \
             -f "phase3 - information/techx-corp-chart/values.yaml" \
             -f "phase3 - information/deploy/values-flagd-sync.yaml" \
-            -f "phase3 - information/deploy/values-prod.yaml" > /tmp/rendered.yaml
+            -f "phase3 - information/deploy/values-prod.yaml" > /tmp/techx-rendered.yaml
             
-          # Verify rendered digests (basic grep to ensure new digests are present)
-          len=$(jq '.services | length' approved-images.json)
-          for (( i=0; i<$len; i++ )); do
-            svc=$(jq -r ".services[$i].name" approved-images.json)
-            digest=$(jq -r ".services[$i].digest" approved-images.json)
-            if [ "$svc" != "flagd-ui" ]; then
-              if ! grep -q "$digest" /tmp/rendered.yaml; then
-                echo "FAIL: Rendered output does not contain digest $digest for $svc"
-                exit 1
-              fi
-            fi
-          done
+          python3 scripts/ci/verify-rendered-images.py \
+            --rendered /tmp/techx-rendered.yaml \
+            --manifest approved-images.json \
+            --registry "${{ env.ECR_REGISTRY }}" \
+            --repository "${{ env.ECR_REPOSITORY }}" \
+            --excluded-service flagd-ui
 
-      - name: Create branch and commit
-        if: env.no_changes != 'true'
-        run: |
-          BRANCH_NAME="ci/bump-images-${{ github.run_id }}"
-          git config user.name "techx-image-bump[bot]"
-          git config user.email "techx-image-bump[bot]@users.noreply.github.com"
-          
-          git switch -c "$BRANCH_NAME"
-          git add "phase3 - information/deploy/values-prod.yaml"
-          git commit -m "chore(deploy): bump images from ${{ needs.build-scan.outputs.source_short_sha }}"
-          
-          git push origin "HEAD:$BRANCH_NAME" || true
-          
-          echo "BRANCH_NAME=$BRANCH_NAME" >> "$GITHUB_ENV"
-
-      - name: Open Pull Request
+      - name: Push branch and create PR
         if: env.no_changes != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          EXISTING_PR=$(gh pr list --state open --head "$BRANCH_NAME" --json url --jq '.[0].url')
-          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
-            echo "PR already exists: $EXISTING_PR"
-            exit 0
+          set -euo pipefail
+          BRANCH_NAME="ci/bump-images-${{ github.run_id }}-${{ github.run_attempt }}"
+          
+          git config user.name "techx-image-bump[bot]"
+          git config user.email "techx-image-bump[bot]@users.noreply.github.com"
+          
+          git switch -c "$BRANCH_NAME"
+          git add -- "phase3 - information/deploy/values-prod.yaml"
+          git diff --cached --check
+          git commit -m "chore(deploy): bump images from ${{ needs.build-scan.outputs.source_short_sha }}"
+          
+          # Check for existing PR
+          EXISTING_PR_SHA=$(gh pr list --state open --head "$BRANCH_NAME" --base main --json headRefOid --jq '.[0].headRefOid')
+          if [ -n "$EXISTING_PR_SHA" ] && [ "$EXISTING_PR_SHA" != "null" ]; then
+            REMOTE_SHA="$(git ls-remote origin "refs/heads/$BRANCH_NAME" | awk '{print $1}')"
+            if [ "$EXISTING_PR_SHA" == "$REMOTE_SHA" ]; then
+              echo "PR already exists and is up to date"
+              exit 0
+            fi
           fi
+          
+          git push --set-upstream origin "$BRANCH_NAME"
+          
+          LOCAL_SHA="$(git rev-parse HEAD)"
+          REMOTE_SHA="$(git ls-remote origin "refs/heads/$BRANCH_NAME" | awk '{print $1}')"
+          
+          test -n "$REMOTE_SHA"
+          test "$LOCAL_SHA" = "$REMOTE_SHA"
           
           # Generate PR Body
           echo "## Automated image promotion" > pr_body.txt
           echo "" >> pr_body.txt
           echo "Source commit: \`${{ needs.build-scan.outputs.source_sha }}\`" >> pr_body.txt
           echo "Source workflow run: \`https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\`" >> pr_body.txt
+          echo "Attempt: \`${{ github.run_attempt }}\`" >> pr_body.txt
           echo "Build mode: \`${{ needs.build-scan.outputs.mode }}\`" >> pr_body.txt
+          echo "Platforms: \`${{ needs.build-scan.outputs.platforms }}\`" >> pr_body.txt
           echo "Trivy gate: \`PASSED\`" >> pr_body.txt
-          echo "ECR repository: \`techx-corp\`" >> pr_body.txt
+          echo "ECR registry: \`${{ env.ECR_REGISTRY }}\`" >> pr_body.txt
+          echo "ECR repository: \`${{ env.ECR_REPOSITORY }}\`" >> pr_body.txt
           echo "" >> pr_body.txt
           echo "| Service | Tag | Digest |" >> pr_body.txt
           echo "|---|---|---|" >> pr_body.txt
@@ -428,4 +468,10 @@ jobs:
             TITLE="chore(deploy): bump $len images from ${{ needs.build-scan.outputs.source_short_sha }}"
           fi
           
-          gh pr create --title "$TITLE" --body-file pr_body.txt --head "$BRANCH_NAME" --base main
+          if [ -z "$EXISTING_PR_SHA" ] || [ "$EXISTING_PR_SHA" == "null" ]; then
+            gh pr create --title "$TITLE" --body-file pr_body.txt --head "$BRANCH_NAME" --base main
+            
+            # Verify PR head SHA == remote branch SHA
+            CREATED_PR_SHA=$(gh pr list --state open --head "$BRANCH_NAME" --base main --json headRefOid --jq '.[0].headRefOid')
+            test "$CREATED_PR_SHA" = "$REMOTE_SHA"
+          fi
