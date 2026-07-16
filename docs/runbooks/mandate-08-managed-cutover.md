@@ -6,23 +6,130 @@ Thứ tự: **Valkey → Postgres → Kafka** (dễ → khó). Mỗi store cutov
 **Nguyên tắc xuyên suốt:**
 - **KHÔNG xoá pod/PVC store cũ** cho tới khi mentor nghiệm thu cả 3. Store cũ = đường lui duy nhất.
 - Giữ **tải nền thật** (load-generator ~20-50 user) suốt cutover — không có traffic thì "SLO không rớt" vô nghĩa.
-- Mở **Grafana SLO dashboard** (https://grafana.arthur-ngo.org) suốt quá trình.
+- Mở **Grafana SLO dashboard** suốt quá trình (lấy hostname ở §0 — đừng hardcode).
 - Mọi thay đổi đi qua **PR → main → ArgoCD sync** (cluster là GitOps, patch tay bị selfHeal revert).
 
 ---
 
-## 0. Chuẩn bị truy cập
+## 0. Tham số — chạy khối này TRƯỚC, mọi lệnh phía dưới dùng lại các biến này
+
+**Không hardcode giá trị nào.** Mọi endpoint/ID đều **tự lấy** — nên runbook vẫn đúng khi hạ tầng
+dựng lại hoặc người khác chạy. Nếu một lệnh trả rỗng ⇒ tài nguyên đó chưa tồn tại, dừng và xử lý.
 
 ```sh
-export AWS_PROFILE=techx-new   # account 197826770971
-aws ssm start-session --target i-02a8d3e39b87180ce \
+# --- Môi trường (đổi 3 dòng này nếu TF/account khác) ---
+export AWS_PROFILE=techx-new            # profile trỏ account chạy TF3 (hiện: 197826770971)
+export AWS_REGION=ap-southeast-1
+export CLUSTER=techx-corp-tf3
+export NS=techx-tf3
+
+# --- Định danh tài nguyên do team đặt (khớp terraform) ---
+export RDS_ID=techx-tf3-postgres
+export ELASTICACHE_ID=techx-tf3-valkey
+export MSK_NAME=techx-tf3-kafka
+
+# --- Tự lấy: bastion + EKS endpoint ---
+export BASTION_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
+  --filters "Name=tag:Name,Values=${CLUSTER}-bastion" "Name=instance-state-name,Values=running" \
+  --query 'Reservations[0].Instances[0].InstanceId' --output text)
+export EKS_HOST=$(aws eks describe-cluster --name "$CLUSTER" --region "$AWS_REGION" \
+  --query 'cluster.endpoint' --output text | sed 's|https://||')
+echo "BASTION_ID=$BASTION_ID  EKS_HOST=$EKS_HOST"     # rỗng ⇒ dừng
+
+# --- Tự lấy: endpoint managed (SAU khi terraform apply — bước 2) ---
+export RDS_HOST=$(aws rds describe-db-instances --region "$AWS_REGION" \
+  --db-instance-identifier "$RDS_ID" --query 'DBInstances[0].Endpoint.Address' --output text)
+export CACHE_HOST=$(aws elasticache describe-replication-groups --region "$AWS_REGION" \
+  --replication-group-id "$ELASTICACHE_ID" \
+  --query 'ReplicationGroups[0].NodeGroups[0].PrimaryEndpoint.Address' --output text)
+export MSK_ARN=$(aws kafka list-clusters-v2 --region "$AWS_REGION" \
+  --cluster-name-filter "$MSK_NAME" --query 'ClusterInfoList[0].ClusterArn' --output text)
+export MSK_BOOTSTRAP=$(aws kafka get-bootstrap-brokers --region "$AWS_REGION" \
+  --cluster-arn "$MSK_ARN" --query 'BootstrapBrokerStringSaslScram' --output text)
+echo "RDS_HOST=$RDS_HOST"; echo "CACHE_HOST=$CACHE_HOST"; echo "MSK_BOOTSTRAP=$MSK_BOOTSTRAP"
+
+# --- Tự lấy: credential từ Secrets Manager (KHÔNG gõ tay, KHÔNG paste vào chat/PR) ---
+sec(){ aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id "$1" \
+        --query SecretString --output text; }
+export PG_USER=$(sec techx-tf3/postgres        | python -c 'import sys,json;print(json.load(sys.stdin)["username"])')
+export PG_PASS=$(sec techx-tf3/postgres        | python -c 'import sys,json;print(json.load(sys.stdin)["password"])')
+export CACHE_TOKEN=$(sec techx-tf3/elasticache-auth | python -c 'import sys,json;print(json.load(sys.stdin)["auth_token"])')
+export MSK_USER=$(sec AmazonMSK_techx-tf3/kafka-scram | python -c 'import sys,json;print(json.load(sys.stdin)["username"])')
+export MSK_PASS=$(sec AmazonMSK_techx-tf3/kafka-scram | python -c 'import sys,json;print(json.load(sys.stdin)["password"])')
+
+# --- Store CŨ in-cluster (dùng cho dual-write ngược + rollback) ---
+export VALKEY_OLD=valkey-cart:6379
+export KAFKA_OLD=kafka:9092
+```
+
+**Mở tunnel + trỏ kubectl:**
+```sh
+aws ssm start-session --target "$BASTION_ID" --region "$AWS_REGION" \
   --document-name AWS-StartPortForwardingSessionToRemoteHost \
-  --parameters host="ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com",portNumber="443",localPortNumber="8443" \
-  --region ap-southeast-1
+  --parameters host="$EKS_HOST",portNumber="443",localPortNumber="8443"
 # terminal khác:
-kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx-corp-tf3 \
+aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+ACCT=$(aws sts get-caller-identity --query Account --output text)
+kubectl config set-cluster "arn:aws:eks:${AWS_REGION}:${ACCT}:cluster/${CLUSTER}" \
   --server=https://localhost:8443 --insecure-skip-tls-verify=true
 ```
+
+**Grafana SLO dashboard:** lấy hostname hiện hành từ ingress thay vì hardcode —
+```sh
+kubectl -n "$NS" get ingress,httproute -A 2>/dev/null | grep -i grafana
+# (hiện tại: https://grafana.arthur-ngo.org — đổi nếu Cloudflare hostname đổi)
+```
+
+### ⚠️ Kết nối tới store managed — ĐỌC TRƯỚC KHI CHẠY BẤT KỲ LỆNH NÀO
+
+**RDS / ElastiCache / MSK nằm trong private subnet, SG chỉ mở từ SG node group + SG bastion.**
+Máy bạn **KHÔNG nối thẳng được**. `psql -h $RDS_HOST` hay `redis-cli -h $CACHE_HOST` chạy từ laptop
+sẽ **treo rồi timeout**. Có 2 đường, dùng đúng đường cho đúng store:
+
+**(a) RDS + ElastiCache → tunnel SSM qua bastion** (đơn-endpoint, tunnel được):
+```sh
+# mỗi lệnh một terminal (hoặc thêm & để chạy nền)
+aws ssm start-session --target "$BASTION_ID" --region "$AWS_REGION" \
+  --document-name AWS-StartPortForwardingSessionToRemoteHost \
+  --parameters host="$RDS_HOST",portNumber="5432",localPortNumber="15432"
+aws ssm start-session --target "$BASTION_ID" --region "$AWS_REGION" \
+  --document-name AWS-StartPortForwardingSessionToRemoteHost \
+  --parameters host="$CACHE_HOST",portNumber="6379",localPortNumber="16379"
+```
+→ sau đó dùng `-h localhost -p 15432` (RDS) / `-p 16379` (ElastiCache).
+**Điều kiện:** SG của RDS/ElastiCache phải cho inbound từ **SG bastion** (ngoài SG node group) — bước 2.
+**Cần cài sẵn trên máy:** `psql` (client 17), `redis-cli`/`valkey-cli` có hỗ trợ `--tls`, `aws`, `kubectl`.
+
+**(b) MSK → KHÔNG tunnel được, chạy CLI từ pod trong cluster.** Lý do: client Kafka bootstrap xong sẽ
+bị broker trả về **advertised hostname riêng của từng broker** rồi kết nối thẳng tới đó — tunnel một
+cổng không đủ. Dùng helper này (ảnh Kafka đã có sẵn trong ECR):
+```sh
+export KAFKA_IMAGE=$(kubectl -n "$NS" get deploy kafka \
+  -o jsonpath='{.spec.template.spec.containers[0].image}')
+
+# dùng: mskcli kafka-topics.sh --list
+#       mskcli kafka-consumer-groups.sh --describe --all-groups
+# (tự thêm --bootstrap-server + --command-config; credential lấy từ env của pod, không nội suy vào lệnh)
+mskcli(){
+  tool="$1"; shift
+  kubectl -n "$NS" run "mskcli-$RANDOM" --rm -i --restart=Never --image="$KAFKA_IMAGE" \
+    --env=MSK_USER="$MSK_USER" --env=MSK_PASS="$MSK_PASS" --env=BS="$MSK_BOOTSTRAP" \
+    --command -- sh -c 'cat > /tmp/c.properties <<EOF
+security.protocol=SASL_SSL
+sasl.mechanism=SCRAM-SHA-512
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="$MSK_USER" password="$MSK_PASS";
+EOF
+exec /opt/kafka/bin/"$0" --bootstrap-server "$BS" --command-config /tmp/c.properties "$@"' "$tool" "$@"
+}
+```
+**Cách hoạt động:** dạng `sh -c "SCRIPT" TOOL ARGS...` → trong pod, `$0` = tên tool, `$@` = args.
+Heredoc `<<EOF` (không quote) expand `$MSK_USER`/`$MSK_PASS` **từ env của pod**, nên credential
+**không nằm trong chuỗi lệnh** trên máy bạn (không lọt vào shell history).
+
+> ⚠️ **Đánh đổi đã biết:** `--env=` đặt credential vào **pod spec** — ai có quyền
+> `kubectl get pod -o yaml` trong `$NS` đọc được trong lúc pod sống (vài giây, `--rm` xoá ngay).
+> Chấp nhận cho thao tác admin một lần. Nếu muốn chặt hơn: dùng `--overrides` với `envFrom.secretRef`
+> trỏ K8s secret do External Secrets sinh, thay vì `--env=`.
 
 ## 1. Pre-flight (làm 1 lần, TRƯỚC mọi cutover)
 
@@ -31,15 +138,15 @@ kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx
 #    Grafana SLO dashboard: checkout success-rate, browse/cart, storefront p95
 
 # b) Baseline data parity — CHỤP LẠI, đây là bằng chứng nộp
-kubectl -n techx-tf3 exec deploy/postgresql -- psql -U otelu -d otel -t -c "
+kubectl -n "$NS" exec deploy/postgresql -- psql -U "$PG_USER" -d otel -t -c "
   SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY relname;"
-kubectl -n techx-tf3 exec deploy/postgresql -- psql -U otelu -d otel -t -c "
+kubectl -n "$NS" exec deploy/postgresql -- psql -U "$PG_USER" -d otel -t -c "
   SELECT 'order' t, count(*), sum(hashtext(id::text)) FROM accounting.\"order\"
   UNION ALL SELECT 'orderitem', count(*), sum(hashtext(id::text)) FROM accounting.orderitem;"
 
 # c) Kafka baseline
 export MSYS_NO_PATHCONV=1
-kubectl -n techx-tf3 exec deploy/kafka -c kafka -- \
+kubectl -n "$NS" exec deploy/kafka -c kafka -- \
   /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups
 ```
 
@@ -51,27 +158,48 @@ kubectl -n techx-tf3 exec deploy/kafka -c kafka -- \
 
 Dựng cả 3 managed service **song song với store cũ**. Bước này **zero-risk**: chưa ai trỏ vào chúng.
 
-- **RDS**: PG **17.6** (khớp in-cluster), `db.t4g.micro`, **Multi-AZ**, private subnet, SG chỉ inbound
-  5432 từ SG node group, `storage_encrypted=true`, backup retention ≥7 ngày.
+- **RDS**: PG **17.6** (khớp in-cluster), `db.t4g.micro`, **Multi-AZ**, private subnet, `storage_encrypted=true`,
+  backup retention ≥7 ngày. SG inbound 5432 từ **SG node group** (app) **+ SG bastion** (đường vận
+  hành/migration — thiếu cái này thì tunnel ở §0 không nối được).
   *(KHÔNG cần `rds.logical_replication` — kế hoạch dùng dump/restore, xem ADR 0008 §4.)*
 - **ElastiCache**: engine **valkey 9.0**, `cache.t4g.micro`, 1 primary + 1 replica Multi-AZ,
-  `transit_encryption_enabled=true`, `at_rest_encryption_enabled=true`, private subnet group.
+  `transit_encryption_enabled=true` (**bắt buộc** để dùng auth-token), `at_rest_encryption_enabled=true`,
+  **`auth_token`** lấy từ secret `techx-tf3/elasticache-auth`, private subnet group.
+  SG inbound 6379 từ **SG node group + SG bastion** (lý do như RDS).
 - **MSK**: Kafka **3.9.x KRaft**, **3× `kafka.t3.small`** / 3 AZ, `encryption_in_transit.client_broker=TLS`,
-  encryption at rest, private subnet.
+  encryption at rest, private subnet, **`client_authentication.sasl.scram.enabled=true`**.
+  SG inbound 9096 từ **SG node group** (MSK không tunnel được → thao tác qua pod, không cần SG bastion).
+- **KMS + Secrets** (ADR 0008 §3): 1 **customer-managed KMS key**; 3 secret — `techx-tf3/postgres`,
+  `techx-tf3/elasticache-auth`, và `AmazonMSK_techx-tf3/kafka-scram` (**tên PHẢI có tiền tố
+  `AmazonMSK_`** và **PHẢI** mã hoá bằng CMK trên — MSK từ chối key `aws/secretsmanager` mặc định).
 
 ```sh
+# Gắn secret SCRAM vào MSK (không có bước này thì SASL/SCRAM không auth được)
+aws kafka batch-associate-scram-secret --region "$AWS_REGION" --cluster-arn "$MSK_ARN" \
+  --secret-arn-list "$(aws secretsmanager describe-secret --region "$AWS_REGION" \
+      --secret-id AmazonMSK_techx-tf3/kafka-scram --query ARN --output text)"
+aws kafka list-scram-secrets --region "$AWS_REGION" --cluster-arn "$MSK_ARN"   # → phải thấy secret
+
 # Nghiệm thu bước này: endpoint resolve được TỪ TRONG cluster, KHÔNG resolve từ ngoài
-kubectl -n techx-tf3 run netcheck --rm -it --restart=Never --image=busybox:1.36 -- \
-  sh -c "nc -zv <rds-endpoint> 5432; nc -zv <elasticache-endpoint> 6379"
+kubectl -n "$NS" run netcheck --rm -it --restart=Never --image=busybox:1.36 -- \
+  sh -c "nc -zv $RDS_HOST 5432; nc -zv $CACHE_HOST 6379"
+# MSK: kiểm tra bằng client có SASL (bootstrap SCRAM chạy cổng 9096, KHÔNG phải 9094)
+echo "$MSK_BOOTSTRAP"    # → phải là chuỗi *:9096
 ```
 
 ## 3. Code + Secrets (deploy TRƯỚC cutover, cờ TLS TẮT → hành vi không đổi)
 
-1. **Sửa 4 service** cho TLS gated bằng env (chi tiết ADR 0008 §2):
-   - `cart/src/cartstore/ValkeyCartStore.cs:52` — `ssl=false` → đọc từ `VALKEY_TLS` (default `false`)
-   - `checkout/kafka/producer.go` — `saramaConfig.Net.TLS.Enable` từ `KAFKA_TLS_ENABLED`
-   - `accounting/Consumer.cs` — `SecurityProtocol` từ `KAFKA_TLS_ENABLED`
-   - `fraud-detection/.../main.kt` — `SECURITY_PROTOCOL_CONFIG` từ `KAFKA_TLS_ENABLED`
+1. **Sửa 4 service** cho **TLS + auth** gated bằng env, mặc định tắt (chi tiết ADR 0008 §2):
+   - `cart/src/cartstore/ValkeyCartStore.cs:52` — `ssl=false` hardcode → `ssl=$VALKEY_TLS` +
+     `password=$VALKEY_AUTH_TOKEN` (default: `false` / rỗng = y như hiện tại)
+   - `checkout/kafka/producer.go` — `KAFKA_SECURITY_PROTOCOL` (default `PLAINTEXT`) → khi `SASL_SSL`:
+     `Net.TLS.Enable=true` + `Net.SASL` SCRAM-SHA-512.
+     ⚠️ **sarama không có sẵn SCRAM client — phải tự implement `sarama.SCRAMClient`** (thường dùng
+     `github.com/xdg-go/scram`). Đây là phần code nặng nhất của cả mandate, đừng ước lượng là "một cờ".
+   - `accounting/Consumer.cs` — `SecurityProtocol=SaslSsl`, `SaslMechanism=ScramSha512`,
+     `SaslUsername`/`SaslPassword` từ env (confluent-kafka-dotnet hỗ trợ sẵn)
+   - `fraud-detection/.../main.kt` — `security.protocol=SASL_SSL`, `sasl.mechanism=SCRAM-SHA-512`,
+     `sasl.jaas.config` (client Kafka Java hỗ trợ sẵn)
 1b. **`cart` cần thêm nhánh DUAL-WRITE** (`VALKEY_DUAL_WRITE_ADDR`, rỗng = tắt): mỗi `HashSet`+`KeyExpire`
    ghi thêm sang địa chỉ thứ 2. **Lỗi ở kho thứ 2 KHÔNG được làm fail request khách** (log + bỏ qua) —
    nếu không, dual-write biến ElastiCache thành SPOF mới ngay trong cửa sổ migrate. Điều kiện của
@@ -83,7 +211,7 @@ kubectl -n techx-tf3 run netcheck --rm -it --restart=Never --image=busybox:1.36 
 4. Deploy. **Verify hành vi KHÔNG đổi** (cờ TLS còn tắt, vẫn trỏ store cũ):
 
 ```sh
-kubectl -n techx-tf3 get pods -l 'opentelemetry.io/name in (cart,checkout,accounting,fraud-detection)'
+kubectl -n "$NS" get pods -l 'opentelemetry.io/name in (cart,checkout,accounting,fraud-detection)'
 # → tất cả Running, 0 restart. SLO không đổi. Nếu lệch: dừng, revert, KHÔNG cutover.
 ```
 
@@ -100,43 +228,49 @@ kubectl -n techx-tf3 get pods -l 'opentelemetry.io/name in (cart,checkout,accoun
 
 ```sh
 # 0. XÁC NHẬN bất biến TTL còn đúng (code cart đổi thì chứng minh sụp)
-kubectl -n techx-tf3 exec deploy/valkey-cart -- valkey-cli DBSIZE
-kubectl -n techx-tf3 exec deploy/valkey-cart -- sh -c \
+kubectl -n "$NS" exec deploy/valkey-cart -- valkey-cli DBSIZE
+kubectl -n "$NS" exec deploy/valkey-cart -- sh -c \
   'valkey-cli --scan 2>/dev/null | head -50 | while read k; do
      t=$(valkey-cli TTL "$k"); [ "$t" = "-1" ] && echo "VI PHAM: $k khong co TTL"; done; echo scan-done'
 # → KHÔNG được có dòng "VI PHAM". Mọi key phải có TTL ≤ 3600s.
 
 # 1. T0 — BẬT DUAL-WRITE (ghi cả 2, ĐỌC vẫn từ valkey cũ)
-#    PR components.cart: VALKEY_DUAL_WRITE_ADDR=<elasticache>:6379, VALKEY_DUAL_WRITE_TLS=true
+#    PR components.cart: VALKEY_DUAL_WRITE_ADDR=$CACHE_HOST:6379, VALKEY_DUAL_WRITE_TLS=true (token tu secret)
 #    → hành vi khách KHÔNG đổi; valkey cũ vẫn là nguồn sự thật
 date -u +"T0 = %H:%M UTC — dual-write BAT DAU"
-kubectl -n techx-tf3 logs -l opentelemetry.io/name=cart --tail=20 | grep -iE "dual|elasticache|error"
+kubectl -n "$NS" logs -l opentelemetry.io/name=cart --tail=20 | grep -iE "dual|elasticache|error"
 
 # 2. CHỜ ĐỦ 60 PHÚT (dùng 65-70ph). Theo dõi key sinh ra bên mới:
-watch -n60 'echo -n "elasticache DBSIZE="; redis-cli -h <elasticache> --tls DBSIZE'
+#    (cần tunnel ElastiCache ở §0 — localhost:16379)
+watch -n60 'echo -n "elasticache DBSIZE="; redis-cli -h localhost -p 16379 --tls -a "$CACHE_TOKEN" --no-auth-warning DBSIZE'
 # → số key bên mới TĂNG DẦN, tiệm cận số bên cũ
 
 # 3. T0+60ph — KIỂM CHỨNG HỘI TỤ trước khi lật đọc (BẰNG CHỨNG NỘP)
 #    Mọi key còn sống bên CŨ phải TỒN TẠI bên MỚI:
-kubectl -n techx-tf3 exec deploy/valkey-cart -- sh -c 'valkey-cli --scan 2>/dev/null' > /tmp/old-keys.txt
-miss=0; while read k; do
-  redis-cli -h <elasticache> --tls EXISTS "$k" | grep -q '^1$' || { echo "THIEU: $k"; miss=$((miss+1)); }
+kubectl -n "$NS" exec deploy/valkey-cart -- sh -c 'valkey-cli --scan 2>/dev/null' > /tmp/old-keys.txt
+wc -l < /tmp/old-keys.txt      # số key bên cũ — ghi lại
+miss=0
+while read -r k; do
+  redis-cli -h localhost -p 16379 --tls -a "$CACHE_TOKEN" --no-auth-warning EXISTS "$k" \
+    | grep -q '^1$' || { echo "THIEU: $k"; miss=$((miss+1)); }
 done < /tmp/old-keys.txt
 echo "So key thieu ben moi: $miss"    # → PHẢI = 0. Khác 0 → CHƯA lật đọc, chờ thêm/điều tra.
+#    Lưu ý: key hết hạn TRONG lúc quét sẽ báo THIEU oan (race lành tính) — quét lại để xác nhận,
+#    đừng vội kết luận hỏng.
 
 # 4. LẬT ĐỌC sang ElastiCache — ⚠️ VẪN GIỮ dual-write (đừng gỡ vội!)
-#    PR components.cart: VALKEY_ADDR=<elasticache>:6379, VALKEY_TLS=true
-#                        VALKEY_DUAL_WRITE_ADDR=<valkey-cu>:6379   ← ĐẢO CHIỀU: giờ ghi ngược về cũ
+#    PR components.cart: VALKEY_ADDR=$CACHE_HOST:6379, VALKEY_TLS=true, VALKEY_AUTH_TOKEN (từ secret)
+#                        VALKEY_DUAL_WRITE_ADDR=$VALKEY_OLD   ← ĐẢO CHIỀU: giờ ghi ngược về cũ
 #    → valkey cũ tiếp tục đầy đủ ⇒ rollback lúc nào cũng KHÔNG mất gì
 #    → chỉ gỡ dual-write SAU khi mentor nghiệm thu (bước 8)
 #    → rolling restart (maxUnavailable:0 + preStop → 0 rớt request)
 
 # 5. Verify
-kubectl -n techx-tf3 logs -l opentelemetry.io/name=cart --tail=30 | grep -iE "error|connect|ssl"
+kubectl -n "$NS" logs -l opentelemetry.io/name=cart --tail=30 | grep -iE "error|connect|ssl"
 # → thêm/xem giỏ trên storefront chạy được; Grafana: browse/cart ≥99.5%
 ```
 
-**Rollback:** trả `VALKEY_ADDR` cũ + `VALKEY_TLS=false` → ~1 phút. **Không mất gì** — valkey cũ vẫn
+**Rollback:** trả `VALKEY_ADDR`=`$VALKEY_OLD` + `VALKEY_TLS=false` + bỏ `VALKEY_AUTH_TOKEN` → ~1 phút. **Không mất gì** — valkey cũ vẫn
 được dual-write suốt cửa sổ nên vẫn đầy đủ.
 
 ---
@@ -152,51 +286,65 @@ không hề bị ảnh hưởng**.
 > → đổi phải **restart Postgres** → read outage cho browse → vỡ SLO. Cách dưới né hoàn toàn.
 
 ```sh
-# 0. TIỀN ĐỀ: retention topic `orders` > cửa sổ cutover (mặc định 7 ngày ≫ ~10 phút)
+# 0. TIỀN ĐỀ: retention topic `orders` > cửa sổ cutover
 export MSYS_NO_PATHCONV=1
-kubectl -n techx-tf3 exec deploy/kafka -c kafka -- \
-  /opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
-  --entity-type topics --entity-name orders --describe
+#    Topic `orders` KHÔNG có override riêng → nó thừa kế default của broker.
+#    (Lệnh --entity-type topics chỉ in "Dynamic configs..." RỖNG, KHÔNG chứng minh được gì —
+#     phải hỏi broker default:)
+kubectl -n "$NS" exec deploy/kafka -c kafka -- sh -c \
+  "/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
+   --entity-type brokers --entity-name 1 --describe --all 2>/dev/null | grep -E 'log.retention.(hours|bytes)='"
+# → mong đợi: log.retention.hours=168 (7 ngày), log.retention.bytes=-1 ≫ cửa sổ ~10 phút
 
 # 1. ĐÓNG BĂNG người ghi duy nhất  → Postgres thành read-only
-kubectl -n techx-tf3 scale deploy/accounting --replicas=0
+export T_FREEZE=$(date -u +%Y-%m-%dT%H:%M:%S.000)   # ⚠️ GHI LẠI — rollback cần mốc này để reset offset
+echo "T_FREEZE=$T_FREEZE"                            #    (định dạng .sss là BẮT BUỘC với --to-datetime)
+kubectl -n "$NS" scale deploy/accounting --replicas=0
+kubectl -n "$NS" wait --for=delete pod -l opentelemetry.io/name=accounting --timeout=90s
 #    ✅ checkout vẫn publish vào Kafka, đơn dồn ở topic `orders` (không mất)
 #    ✅ product-catalog / product-reviews vẫn ĐỌC bình thường → KHÁCH KHÔNG BIẾT GÌ
-#    Xác nhận không còn ghi:
-kubectl -n techx-tf3 exec deploy/postgresql -- psql -U otelu -d otel -tAc \
-  "SELECT count(*) FROM pg_stat_activity WHERE state='active' AND query ILIKE 'INSERT%';"   # → 0
+#    BẰNG CHỨNG "đã đóng băng" = KHÔNG CÒN POD accounting (đây mới là check chính):
+kubectl -n "$NS" get pods -l opentelemetry.io/name=accounting    # → "No resources found"
+#    Kiểm tra phụ (không đủ để kết luận — EF Core dùng INSERT tham số hoá, có thể không khớp LIKE):
+kubectl -n "$NS" exec deploy/postgresql -- psql -U "$PG_USER" -d otel -tAc \
+  "SELECT count(*) FROM pg_stat_activity WHERE state='active' AND datname='otel' AND pid<>pg_backend_pid();"
 
 # 2. DUMP + RESTORE (29 MB → vài giây). Dump full: schema + data + sequence
-kubectl -n techx-tf3 exec deploy/postgresql -- pg_dump -U otelu -d otel --no-owner --no-acl \
+#    (cần tunnel RDS ở §0 — localhost:15432)
+kubectl -n "$NS" exec deploy/postgresql -- pg_dump -U "$PG_USER" -d otel --no-owner --no-acl \
   > /tmp/otel-full.sql
-psql "host=<rds-endpoint> user=otelu dbname=otel sslmode=require" -f /tmp/otel-full.sql
+PGPASSWORD="$PG_PASS" psql "host=localhost port=15432 user=$PG_USER dbname=otel sslmode=require" \
+  -v ON_ERROR_STOP=1 -f /tmp/otel-full.sql
+#    ON_ERROR_STOP=1: restore lỗi giữa chừng phải DỪNG, không được im lặng đi tiếp rồi parity sai.
 #    (pg_dump full ĐÃ bao gồm setval() cho sequence → không lo primary key đụng,
 #     khác với logical replication vốn không đồng bộ sequence)
 
 # 3. PARITY CHECK — nguồn ĐANG ĐỨNG YÊN nên số khớp TUYỆT ĐỐI. CHỤP LẠI = bằng chứng nộp
 for t in 'accounting."order"' accounting.orderitem accounting.shipping reviews.productreviews catalog.products; do
-  o=$(kubectl -n techx-tf3 exec deploy/postgresql -- psql -U otelu -d otel -tAc "SELECT count(*) FROM $t;")
-  n=$(psql "host=<rds-endpoint> user=otelu dbname=otel sslmode=require" -tAc "SELECT count(*) FROM $t;")
+  o=$(kubectl -n "$NS" exec deploy/postgresql -- psql -U "$PG_USER" -d otel -tAc "SELECT count(*) FROM $t;" | tr -d '[:space:]')
+  n=$(PGPASSWORD="$PG_PASS" psql "host=localhost port=15432 user=$PG_USER dbname=otel sslmode=require" \
+        -tAc "SELECT count(*) FROM $t;" | tr -d '[:space:]')
   echo "$t  old=$o  new=$n  $([ "$o" = "$n" ] && echo OK || echo MISMATCH)"
 done
 #    → mọi dòng phải OK. MISMATCH → dừng, KHÔNG cutover.
 
 # 4. Đổi DB_CONNECTION_STRING của 3 service → RDS + sslmode=require  (PR → main → ArgoCD)
-#      accounting:       Host=<rds>;Username=...;Password=...;Database=otel;SSL Mode=Require;Trust Server Certificate=true
-#      product-catalog:  postgres://...@<rds>/otel?sslmode=require     ← ĐỔI TỪ sslmode=disable
-#      product-reviews:  host=<rds> user=... password=... dbname=otel sslmode=require
+#      accounting:       Host=$RDS_HOST;Username=...;Password=...;Database=otel;SSL Mode=Require;Trust Server Certificate=true
+#      product-catalog:  postgres://...@$RDS_HOST/otel?sslmode=require     ← ĐỔI TỪ sslmode=disable
+#      product-reviews:  host=$RDS_HOST user=... password=... dbname=otel sslmode=require
 #    (giá trị lấy từ secret — xem bước 3; KHÔNG hardcode)
 #    product-catalog/product-reviews rolling restart: maxUnavailable:0 + preStop → 0 rớt request
 
 # 5. THẢ người ghi trở lại, trỏ RDS  (accounting chạy 1 replica — ADR 0007 giữ 1 cho service phụ trợ)
-kubectl -n techx-tf3 scale deploy/accounting --replicas=1
+kubectl -n "$NS" scale deploy/accounting --replicas=1
 #    → offset CHƯA commit (EnableAutoCommit=false, REL-09) → replay sạch đơn dồn từ bước 1 vào RDS
 
 # 6. Verify: đơn dồn đã vào RDS đủ, lag về 0
-kubectl -n techx-tf3 exec deploy/kafka -c kafka -- \
+kubectl -n "$NS" exec deploy/kafka -c kafka -- \
   /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
   --describe --group accounting          # → LAG = 0
-psql "host=<rds-endpoint> ..." -tAc 'SELECT count(*) FROM accounting."order";'
+PGPASSWORD="$PG_PASS" psql "host=localhost port=15432 user=$PG_USER dbname=otel sslmode=require" \
+  -tAc 'SELECT count(*) FROM accounting."order";'
 #    → phải ≥ số ở bước 3 + số đơn PlaceOrder thành công trong cửa sổ (xem Grafana)
 ```
 
@@ -204,11 +352,16 @@ psql "host=<rds-endpoint> ..." -tAc 'SELECT count(*) FROM accounting."order";'
 offset consumer group về mốc trước cutover** rồi replay vào postgres cũ — **không mất đơn nào** (Kafka
 còn giữ message):
 ```sh
-kubectl -n techx-tf3 scale deploy/accounting --replicas=0
-kubectl -n techx-tf3 exec deploy/kafka -c kafka -- /opt/kafka/bin/kafka-consumer-groups.sh \
+# GHI LẠI MỐC NÀY NGAY TRƯỚC BƯỚC 1 (đóng băng) — không có nó thì không reset offset đúng chỗ:
+#   export T_FREEZE=$(date -u +%Y-%m-%dT%H:%M:%S.000)
+kubectl -n "$NS" scale deploy/accounting --replicas=0
+kubectl -n "$NS" wait --for=delete pod -l opentelemetry.io/name=accounting --timeout=90s
+kubectl -n "$NS" exec deploy/kafka -c kafka -- /opt/kafka/bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 --group accounting --topic orders \
-  --reset-offsets --to-datetime <mốc-trước-cutover> --execute
-kubectl -n techx-tf3 scale deploy/accounting --replicas=1   # đã trỏ lại postgres cũ
+  --reset-offsets --to-datetime "$T_FREEZE" --execute
+#    (định dạng BẮT BUỘC: YYYY-MM-DDTHH:MM:SS.sss — thiếu phần .sss là lệnh báo lỗi)
+#    reset-offsets chỉ chạy khi consumer group KHÔNG có member nào → phải scale 0 trước
+kubectl -n "$NS" scale deploy/accounting --replicas=1   # đã trỏ lại postgres cũ
 ```
 
 ---
@@ -219,44 +372,44 @@ Tận dụng `AutoOffsetReset=Earliest` → **không cần dual-consume**.
 
 ```sh
 # 1. Tạo topic `orders` trên MSK — RF=3, min.insync.replicas=2
-kafka-topics.sh --bootstrap-server <msk-tls-bootstrap>:9094 --command-config /tmp/client-tls.properties \
-  --create --topic orders --partitions 3 --replication-factor 3 \
+#    (dùng helper mskcli ở §0 — MSK KHÔNG tunnel được, phải chạy từ pod trong cluster)
+mskcli kafka-topics.sh --create --topic orders --partitions 3 --replication-factor 3 \
   --config min.insync.replicas=2
-# /tmp/client-tls.properties:  security.protocol=SSL
+mskcli kafka-topics.sh --describe --topic orders     # xác nhận RF=3, min.insync=2
 
-# 2. Producer TRƯỚC: PR đổi components.checkout → KAFKA_ADDR=<msk>:9094, KAFKA_TLS_ENABLED=true
+
+# 2. Producer TRƯỚC: PR đổi components.checkout → KAFKA_ADDR=$MSK_BOOTSTRAP, KAFKA_SECURITY_PROTOCOL=SASL_SSL, KAFKA_SASL_USERNAME/_PASSWORD (tu secret)
 #    ⚠️ checkout dùng SyncProducer + acks=all → nếu MSK không nối được, PlaceOrder FAIL NGAY.
 #    Theo dõi SÁT trong 5 phút đầu:
-watch -n2 'kubectl -n techx-tf3 logs -l opentelemetry.io/name=checkout --tail=20 | grep -iE "kafka|error|tls"'
+watch -n2 'kubectl -n "$NS" logs -l opentelemetry.io/name=checkout --tail=20 | grep -iE "kafka|error|tls"'
 #    + Grafana: checkout success-rate PHẢI giữ ≥99%. Rớt → rollback NGAY (bước dưới).
 
 # 3. ⚠️ BẮT BUỘC TRƯỚC KHI ĐO LAG: xác nhận KHÔNG CÒN pod checkout revision CŨ
 #    Nếu còn 1 pod cũ đang produce vào Kafka cũ, message có thể rơi vào đó SAU lúc đo lag=0
 #    → chuyển consumer đi → message MỒ CÔI VĨNH VIỄN. Đây là lỗi thứ tự tinh vi nhất của cả cutover.
-kubectl -n techx-tf3 get rollout checkout-rollout -o jsonpath='{.status.phase}{"\n"}'   # → Healthy
-kubectl -n techx-tf3 get pods -l opentelemetry.io/name=checkout \
+kubectl -n "$NS" get rollout checkout-rollout -o jsonpath='{.status.phase}{"\n"}'   # → Healthy
+kubectl -n "$NS" get pods -l opentelemetry.io/name=checkout \
   -o jsonpath='{range .items[*]}{.metadata.name}{" KAFKA_ADDR="}{.spec.containers[0].env[?(@.name=="KAFKA_ADDR")].value}{"\n"}{end}'
 # → MỌI pod phải trỏ MSK. Còn bất kỳ pod nào trỏ kafka cũ → DỪNG, chờ rollout xong.
 
 # 3b. Giờ mới chờ Kafka CŨ hút cạn — lag phải = 0 trước khi chuyển consumer
 export MSYS_NO_PATHCONV=1
-kubectl -n techx-tf3 exec deploy/kafka -c kafka -- \
+kubectl -n "$NS" exec deploy/kafka -c kafka -- \
   /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups
 # → LAG = 0 cho cả `accounting` và `fraud-detection`
 
-# 4. Consumer: PR đổi accounting + fraud-detection → KAFKA_ADDR=<msk>:9094, KAFKA_TLS_ENABLED=true
+# 4. Consumer: PR đổi accounting + fraud-detection → KAFKA_ADDR=$MSK_BOOTSTRAP, KAFKA_SECURITY_PROTOCOL=SASL_SSL, KAFKA_SASL_USERNAME/_PASSWORD (tu secret)
 #    → group mới trên MSK, đọc từ Earliest → ăn sạch backlog tích từ bước 2
 
 # 5. Verify: lag trên MSK về 0, không mất message
-kafka-consumer-groups.sh --bootstrap-server <msk-tls-bootstrap>:9094 \
-  --command-config /tmp/client-tls.properties --describe --all-groups
+mskcli kafka-consumer-groups.sh --describe --all-groups
 ```
 
 **Parity Kafka (bằng chứng nộp):** tổng message produce vào MSK từ lúc (2) == tổng consume của mỗi
 group sau (4); `LAG = 0`; số đơn trong bảng `accounting."order"` tiếp tục tăng khớp với số PlaceOrder
 thành công trên Grafana.
 
-**Rollback:** trả `KAFKA_ADDR` cũ + `KAFKA_TLS_ENABLED=false` cho cả 3 service → ~1 phút.
+**Rollback:** trả `KAFKA_ADDR`=`$KAFKA_OLD` + `KAFKA_SECURITY_PROTOCOL=PLAINTEXT` cho cả 3 service → ~1 phút.
 ⚠️ Message đã vào MSK mà chưa consume → phải **replay tay** sang kafka cũ. Đây là lý do bước (3) phải
 đợi lag=0 và cửa sổ (2)→(4) nên **ngắn**.
 
@@ -266,20 +419,33 @@ thành công trên Grafana.
 
 ```sh
 # 1. Không còn pod data tự host (yêu cầu #1 của directive)
-kubectl -n techx-tf3 get pods | grep -E "postgresql|valkey|kafka"   # → rỗng (sau bước 8)
+kubectl -n "$NS" get pods | grep -E "postgresql|valkey-cart|kafka"   # → rỗng (sau §8)
 
-# 2. App trỏ managed
-kubectl -n techx-tf3 get deploy checkout -o jsonpath='{..env}' | tr ',' '\n' | grep -iE "KAFKA_ADDR|TLS"
+# 2. App trỏ managed + có auth
+kubectl -n "$NS" get deploy checkout -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\n"}{end}' \
+  | grep -iE "KAFKA_ADDR|KAFKA_SECURITY_PROTOCOL"     # → *:9096 + SASL_SSL
+kubectl -n "$NS" get deploy cart -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\n"}{end}' \
+  | grep -iE "VALKEY_ADDR|VALKEY_TLS"
 
-# 3. Endpoint riêng tư — KHÔNG resolve từ ngoài cluster
-nslookup <rds-endpoint>          # từ máy ngoài → không ra / không nối được
+# 3. Endpoint riêng tư — chứng minh bằng KHÔNG KẾT NỐI ĐƯỢC, không phải bằng DNS.
+#    (DNS của RDS/ElastiCache VẪN resolve ra IP private từ ngoài — đừng dùng nslookup làm bằng chứng.)
+#    Từ máy ngoài VPC (TẮT tunnel §0 trước khi thử):
+timeout 10 bash -c "</dev/tcp/$RDS_HOST/5432" 2>&1 || echo "OK: khong noi duoc tu ngoai VPC"
+#    Từ trong cluster → PHẢI nối được:
+kubectl -n "$NS" run netcheck --rm -i --restart=Never --image=busybox:1.36 -- \
+  sh -c "nc -zv $RDS_HOST 5432 && nc -zv $CACHE_HOST 6379"
+#    Và xác nhận không có public endpoint:
+aws rds describe-db-instances --region "$AWS_REGION" --db-instance-identifier "$RDS_ID" \
+  --query 'DBInstances[0].PubliclyAccessible'        # → false
 
-# 4. Không còn credential plaintext
-grep -rn "otelp\|otelu" "phase3 - information/techx-corp-chart/values.yaml"   # → rỗng
+# 4. Không còn credential plaintext trong git
+grep -rn "otelp\|otelu" "phase3 - information/techx-corp-chart/values.yaml" \
+  "phase3 - information/deploy/values-prod.yaml"     # → rỗng
 ```
 
-+ Trình: bảng parity trước/sau (bước 1 vs 5.5), Grafana SLO suốt cửa sổ cutover (checkout ≥99%),
-[ADR 0008](../adr/0008-mandate-08-managed-migration-cdo02.md) ký tên.
++ Trình: **bảng parity** trước/sau (§1 mục b — baseline, so với §5 bước 3), **key convergence Valkey**
+(§4 bước 3, `miss=0`), **lag Kafka = 0** (§6 bước 5), Grafana SLO suốt cả 3 cửa sổ cutover
+(checkout ≥99%), và [ADR 0008](../adr/0008-mandate-08-managed-migration-cdo02.md) ký tên.
 
 ## 8. Dọn dẹp — **ĐIỂM KHÔNG QUAY LUI**
 
