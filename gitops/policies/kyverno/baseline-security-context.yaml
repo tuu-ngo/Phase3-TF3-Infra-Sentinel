@@ -31,10 +31,8 @@ spec:
                       - flagd
                       - jaeger
                       - kafka
-                      - opensearch
                       - opentelemetry-collector
                       - postgresql
-                      - prometheus
       validate:
         message: "Containers and initContainers must run as non-root."
         foreach:
@@ -64,21 +62,6 @@ spec:
               operations:
                 - CREATE
                 - UPDATE
-      exclude:
-        any:
-          - resources:
-              selector:
-                matchExpressions:
-                  - key: app.kubernetes.io/name
-                    operator: In
-                    values:
-                      - flagd
-                      - jaeger
-                      - kafka
-                      - opensearch
-                      - opentelemetry-collector
-                      - postgresql
-                      - prometheus
       validate:
         message: "Pod runAsUser must not be 0."
         deny:
@@ -107,13 +90,7 @@ spec:
                   - key: app.kubernetes.io/name
                     operator: In
                     values:
-                      - flagd
-                      - jaeger
                       - kafka
-                      - opensearch
-                      - opentelemetry-collector
-                      - postgresql
-                      - prometheus
       validate:
         message: "Container and initContainer runAsUser must not be 0."
         foreach:
@@ -143,21 +120,6 @@ spec:
               operations:
                 - CREATE
                 - UPDATE
-      exclude:
-        any:
-          - resources:
-              selector:
-                matchExpressions:
-                  - key: app.kubernetes.io/name
-                    operator: In
-                    values:
-                      - flagd
-                      - jaeger
-                      - kafka
-                      - opensearch
-                      - opentelemetry-collector
-                      - postgresql
-                      - prometheus
       validate:
         message: "Privileged containers are not allowed."
         foreach:
@@ -242,7 +204,6 @@ spec:
                       - flagd
                       - jaeger
                       - kafka
-                      - opensearch
                       - opentelemetry-collector
                       - postgresql
                       - prometheus
@@ -285,7 +246,6 @@ spec:
                     values:
                       - flagd
                       - jaeger
-                      - kafka
                       - opensearch
                       - opentelemetry-collector
                       - postgresql
