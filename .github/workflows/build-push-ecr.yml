@@ -78,7 +78,8 @@ jobs:
           BASE_TAG="${TAG_PREFIX}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
           # Validate every final per-service tag before any build or push occurs.
-          for service in $ALL_SERVICES; do
+          read -r -a ALL_SERVICE_ARRAY <<< "$ALL_SERVICES"
+          for service in "${ALL_SERVICE_ARRAY[@]}"; do
             FULL_TAG="${BASE_TAG}-${service}"
             if [ "${#FULL_TAG}" -gt 128 ]; then
               echo "FAIL: final image tag exceeds 128 characters: $FULL_TAG" >&2
@@ -133,7 +134,12 @@ jobs:
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           echo "source_short_sha=$SOURCE_SHORT_SHA" >> "$GITHUB_OUTPUT"
 
-          ALL_SORTED="$(printf '%s\n' $ALL_SERVICES | sort -u | paste -sd' ' -)"
+          read -r -a ALL_SERVICE_ARRAY <<< "$ALL_SERVICES"
+          ALL_SORTED="$(
+            printf '%s\n' "${ALL_SERVICE_ARRAY[@]}" |
+              sort -u |
+              paste -sd' ' -
+          )"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "mode=full" >> "$GITHUB_OUTPUT"
@@ -183,7 +189,12 @@ jobs:
             echo "mode=none" >> "$GITHUB_OUTPUT"
             echo "services=" >> "$GITHUB_OUTPUT"
           else
-            UNIQUE_SERVICES="$(printf '%s\n' $SERVICES | sort -u | paste -sd' ' -)"
+            read -r -a CHANGED_SERVICE_ARRAY <<< "$SERVICES"
+            UNIQUE_SERVICES="$(
+              printf '%s\n' "${CHANGED_SERVICE_ARRAY[@]}" |
+                sort -u |
+                paste -sd' ' -
+            )"
             echo "mode=scoped" >> "$GITHUB_OUTPUT"
             echo "services=$UNIQUE_SERVICES" >> "$GITHUB_OUTPUT"
           fi
@@ -246,7 +257,8 @@ jobs:
             SERVICES="$SCOPED_SERVICES"
           fi
 
-          for service in $SERVICES; do
+          read -r -a SERVICE_ARRAY <<< "$SERVICES"
+          for service in "${SERVICE_ARRAY[@]}"; do
             echo "Building local linux/amd64 candidate: $service"
             docker buildx bake -f docker-compose.yml "$service" \
               --set "${service}.platform=linux/amd64" \
@@ -279,7 +291,8 @@ jobs:
           REPORT_ROOT="$GITHUB_WORKSPACE/trivy-reports/pre-push"
           mkdir -p "$REPORT_ROOT"
 
-          for service in $SERVICES; do
+          read -r -a SERVICE_ARRAY <<< "$SERVICES"
+          for service in "${SERVICE_ARRAY[@]}"; do
             IMAGE="${IMAGE_NAME}:${IMAGE_VERSION}-${service}"
             REPORT="$REPORT_ROOT/${service}.json"
 
@@ -372,7 +385,8 @@ jobs:
           }
           EOF
 
-          for service in $EXPECTED_SERVICES; do
+          read -r -a EXPECTED_SERVICE_ARRAY <<< "$EXPECTED_SERVICES"
+          for service in "${EXPECTED_SERVICE_ARRAY[@]}"; do
             FULL_TAG="${BASE_TAG}-${service}"
 
             if [ "${#FULL_TAG}" -gt 128 ]; then
@@ -438,7 +452,7 @@ jobs:
           done
 
           EXPECTED_SERVICES_JSON="$(
-            printf '%s\n' $EXPECTED_SERVICES |
+            printf '%s\n' "${EXPECTED_SERVICE_ARRAY[@]}" |
               jq -R . |
               jq -s 'sort'
           )"
