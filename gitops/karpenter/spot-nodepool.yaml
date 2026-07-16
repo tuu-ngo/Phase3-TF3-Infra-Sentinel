@@ -1,0 +1,65 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: flash-sale-spot
+spec:
+  template:
+    metadata:
+      labels:
+        techx.io/capacity: spot
+    spec:
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: ["c", "m", "r", "t"]
+        - key: karpenter.k8s.aws/instance-generation
+          operator: Gt
+          values: ["2"]
+        - key: karpenter.k8s.aws/instance-cpu
+          operator: In
+          values: ["2", "4"]
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: flash-sale-spot
+      expireAfter: 24h
+  limits:
+    cpu: "12"
+    memory: 48Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    # PM-108 cleanup: trả về giá trị gốc trước Mandate 2 (2m) sau khi load test 200 user đã
+    # chạy xong + xác nhận co xuống ổn định + gỡ hết karpenter.sh/do-not-disrupt tạm thời khỏi
+    # 7 component (xem values-prod.yaml + mandate-02-load-test-remediation-plan.md mục 4).
+    consolidateAfter: 2m
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: flash-sale-spot
+spec:
+  role: KarpenterNodeRole-techx-corp-tf3
+  amiFamily: AL2023
+  associatePublicIPAddress: false
+  amiSelectorTerms:
+    - id: ami-06ec1dc854f03470c
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: techx-corp-tf3
+        kubernetes.io/role/internal-elb: "1"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: techx-corp-tf3
+  tags:
+    karpenter.sh/discovery: techx-corp-tf3
+    techx.io/mandate: "02"
+    techx.io/capacity: spot

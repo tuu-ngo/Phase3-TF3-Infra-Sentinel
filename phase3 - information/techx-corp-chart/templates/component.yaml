@@ -4,11 +4,19 @@
     {{- $config := set . "name" ($name | lower) }}
     {{- $config := set . "Release" $.Release }}
     {{- $config := set . "Chart" $.Chart }}
-    {{- $config := set . "serviceAccount" $.Values.serviceAccount }}
+    {{- $serviceAccount := $.Values.serviceAccount }}
+    {{- $componentScopedServiceAccount := false }}
+    {{- if hasKey $config "serviceAccount" }}
+        {{- $serviceAccount = mergeOverwrite (deepCopy $.Values.serviceAccount) $config.serviceAccount }}
+        {{- $componentScopedServiceAccount = true }}
+    {{- end }}
+    {{- $config := set . "serviceAccount" $serviceAccount }}
+    {{- $config := set . "componentScopedServiceAccount" $componentScopedServiceAccount }}
     {{- $config := set . "observability" $.Values.observability }}
     {{- $config := set . "defaultValues" $.Values.default }}
 
     {{- if $config.enabled -}}
+        {{- include "techx-corp.componentServiceAccount" $config -}}
         {{- include "techx-corp.deployment" $config -}}
         {{- include "techx-corp.service" $config -}}
         {{- include "techx-corp.ingress" $config -}}

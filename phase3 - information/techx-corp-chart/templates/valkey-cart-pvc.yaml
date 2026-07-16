@@ -1,0 +1,23 @@
+{{- $valkey := index .Values.components "valkey-cart" -}}
+{{- if and $valkey $valkey.persistence $valkey.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: valkey-cart
+  labels:
+    helm.sh/chart: {{ include "techx-corp.chart" . }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: techx-corp
+    app.kubernetes.io/component: valkey-cart
+    app.kubernetes.io/name: valkey-cart
+    opentelemetry.io/name: valkey-cart
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ $valkey.persistence.size | default "1Gi" }}
+  {{- if $valkey.persistence.storageClassName }}
+  storageClassName: {{ $valkey.persistence.storageClassName }}
+  {{- end }}
+{{- end }}

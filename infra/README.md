@@ -1,51 +1,76 @@
-# Infra - VPC + EKS (Terraform)
+# Terraform infrastructure
 
-Dựng VPC + EKS cluster cho TF3 bằng Terraform, theo kiến trúc đã chốt (1 VPC/3AZ,
-1 NAT Gateway, VPC endpoint ECR/S3, EKS managed node group 3x t3.large,
-IRSA cho cluster-autoscaler + aws-load-balancer-controller).
+Production của TF3 nằm trong AWS account `197826770971`, region `ap-southeast-1`.
+EKS API private-only và chỉ truy cập qua SSM bastion.
 
-## 0. Bootstrap remote state (chỉ làm 1 lần cho cả TF3)
+## Cấu trúc
 
-Terraform không thể tự tạo backend nó sắp dùng - tạo tay trước:
-
-```sh
-aws s3 mb s3://techx-corp-tf3-terraform-state --region ap-southeast-1
-aws s3api put-bucket-versioning --bucket techx-corp-tf3-terraform-state \
-  --versioning-configuration Status=Enabled
-
-aws dynamodb create-table \
-  --table-name techx-corp-tf3-terraform-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region ap-southeast-1
+```text
+infra/
+├── bootstrap/
+│   ├── backend/       # ownership S3 state bucket + DynamoDB lock table
+│   └── github-oidc/   # ownership IAM roles cho GitHub Actions
+├── live/production/   # production root duy nhất
+└── modules/
+    ├── network/       # VPC, NAT, S3/ECR/SSM endpoints
+    ├── eks-platform/  # KMS, EKS, node group, add-ons, IRSA
+    ├── access/        # private SSM bastion
+    └── edge/          # CloudFront
 ```
 
-Sau đó:
-```sh
-cp backend.hcl.example backend.hcl   # backend.hcl không commit giá trị thật khác nhau theo account
-cp terraform.tfvars.example terraform.tfvars
-```
-Điền `allowed_admin_cidrs` (IP thật của từng thành viên TF3) và
-`eks_admin_principal_arns` (ARN IAM user/role cần truy cập cluster) vào
-`terraform.tfvars` trước khi apply.
+Hai root trong `bootstrap/` chỉ mô tả ownership. Resource đã tồn tại nên **không apply/import**
+chúng nếu chưa có một kế hoạch adoption và phê duyệt riêng. Workflow production không chạy
+hai root này.
 
-## 1. Init / Plan / Apply
+## Init và plan production
 
 ```sh
-terraform init -backend-config=backend.hcl
-terraform plan -out=tfplan
-terraform apply tfplan
+cd infra/live/production
+terraform init -reconfigure -backend-config=backend.hcl.example
+terraform fmt -check -recursive ../../
+terraform validate
+terraform plan -lock=false
 ```
 
-`apply` mất khoảng 15-20 phút (EKS control plane + node group).
+`production.auto.tfvars` chứa principal EKS của account hiện tại. Push thay đổi Terraform vào
+`main` sẽ chạy workflow plan. Workflow apply chỉ chạy thủ công trên protected `main` và phải qua
+GitHub Environment `production`:
 
-## 2. Sau khi apply xong — truy cập cluster qua SSM bastion (bắt buộc từ 09/07)
+```sh
+# Chỉ tạo và kiểm tra saved plan
+gh workflow run terraform-apply.yml \
+  --ref main -f action=plan
+
+# Tạo saved plan mới rồi apply chính plan đó
+gh workflow run terraform-apply.yml \
+  --ref main -f action=apply
+```
+
+Chỉ chọn `action=apply` sau khi saved plan trong chính run đó đã được review. Apply role hiện vẫn
+có `AdministratorAccess`; thu hẹp role là hardening còn mở, không được gộp vào một apply production
+không liên quan.
+
+## CloudFront private origin migration
+
+`edge_phase` trong `live/production/production.auto.tfvars` điều khiển migration theo thứ tự:
+
+| Phase | Primary origin | Tài nguyên thêm |
+|---|---|---|
+| `public` | Public ALB | Không |
+| `waf` | Public ALB | WAF + internal ALB security group |
+| `staging` | Public ALB | Internal VPC Origin + staging distribution |
+| `private` | Internal ALB qua VPC Origin | Giữ staging resources, policy disabled |
+| `rollback` | Public ALB | Giữ WAF, VPC Origin và staging resources, policy disabled |
+
+Không nhảy phase và không override `edge_phase` khi apply. Runbook đầy đủ, quality gates và
+rollback: [`docs/runbooks/cloudfront-private-origin-migration.md`](../docs/runbooks/cloudfront-private-origin-migration.md).
+
+## Truy cập cluster qua SSM bastion
 
 EKS API **đã chuyển private-only** (`cluster_endpoint_public_access = false`) — không còn IP
 allowlist nào để quản lý nữa (lý do: nhiều lần bị đè mất CIDR do nhiều người tự `apply`, xem
-`docs/postmortem/`). Muốn `kubectl`/`helm`, mọi người đi qua bastion (`bastion.tf`) bằng SSM,
-không cần IP tĩnh, không cần thêm gì vào `terraform.tfvars` nữa:
+`docs/postmortem/`). Muốn `kubectl`/`helm`, mọi người đi qua bastion trong module `access`
+bằng SSM, không cần IP tĩnh hay CIDR allowlist:
 
 ```sh
 # Bước 1: mở tunnel (giữ terminal này chạy)
@@ -56,7 +81,7 @@ aws ssm start-session --target <bastion_instance_id, xem terraform output bastio
 
 # Bước 2 (terminal khác): trỏ kubectl vào tunnel
 aws eks update-kubeconfig --name techx-corp-tf3 --region ap-southeast-1
-kubectl config set-cluster arn:aws:eks:ap-southeast-1:012619468490:cluster/techx-corp-tf3 \
+kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx-corp-tf3 \
   --server=https://localhost:8443 --insecure-skip-tls-verify=true
 
 kubectl get nodes   # phải thấy 3 node Ready
@@ -65,13 +90,14 @@ kubectl get nodes   # phải thấy 3 node Ready
 `--insecure-skip-tls-verify` cần thiết vì chứng chỉ TLS của cluster cấp cho hostname thật, không
 phải `localhost` — chấp nhận được vì traffic đã đi trong tunnel mã hoá của SSM.
 
-Lệnh đầy đủ (đã điền sẵn ID) có thể lấy lại bất cứ lúc nào bằng:
+Lệnh đầy đủ (đã điền sẵn ID) có thể lấy lại từ production root:
 ```sh
+cd infra/live/production
 terraform output ssm_tunnel_command
 ```
 
-**Yêu cầu để dùng được**: IAM user cần quyền gọi SSM (`ssm:StartSession` trên bastion) — tất cả
-user hiện có (`arthur`/`CDO01`/`CDO02`/`AIO02`, đều `AdministratorAccess`) đã đủ quyền sẵn.
+**Yêu cầu để dùng được**: IAM principal cần quyền gọi `ssm:StartSession` trên bastion và
+phải có mặt trong `eks_admin_principal_arns` để xác thực với EKS.
 
 Từ đây tiếp tục theo [`GETTING_STARTED.md`](../phase3%20-%20information/GETTING_STARTED.md)
 mục 2-5 (helm repo add, dependency build, `helm upgrade --install`).
@@ -86,6 +112,5 @@ mục 2-5 (helm repo add, dependency build, `helm upgrade --install`).
 
 ## Đổi số NAT Gateway / node sau này
 
-Nếu backlog quyết định cần thêm NAT (1-per-AZ) hoặc đổi instance type, chỉ cần sửa
-biến trong `terraform.tfvars` rồi `terraform plan`/`apply` lại - nhớ ghi ADR kèm lý do
-đổi vì đây là thay đổi tốn tiền, đúng RULES.md mục ngân sách.
+Nếu backlog quyết định cần thêm NAT hoặc đổi instance type, sửa input ở production root,
+review plan qua PR và ghi ADR kèm lý do vì đây là thay đổi tốn tiền theo `RULES.md`.

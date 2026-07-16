@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: postgresql
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: product-catalog
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: product-reviews
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: accounting
+      ports:
+        - protocol: TCP
+          port: 5432

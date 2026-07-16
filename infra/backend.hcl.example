@@ -1,5 +1,0 @@
-bucket         = "techx-corp-tf3-terraform-state"
-key            = "eks-baseline/terraform.tfstate"
-region         = "ap-southeast-1"
-dynamodb_table = "techx-corp-tf3-terraform-lock"
-encrypt        = true

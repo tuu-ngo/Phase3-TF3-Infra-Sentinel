@@ -3,6 +3,7 @@
 # file instead of editing the tracked template in place.
 *.local.yaml
 *.secret.yaml
+*.local.md
 values-flagd-sync.local.yaml
 kubeconfig*
 *.kubeconfig
@@ -24,9 +25,9 @@ llm-api-key*
 tfplan
 crash.log
 crash.*.log
-infra/backend.hcl
-infra/terraform.tfvars
-!infra/terraform.tfvars.example
+**/backend.hcl
+**/terraform.tfvars
+!**/terraform.tfvars.example
 
 # --- Helm dependency artifacts: regenerate via `helm dependency build` ---
 **/charts/*.tgz

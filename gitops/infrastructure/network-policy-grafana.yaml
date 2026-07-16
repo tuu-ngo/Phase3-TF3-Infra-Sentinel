@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grafana-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: techx-corp
+      app.kubernetes.io/name: grafana
+  policyTypes:
+    - Ingress
+  ingress:
+    # REL-17: cloudflared proxies grafana.arthur-ngo.org straight to this Service -
+    # deny-all here silently drops that traffic (connection hangs, Cloudflare edge times
+    # out and returns 502). Grafana stays unreachable from anywhere else - this only
+    # opens the door for the in-cluster cloudflared pods, still gated by Cloudflare
+    # Access (SSO) at the edge for anyone external.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudflared
+      ports:
+        # NetworkPolicy ports match the DESTINATION port on the target pod, AFTER the
+        # Service DNATs port 80 -> targetPort. The grafana Service is 80 -> named port
+        # "grafana" = containerPort 3000, so the packet reaches this pod on 3000, not 80.
+        # Allowing 80 here silently dropped everything (i/o timeout -> Cloudflare 502).
+        - protocol: TCP
+          port: 3000

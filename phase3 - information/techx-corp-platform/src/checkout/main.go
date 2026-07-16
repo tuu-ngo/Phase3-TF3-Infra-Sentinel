@@ -1,5 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
+// rebuild-sync (retry - fixed undefined `cs` -> `svc` compile error below): touch to build alongside frontend-proxy/accounting/cart/product-catalog/product-reviews/recommendation under one CI tag
 package main
 
 import (
@@ -141,13 +142,42 @@ type checkout struct {
 	paymentSvcAddr        string
 	kafkaBrokerSvcAddr    string
 	pb.UnimplementedCheckoutServiceServer
-	KafkaProducerClient     sarama.AsyncProducer
+	KafkaProducerClient     sarama.SyncProducer
 	shippingSvcClient       pb.ShippingServiceClient
 	productCatalogSvcClient pb.ProductCatalogServiceClient
 	cartSvcClient           pb.CartServiceClient
 	currencySvcClient       pb.CurrencyServiceClient
 	emailSvcClient          pb.EmailServiceClient
 	paymentSvcClient        pb.PaymentServiceClient
+}
+
+func (cs *checkout) dependencyHealthStatus(ctx context.Context) healthpb.HealthCheckResponse_ServingStatus {
+	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	deps := []func(context.Context) error{
+		func(ctx context.Context) error {
+			_, err := cs.cartSvcClient.GetCart(ctx, &pb.GetCartRequest{UserId: "healthcheck"})
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := cs.currencySvcClient.GetSupportedCurrencies(ctx, &pb.Empty{})
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := cs.productCatalogSvcClient.ListProducts(ctx, &pb.Empty{})
+			return err
+		},
+	}
+
+	for _, dep := range deps {
+		if err := dep(checkCtx); err != nil {
+			logger.Warn(fmt.Sprintf("health: dependency check failed: %v", err))
+			return healthpb.HealthCheckResponse_NOT_SERVING
+		}
+	}
+
+	return healthpb.HealthCheckResponse_SERVING
 }
 
 func main() {
@@ -252,11 +282,26 @@ func main() {
 	healthcheck := health.NewServer()
 	healthpb.RegisterHealthServer(srv, healthcheck)
 	logger.Info(fmt.Sprintf("starting to listen on tcp: %q", lis.Addr().String()))
-	err = srv.Serve(lis)
-	logger.Error(err.Error())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
 	defer cancel()
+
+	// REL-02: stop reporting a static SERVING status. checkout depends on
+	// cart/currency/product-catalog to even start building an order, so make the
+	// gRPC health endpoint reflect those real upstreams before REL-03 wires
+	// readiness probes to it.
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			healthcheck.SetServingStatus("", svc.dependencyHealthStatus(ctx))
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 
 	go func() {
 		if err := srv.Serve(lis); err != nil {
@@ -279,7 +324,7 @@ func mustMapEnv(target *string, envKey string) {
 }
 
 func (cs *checkout) Check(ctx context.Context, req *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
-	return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+	return &healthpb.HealthCheckResponse{Status: cs.dependencyHealthStatus(ctx)}, nil
 }
 
 func (cs *checkout) Watch(req *healthpb.HealthCheckRequest, ws healthpb.Health_WatchServer) error {
@@ -326,6 +371,18 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 		total = money.Must(money.Sum(total, multPrice))
 	}
 
+	// REL-04: ship BEFORE charging. The payment service exposes no Refund/Void
+	// RPC, so once a card is charged there is no way to compensate a later
+	// failure - the previous charge-then-ship order left customers "charged but
+	// not shipped" when shipOrder failed. Shipping here only allocates a tracking
+	// id (mock fulfilment, no real cost), so doing it first means a shipping
+	// failure aborts the order with the card untouched, and a later charge failure
+	// leaves only a harmless unused tracking id.
+	shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "shipping error: %+v", err)
+	}
+
 	txID, err := cs.chargeCard(ctx, total, req.CreditCard)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
@@ -338,11 +395,6 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 		slog.LevelInfo, "payment went through",
 		slog.String("transaction_id", txID),
 	)
-
-	shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "shipping error: %+v", err)
-	}
 	shippingTrackingAttribute := attribute.String("app.shipping.tracking.id", shippingTrackingID)
 	span.AddEvent("shipped", trace.WithAttributes(shippingTrackingAttribute))
 
@@ -624,51 +676,41 @@ func (cs *checkout) sendToPostProcessor(ctx context.Context, result *pb.OrderRes
 	span := createProducerSpan(ctx, &msg)
 	defer span.End()
 
-	// Send message and handle response
+	// Send message and handle response. SyncProducer.SendMessage blocks until
+	// this specific message is acked (or fails/times out per
+	// saramaConfig.Producer.Timeout) - the result belongs to this call only,
+	// unlike AsyncProducer's shared Successes()/Errors() channels which used
+	// to race across concurrent PlaceOrder calls on the same pod (see
+	// kafka/producer.go for the full explanation of why that hung requests).
 	startTime := time.Now()
-	select {
-	case cs.KafkaProducerClient.Input() <- &msg:
-		select {
-		case successMsg := <-cs.KafkaProducerClient.Successes():
-			span.SetAttributes(
-				attribute.Bool("messaging.kafka.producer.success", true),
-				attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
-				attribute.KeyValue(semconv.MessagingKafkaMessageOffset(int(successMsg.Offset))),
-			)
-			logger.Info(fmt.Sprintf("Successful to write message. offset: %v, duration: %v", successMsg.Offset, time.Since(startTime)))
-		case errMsg := <-cs.KafkaProducerClient.Errors():
-			span.SetAttributes(
-				attribute.Bool("messaging.kafka.producer.success", false),
-				attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
-			)
-			span.SetStatus(otelcodes.Error, errMsg.Err.Error())
-			logger.Error(fmt.Sprintf("Failed to write message: %v", errMsg.Err))
-		case <-ctx.Done():
-			span.SetAttributes(
-				attribute.Bool("messaging.kafka.producer.success", false),
-				attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
-			)
-			span.SetStatus(otelcodes.Error, "Context cancelled: "+ctx.Err().Error())
-			logger.Warn(fmt.Sprintf("Context canceled before success message received: %v", ctx.Err()))
-		}
-	case <-ctx.Done():
+	partition, offset, err := cs.KafkaProducerClient.SendMessage(&msg)
+	if err != nil {
 		span.SetAttributes(
 			attribute.Bool("messaging.kafka.producer.success", false),
 			attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
 		)
-		span.SetStatus(otelcodes.Error, "Failed to send: "+ctx.Err().Error())
-		logger.Error(fmt.Sprintf("Failed to send message to Kafka within context deadline: %v", ctx.Err()))
-		return
+		span.SetStatus(otelcodes.Error, err.Error())
+		logger.Error(fmt.Sprintf("Failed to write message: %v", err))
+	} else {
+		span.SetAttributes(
+			attribute.Bool("messaging.kafka.producer.success", true),
+			attribute.Int("messaging.kafka.producer.duration_ms", int(time.Since(startTime).Milliseconds())),
+			attribute.KeyValue(semconv.MessagingKafkaMessageOffset(int(offset))),
+			attribute.KeyValue(semconv.MessagingKafkaDestinationPartition(int(partition))),
+		)
+		logger.Info(fmt.Sprintf("Successful to write message. offset: %v, duration: %v", offset, time.Since(startTime)))
 	}
 
 	ffValue := cs.getIntFeatureFlag(ctx, "kafkaQueueProblems")
 	if ffValue > 0 {
 		logger.Info("Warning: FeatureFlag 'kafkaQueueProblems' is activated, overloading queue now.")
 		for i := 0; i < ffValue; i++ {
-			go func(i int) {
-				cs.KafkaProducerClient.Input() <- &msg
-				_ = <-cs.KafkaProducerClient.Successes()
-			}(i)
+			m := msg // own copy per goroutine - SendMessage may mutate the message it's given
+			go func(i int, m sarama.ProducerMessage) {
+				if _, _, err := cs.KafkaProducerClient.SendMessage(&m); err != nil {
+					logger.Error(fmt.Sprintf("kafkaQueueProblems overload message #%d failed: %v", i, err))
+				}
+			}(i, m)
 		}
 		logger.Info(fmt.Sprintf("Done with #%d messages for overload simulation.", ffValue))
 	}

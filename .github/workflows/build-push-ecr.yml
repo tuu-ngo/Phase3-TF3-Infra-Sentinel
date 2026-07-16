@@ -23,8 +23,16 @@ permissions:
 
 env:
   AWS_REGION: ap-southeast-1
-  ECR_REGISTRY: 012619468490.dkr.ecr.ap-southeast-1.amazonaws.com
+  ECR_REGISTRY: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com
   ECR_REPOSITORY: techx-corp
+  # Every bake target with its own src/<name> build context (see docker-compose.yml).
+  # opensearch is deliberately excluded - it has a `build:` stanza but no `image:` tag
+  # (pulled from the public registry per GETTING_STARTED.md, not pushed to the TF's
+  # ECR) - bake would fail on it with "tag is needed when pushing to registry".
+  ALL_SERVICES: >-
+    accounting ad cart checkout currency email fraud-detection frontend
+    frontend-proxy image-provider kafka llm load-generator payment
+    product-catalog product-reviews quote recommendation shipping flagd-ui
 
 jobs:
   build-and-push:
@@ -35,6 +43,8 @@ jobs:
         working-directory: "phase3 - information/techx-corp-platform"
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # need full history to diff against github.event.before
 
       - name: Resolve image tag
         id: vars
@@ -45,22 +55,91 @@ jobs:
             echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
+      # workflow_dispatch = manual "build everything" escape hatch. push = scoped to
+      # whichever src/<service>/ dirs actually changed, so touching one service (e.g.
+      # frontend-proxy for a route change) doesn't pay for a full 18-image rebuild.
+      # Anything outside a recognized src/<service>/ dir (docker-compose.yml, pb/,
+      # Makefile, shared Dockerfile snippets, ...) falls back to a full build since more
+      # than one image's Dockerfile can depend on it (see pb/ COPY in a few services).
+      - name: Detect which services changed
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger -> full build of all services."
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "No previous commit to diff against (new branch/force-push) -> full build."
+            exit 0
+          fi
+
+          # -C "$GITHUB_WORKSPACE": this step's cwd is already the working-directory default
+          # (phase3 - information/techx-corp-platform), and a bare `-- <pathspec>` resolves
+          # relative to cwd, not repo root - without -C this pathspec silently matched nothing
+          # (git treats a non-matching pathspec as "no changes", not an error) and every build
+          # step below got skipped regardless of what actually changed.
+          CHANGED=$(git -C "$GITHUB_WORKSPACE" diff --name-only "$BEFORE" "${{ github.sha }}" -- "phase3 - information/techx-corp-platform")
+          echo "Changed files under techx-corp-platform:"
+          echo "$CHANGED"
+
+          PREFIX="phase3 - information/techx-corp-platform/src/"
+          SERVICES=""
+          FULL=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              "$PREFIX"*)
+                svc=$(echo "$f" | sed "s|^$PREFIX||" | cut -d/ -f1)
+                if echo " $ALL_SERVICES " | grep -q " $svc "; then
+                  SERVICES="$SERVICES $svc"
+                else
+                  FULL=true
+                fi
+                ;;
+              *)
+                FULL=true
+                ;;
+            esac
+          done <<< "$CHANGED"
+
+          if [ "$FULL" = true ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "Change touches shared/unrecognized paths -> full build."
+          elif [ -z "$SERVICES" ]; then
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+            echo "No image-affecting changes under techx-corp-platform -> nothing to build."
+          else
+            UNIQ=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+            echo "mode=scoped" >> "$GITHUB_OUTPUT"
+            echo "services=$UNIQ" >> "$GITHUB_OUTPUT"
+            echo "Scoped build -> $UNIQ"
+          fi
+
       - name: Configure AWS credentials (OIDC)
+        if: steps.scope.outputs.mode != 'none'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
+        if: steps.scope.outputs.mode != 'none'
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up QEMU
+        if: steps.scope.outputs.mode != 'none'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
+        if: steps.scope.outputs.mode != 'none'
         uses: docker/setup-buildx-action@v3
 
       - name: Point registry at TF3 ECR repo (runtime-only, not committed)
+        if: steps.scope.outputs.mode != 'none'
         run: |
           cat > .env.override <<EOF
           IMAGE_NAME=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
@@ -69,20 +148,43 @@ jobs:
           EOF
 
       - name: Smoke build checkout (fail fast, single-arch, no push)
+        if: steps.scope.outputs.mode == 'full'
         run: docker compose build checkout
 
       - name: Create multiplatform builder
+        if: steps.scope.outputs.mode != 'none'
         run: make create-multiplatform-builder || true
 
       - name: Build & push all app images
+        if: steps.scope.outputs.mode == 'full'
         run: |
           set -a; . ./.env.override; set +a
-          # opensearch has a `build:` stanza but no `image:` tag (it's pulled from the
-          # public registry per GETTING_STARTED.md, not pushed to the TF's ECR) - bake
-          # would fail on it with "tag is needed when pushing to registry", so it's
-          # excluded from the target list below.
           docker buildx bake -f docker-compose.yml --push \
             --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
-            accounting ad cart checkout currency email fraud-detection frontend \
-            frontend-proxy image-provider kafka llm load-generator payment \
-            product-catalog product-reviews quote recommendation shipping flagd-ui
+            $ALL_SERVICES
+
+      - name: Build & push changed service images only
+        if: steps.scope.outputs.mode == 'scoped'
+        run: |
+          set -a; . ./.env.override; set +a
+          echo "Building: ${{ steps.scope.outputs.services }}"
+          docker buildx bake -f docker-compose.yml --push \
+            --set "*.platform=${{ inputs.platforms || 'linux/amd64,linux/arm64' }}" \
+            ${{ steps.scope.outputs.services }}
+
+      - name: Scan pushed images with Trivy (Security Gate)
+        if: steps.scope.outputs.mode != 'none'
+        run: |
+          set -a; . ./.env.override; set +a
+          SERVICES="$ALL_SERVICES"
+          if [ "${{ steps.scope.outputs.mode }}" = "scoped" ]; then
+            SERVICES="${{ steps.scope.outputs.services }}"
+          fi
+          echo "Installing Trivy..."
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          
+          for svc in $SERVICES; do
+            IMAGE="${IMAGE_NAME}:${IMAGE_VERSION}-${svc}"
+            echo "Scanning $IMAGE for HIGH/CRITICAL vulnerabilities..."
+            trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --no-progress "$IMAGE"
+          done

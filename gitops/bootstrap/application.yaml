@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: techx-corp-bootstrap
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git'
+    targetRevision: main
+    path: gitops/apps
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: argocd
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Application
+      name: techx-corp
+      namespace: argocd
+      jsonPointers:
+        - /spec/source/helm/parameters
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true

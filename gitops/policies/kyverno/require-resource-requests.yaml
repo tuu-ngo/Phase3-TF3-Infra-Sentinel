@@ -1,0 +1,58 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-requests
+  annotations:
+    policies.kyverno.io/title: Require Resource Requests and Limits
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-memory-requests-limits
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      exclude:
+        any:
+        - resources:
+            namespaces:
+              - kube-system
+              - argocd
+              - kyverno
+      validate:
+        message: "Containers must have memory requests and limits defined."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    memory: "?*"
+                  limits:
+                    memory: "?*"
+
+    - name: check-cpu-requests
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      exclude:
+        any:
+        - resources:
+            namespaces:
+              - kube-system
+              - argocd
+              - kyverno
+      validate:
+        message: "Containers must have CPU requests defined."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                  # CPU limits are optional in many environments, but if required we can add it. User asked for: "Bắt buộc container có resources.requests/resources.limits"
+                  limits:
+                    cpu: "?*"

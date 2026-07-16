@@ -1,0 +1,121 @@
+# REL-01 (ADR 0001 — pre-work bước 1 nâng cấp EKS): PodDisruptionBudget nhóm đường ra tiền.
+# techx-infrastructure-app (ArgoCD) sync file này — cùng chỗ network-policy/resource-quota.
+#
+# minAvailable: 1 → khi node drain lúc upgrade, giữ ít nhất 1 pod mỗi service sống trong
+# lúc pod kia reschedule. BẮT BUỘC đi kèm replicas ≥2 (values-prod.yaml) — nếu còn
+# replicas:1 thì PDB minAvailable:1 sẽ CHẶN drain hoàn toàn (deadlock).
+#
+# Selector `opentelemetry.io/name` = selector label thật của chart techx-corp
+# (templates/_helpers.tpl → techx-corp.selectorLabels), khớp chính xác pod từng service.
+# KHÔNG có PDB cho datastore (postgresql/kafka/valkey) — chúng singleton, PDB minAvailable:1
+# sẽ khóa cứng node drain.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-proxy-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: frontend-proxy
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: product-catalog-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: product-catalog
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cart-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: cart
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: checkout-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: checkout
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: payment
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: currency-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: currency
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: shipping-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: shipping
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: quote-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: quote
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: product-reviews-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: product-reviews

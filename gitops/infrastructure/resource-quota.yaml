@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: techx-quota
+  namespace: techx-tf3
+spec:
+  hard:
+    requests.memory: 16Gi
+    limits.memory: 24Gi
+    pods: "100"
