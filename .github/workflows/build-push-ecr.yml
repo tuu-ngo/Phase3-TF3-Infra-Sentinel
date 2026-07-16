@@ -48,6 +48,7 @@ jobs:
       source_short_sha: ${{ steps.scope.outputs.source_short_sha }}
       base_tag: ${{ steps.vars.outputs.tag }}
       platforms: ${{ steps.vars.outputs.platforms }}
+      artifact_attempt: ${{ steps.artifact.outputs.run_attempt }}
 
     steps:
       - name: Checkout source
@@ -114,6 +115,12 @@ jobs:
 
           echo "tag=$BASE_TAG" >> "$GITHUB_OUTPUT"
           echo "platforms=$NORMALIZED_PLATFORMS" >> "$GITHUB_OUTPUT"
+
+      - name: Capture artifact attempt
+        id: artifact
+        run: |
+          set -euo pipefail
+          echo "run_attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
 
       - name: Detect which services changed
         id: scope
@@ -625,7 +632,7 @@ jobs:
         if: success() && steps.scope.outputs.mode != 'none'
         uses: actions/upload-artifact@v4
         with:
-          name: approved-images-${{ github.run_id }}-${{ github.run_attempt }}
+          name: approved-images-${{ github.run_id }}-${{ steps.artifact.outputs.run_attempt }}
           path: phase3 - information/techx-corp-platform/approved-images.json
           retention-days: 7
           if-no-files-found: error
@@ -668,7 +675,7 @@ jobs:
       - name: Download approved image manifest
         uses: actions/download-artifact@v4
         with:
-          name: approved-images-${{ github.run_id }}-${{ github.run_attempt }}
+          name: approved-images-${{ github.run_id }}-${{ needs.build-scan.outputs.artifact_attempt }}
           path: .
 
       - name: Confirm approved image manifest exists
