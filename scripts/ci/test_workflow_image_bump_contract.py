@@ -1,5 +1,4 @@
 import os
-import yaml
 import pytest
 from pathlib import Path
 
@@ -11,12 +10,18 @@ def get_workflows():
     pr = yaml.load(Path(".github/workflows/test-image-bump.yml").read_text())
     return build, pr
 
-def test_t51_actionlint_passes():
-    import subprocess
-    actionlint_path = Path("actionlint")
-    if actionlint_path.exists():
-        res = subprocess.run(["./actionlint", ".github/workflows/build-push-ecr.yml", ".github/workflows/test-image-bump.yml"], capture_output=True)
-        assert res.returncode == 0
+def test_t51_actionlint_gate_is_mandatory():
+    _, pr = get_workflows()
+    steps = pr["jobs"]["validate"]["steps"]
+
+    actionlint_steps = [
+        step for step in steps
+        if "./actionlint" in step.get("run", "")
+    ]
+
+    assert len(actionlint_steps) == 1
+    assert "build-push-ecr.yml" in actionlint_steps[0]["run"]
+    assert "test-image-bump.yml" in actionlint_steps[0]["run"]
 
 def test_t52_production_two_jobs():
     build, _ = get_workflows()
