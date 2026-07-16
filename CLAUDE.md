@@ -5,7 +5,8 @@ File này được Claude Code tự động đọc ở đầu mỗi phiên làm 
 là để **không phải giải thích lại bối cảnh dự án từ đầu mỗi lần mở chat mới**. Giữ file này
 cập nhật; nó có giá trị bằng đúng mức nó phản ánh đúng thực tế hiện tại.
 
-> **Cập nhật gần nhất: 15/07/2026** (sau cutover GitOps sang nhánh `main` + hoàn tất Mandate #3 core).
+> **Cập nhật gần nhất: 16/07/2026** (Mandate #2 + #3 đã demo PASS; AI Bedrock live cho product-reviews;
+> Mandate #8 migrate datastore lên managed đang lên kế hoạch; thêm supply-chain image gate PM-101).
 
 ## Bối cảnh (không đổi trong suốt 3 tuần)
 
@@ -46,7 +47,7 @@ Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"tea
 
 ---
 
-## Trạng thái hiện tại (15/07/2026)
+## Trạng thái hiện tại (16/07/2026)
 
 ### Hạ tầng & deploy — ĐÃ CHUYỂN SANG ACCOUNT MỚI + GITOPS
 - **Account production giờ là `197826770971`** (không phải account BTC `012619468490` cũ — account
@@ -94,28 +95,52 @@ Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"tea
 - **Mandate #1 (network exposure)** — ✅ Đạt: route ops (`/grafana`,`/jaeger`,`/feature`,`/loadgen`) đã
   gỡ khỏi Envoy → CloudFront trả `403`; ops riêng tư qua SSM/Cloudflare; `/flagservice` giữ nguyên.
   ADR `docs/adr/0004-mandate-01-cdo01-envoy-least-exposure.md` (CDO01).
-- **Mandate #2 (scale under budget / flash sale 200 user)** — 🟡 Nền xong (Karpenter Spot + HPA hot-path
-  + metrics-server + ResourceQuota `pods:90`), **chờ CDO01 chạy load test 200 user**. ADR
-  `docs/adr/0004-mandate-02-flash-sale-cdo02.md`. Phân tích capacity: `docs/mandate-02-load-test-capacity-analysis.md`.
-- **Mandate #3 (bảo trì không downtime)** — 🟢 Core xong, **chờ demo** (bạn sẽ chạy sau khi CDO01 test
-  xong Mandate 2). ADR `docs/adr/0007-...`. Đã làm: topologySpread (zone-hard ép replica ra 2 AZ/node) +
-  `maxUnavailable:0` (PR #112), graceful shutdown preStop/grace (PR #114), ALB graceful drain cho
-  frontend-proxy (PR #116), quy trình planned-failover datastore (PR #117). Đã **test thử drain 1 node
-  app: 100% success, p95 205ms**. Runbook demo: `docs/runbooks/mandate-03-drain-node-demo.md`. Service
-  phụ trợ (ad/recommendation/llm/accounting/fraud/email/image-provider) **cố ý giữ 1 replica** (degrade
-  gọn/async, không nhân đôi — đúng ràng buộc mandate).
+- **Mandate #2 (scale under budget / flash sale 200 user)** — ✅ **Đã chạy PASS (15/07)**: 200 user/17
+  phút, checkout 99.98% / browse-cart 100% / p95 46-48ms, cost không phình (~$0.40/h, không thêm node).
+  Co giãn ở tầng pod (frontend HPA 2→7→2). Báo cáo `docs/mandate-02-load-test-report.md`. **Post-cleanup
+  đã làm** (PR #143): gỡ `karpenter.sh/do-not-disrupt` khỏi 7 component + `consolidateAfter` 3m→2m.
+- **Mandate #3 (bảo trì không downtime)** — ✅ **Đã demo PASS (16/07)**: drain node app-tier
+  `ip-10-0-43-83` giữa giờ, SLO giữ (checkout 99.94% / browse 100% / cart 99.95% / p95 68.6ms — đo
+  Prometheus đúng cửa sổ drain). Cơ chế: topologySpread + `maxUnavailable:0` (PR #112), graceful
+  shutdown preStop/grace (PR #114) + **checkout qua Argo Rollouts (PR #136)**, ALB graceful drain
+  (PR #116), planned-failover datastore (PR #117). Báo cáo `docs/mandate-03-drain-node-report.md` (PR
+  #152) + video. Runbook `docs/runbooks/mandate-03-drain-node-demo.md`. **Quan sát:** Grafana
+  single-replica → blip 502 ~1 phút khi drain node chứa nó (monitoring plane, không phải sản phẩm);
+  **cloudflared 2 replica đang chung 1 node** → cần anti-affinity (đề xuất). Service phụ trợ
+  (ad/recommendation/llm/accounting/fraud/email/image-provider) **cố ý giữ 1 replica**.
+- **Mandate #8 (migrate 3 datastore lên managed)** — 🟡 **Kế hoạch (CDO02), hạn 20/07**. Đưa
+  postgres→RDS, valkey→ElastiCache, kafka→MSK — không mất data, không downtime (checkout ≥99% suốt
+  cutover), TLS + Secrets Manager + endpoint private, trong ngân sách. Audit: version managed khớp
+  in-cluster 1:1 (PG 17.6, Valkey 9.0, Kafka 3.9 KRaft) → rủi ro ở cutover/TLS/credential, không ở
+  tương thích. **Giải quyết dứt điểm residual datastore single-replica.** ADR `docs/adr/0009-mandate-08-managed-migration-cdo02.md`
+  (đảo chiều phần "hoãn MSK" của ADR 0002), runbook `docs/runbooks/mandate-08-managed-cutover.md`.
+
+### AI trong sản phẩm (AIO02) — Bedrock đã LIVE
+- **`product-reviews` giờ dùng AWS Bedrock thật** (không còn mock): `LLM_PROVIDER=bedrock`,
+  `LLM_MODEL=amazon.nova-lite-v1:0`, judge/evaluator `amazon.nova-micro-v1:0`, `AWS_REGION=us-east-1`.
+  IRSA `techx-corp-tf3-product-reviews-bedrock` (quyền Bedrock chỉ ở SA này, không cấp global). Bật qua
+  `values-aio-llm.yaml` (đã có trong `gitops/apps/techx-corp.yaml`). Có guardrail: summary evaluator
+  reject nội dung bịa, grounding "No information in reviews". Runbook `docs/runbooks/aio-bedrock-rollout.md`.
+  (Việc AIO02, không phải CDO02.)
+
+### Security / supply-chain (CDO01) — PM-101
+- **Image supply-chain gate**: Trivy release gate (chặn image lỗ hổng **trước** push) + Cosign keyless
+  signing (chứng minh digest đang chạy đến từ workflow TF3). ECR immutable + digest-pinned (PM-95).
+  ADR `docs/adr/0008-pm-101-image-supply-chain-gate.md`. CI có auto-tag/digest cho imageOverride (PR #153/#158).
+- **Network policy quan sát** đã vá: cho `cloudflared` vào Grafana/Jaeger UI ports (PR #155/#156).
 
 ### Rủi ro / việc còn mở
 - **⚠️ 4 IAM user** (`arthur`, `CDO01`, `CDO02`, `AIO02`) + `mentor` đều `AdministratorAccess` — trái
   least-privilege. Chưa thu hẹp (trụ Security/CDO01).
 - **🔑 Secret cần rotate sau bài tập**: flagd sync token (đã dùng trong `kubectl create secret`),
   **Cloudflare API token** (đã dùng phiên 14/07, file `~/Downloads/tokencloudflare.txt` cần xoá).
-- **Datastore không HA**: postgres/valkey/kafka single-replica trên 1 node stateful. Residual risk có
-  ý thức (ADR 0007); HA thật = RDS/ElastiCache là roadmap ngoài ngân sách (ADR 0002, 0005).
+- **Datastore không HA**: postgres/valkey/kafka single-replica trên 1 node stateful — **là SPOF thật
+  trên luồng ra tiền**. Hiện quản bằng planned-failover (PR #117); **đang được xử dứt điểm ở Mandate #8**
+  (migrate lên RDS/ElastiCache/MSK — ADR 0009, hạn 20/07).
 
 ---
 
-## Backlog CDO02 — trạng thái thật (verify 15/07 qua code + cluster)
+## Backlog CDO02 — trạng thái thật (verify 16/07 qua code + cluster)
 
 Nguồn: [`docs/backlog/cdo02-reliability-cost-backlog.md`](docs/backlog/cdo02-reliability-cost-backlog.md).
 
@@ -125,19 +150,15 @@ product-catalog/product-reviews/checkout qua gRPC readiness; service stateless g
 REL-05 (connection pool trong code — **KHÔNG dùng PgBouncer**, nhánh đó bị bỏ), REL-07 (CPU
 requests/limits 0/53 thiếu), REL-09 (Kafka `WaitForAll` + accounting manual commit), REL-10 (PVC cho
 cả postgres/valkey/kafka), REL-12 (quote throw khi thiếu field), REL-13 (Grafana OOM — mem 1Gi),
-REL-16 (Kafka OOM — mem 1536Mi), REL-17 (Cloudflare access). COST-01 (ECR lifecycle `tagPatternList`),
+REL-16 (Kafka OOM — mem 1536Mi), REL-17 (Cloudflare access), **REL-11 (currency validate — fix PR #120,
+trả `INVALID_ARGUMENT` cho code lạ), REL-12/REL-15 (PR #120)**. COST-01 (ECR lifecycle `tagPatternList`),
 COST-02 (Karpenter thay cluster-autoscaler), COST-03 (Spot), COST-06 (ResourceQuota), COST-07 (NAT đơn).
 
-**❌ CÒN BUG / cần làm:**
-- **REL-11 (currency)** 🟢 — bug thật còn nguyên: `currency_conversion[from_code]` với code lạ → chia 0
-  → NaN âm thầm. Cần validate + trả `INVALID_ARGUMENT`. Fix nhỏ, rebuild 1 image.
+**🟡 MỘT PHẦN / verify:** REL-06 (resource đã set, load test 200 user đã PASS — coi như đủ), REL-14 (đã có
+`fix(rel-14) retry product-catalog DB init` — cần verify crash hết), COST-04 (right-size đang tiếp diễn),
+COST-05 (load-gen OOM — config hardened, root cause chưa chốt).
 
-**🟡 MỘT PHẦN / verify:** REL-06 (resource đã set, chưa load test đầy đủ), REL-14 (đã có
-`fix(rel-14) retry product-catalog DB init` — cần verify crash hết), REL-15 (có `grafana-alerting` cm,
-chưa rõ phủ đủ restart/OOM/readiness), COST-04 (right-size đang tiếp diễn), COST-05 (load-gen OOM —
-config hardened, root cause chưa chốt).
-
-**📌 THEO DÕI (đúng thiết kế):** REL-08 (datastore đơn lẻ → managed HA là roadmap).
+**📌 ĐANG LÀM:** REL-08 (datastore đơn lẻ) → **Mandate #8 migrate lên managed** (ADR 0009, hạn 20/07).
 
 ---
 
@@ -150,9 +171,11 @@ config hardened, root cause chưa chốt).
   SERVING là đúng).
 - `checkout` Kafka fire-and-forget + `accounting` auto-commit mất đơn → **đã fix REL-09**.
 - `valkey-cart` không persistence → **đã fix** (PVC + AOF).
-- `currency` không validate code → **CHƯA fix (REL-11)**.
+- `currency` không validate code → **đã fix REL-11** (PR #120, validate + `INVALID_ARGUMENT`).
 - `quote` nuốt exception → **đã fix REL-12**.
-- **`llm` là mock hoàn toàn** (JSON tĩnh) — cắm LLM thật là việc AIO02, không phải CDO02.
+- **`product-reviews` giờ dùng Bedrock thật** (nova-lite + judge nova-micro, IRSA riêng) — không còn
+  đi qua mock `llm`. AIO02 rollout (PR #142, `values-aio-llm.yaml`). Service `llm` mock vẫn còn trong
+  chart nhưng bị `LLM_PROVIDER=bedrock` bỏ qua. Xem mục "AI trong sản phẩm" ở trên.
 
 ---
 

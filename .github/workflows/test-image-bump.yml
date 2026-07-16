@@ -1,0 +1,50 @@
+name: Test Image Bump PR
+
+"on":
+  pull_request:
+    paths:
+      - ".github/workflows/build-push-ecr.yml"
+      - ".github/workflows/test-image-bump.yml"
+      - "scripts/ci/**"
+      - "docs/ci-image-override-walkthrough.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r scripts/ci/requirements-image-bump.txt
+
+      - name: Check syntax
+        run: |
+          set -euo pipefail
+          python -m compileall -q scripts/ci
+
+      - name: Pytest collect
+        run: |
+          set -euo pipefail
+          python -m pytest --collect-only -q scripts/ci
+
+      - name: Run Pytest
+        run: |
+          set -euo pipefail
+          python -m pytest -q scripts/ci
+
+      - name: Run Actionlint
+        run: |
+          set -euo pipefail
+          bash -c "curl -sL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash"
+          ./actionlint .github/workflows/build-push-ecr.yml .github/workflows/test-image-bump.yml

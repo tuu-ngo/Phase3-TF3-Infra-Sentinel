@@ -3,6 +3,8 @@
 **Scope:** backlog #8, complementary to PM-95's ECR tag immutability and
 digest pinning. This document owns the remaining release gate and provenance
 controls; it does not replace the pinned digest in the GitOps values.
+The signed decision and rollout trade-offs are recorded in
+[`ADR 0008`](../adr/0008-pm-101-image-supply-chain-gate.md).
 
 ## First-party app images
 
@@ -44,6 +46,20 @@ is the current scan evidence to attach to the release/change record; a failed
 gate uploads reports produced before the failure as well. The first successful
 run after this PR must be recorded against the exact digest in
 `docs/release-notes-v1.md` before that digest is promoted in GitOps.
+
+After each successful signature, the workflow immediately verifies the ECR
+digest against the certificate identity derived from `GITHUB_WORKFLOW_REF`.
+The resulting `signed-release-evidence-<run-id>` artifact contains:
+
+- `signed-images.jsonl`: service, tag, pushed digest, Git SHA, run URL, expected
+  workflow identity, and the corresponding Trivy/Cosign report paths;
+- `cosign/<service>.json`: the raw successful `cosign verify` output for that
+  digest.
+
+The two artifacts must be reviewed together. A digest is eligible for GitOps
+promotion only when it has both a clean Trivy report and a successful Cosign
+verification from the same workflow run. The branch implementation itself is
+not runtime evidence; the first green full run on `main` supplies that proof.
 
 ## External-image exceptions
 
