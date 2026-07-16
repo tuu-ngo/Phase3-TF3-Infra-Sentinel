@@ -37,7 +37,9 @@ configurations.configureEach {
             useVersion("4.1.135.Final")
             because("PM-101: remediate HIGH Netty CVEs before image release")
         }
-        if (requested.group == "com.fasterxml.jackson.core") {
+        if (requested.group == "com.fasterxml.jackson.core" &&
+            (requested.name == "jackson-core" || requested.name == "jackson-databind")
+        ) {
             useVersion(jacksonVersion)
             because("PM-101: remediate HIGH Jackson databind CVEs before image release")
         }
