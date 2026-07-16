@@ -35,6 +35,10 @@ resource "aws_iam_role" "karpenter_node" {
   assume_role_policy = data.aws_iam_policy_document.karpenter_node_assume_role.json
 
   tags = local.karpenter_tags
+
+  lifecycle {
+    ignore_changes = [tags["karpenter.sh/discovery"]]
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "karpenter_node" {
@@ -56,6 +60,10 @@ resource "aws_eks_access_entry" "karpenter_node" {
   type          = "EC2_LINUX"
 
   tags = local.karpenter_tags
+
+  lifecycle {
+    ignore_changes = [tags["karpenter.sh/discovery"]]
+  }
 }
 
 resource "aws_sqs_queue" "karpenter_interruption" {
@@ -64,6 +72,10 @@ resource "aws_sqs_queue" "karpenter_interruption" {
   sqs_managed_sse_enabled   = true
 
   tags = local.karpenter_tags
+
+  lifecycle {
+    ignore_changes = [tags["karpenter.sh/discovery"]]
+  }
 }
 
 data "aws_iam_policy_document" "karpenter_interruption_queue" {
@@ -166,6 +178,10 @@ resource "aws_iam_role" "karpenter_controller" {
   assume_role_policy = data.aws_iam_policy_document.karpenter_controller_assume_role.json
 
   tags = local.karpenter_tags
+
+  lifecycle {
+    ignore_changes = [tags["karpenter.sh/discovery"]]
+  }
 }
 
 resource "aws_iam_role_policy" "karpenter_controller" {

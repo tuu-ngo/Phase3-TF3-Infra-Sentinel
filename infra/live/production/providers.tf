@@ -1,6 +1,13 @@
 provider "aws" {
   region = var.region
 
+  # Karpenter discovery tags on shared subnets/security groups are managed by
+  # dedicated aws_ec2_tag resources in the eks-platform module. Ignoring this
+  # key prevents the owning VPC/EKS resources from removing those tags.
+  ignore_tags {
+    keys = ["karpenter.sh/discovery"]
+  }
+
   default_tags {
     tags = {
       project    = "techx-corp-phase3"

@@ -15,22 +15,7 @@
       "$ref": "#/definitions/Default"
     },
     "serviceAccount": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "create": {
-          "type": "boolean"
-        },
-        "annotations": {
-          "type": "object"
-        },
-        "name": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "create"
-      ]
+      "$ref": "#/definitions/ServiceAccountConfig"
     },
     "components": {
       "$ref": "#/definitions/Components"
@@ -59,6 +44,24 @@
     "serviceAccount"
   ],
   "definitions": {
+    "ServiceAccountConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "annotations": {
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "create"
+      ]
+    },
     "Rollouts": {
       "type": "object",
       "additionalProperties": false,
@@ -78,6 +81,9 @@
             },
             "analysisTemplateName": {
               "type": "string"
+            },
+            "replicasManagedExternally": {
+              "type": "boolean"
             },
             "replicas": {
               "type": "integer",
@@ -196,6 +202,9 @@
         "replicas": {
           "type": "integer"
         },
+        "replicasManagedExternally": {
+          "type": "boolean"
+        },
         "revisionHistoryLimit": {
           "type": "integer"
         },
@@ -228,6 +237,9 @@
           "items": {
             "$ref": "#/definitions/Env"
           }
+        },
+        "serviceAccount": {
+          "$ref": "#/definitions/ServiceAccountConfig"
         },
         "command": {
           "type": "array",

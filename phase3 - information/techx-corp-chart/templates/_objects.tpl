@@ -10,7 +10,9 @@ metadata:
   labels:
     {{- include "techx-corp.labels" . | nindent 4 }}
 spec:
+  {{- if not .replicasManagedExternally }}
   replicas: {{ .replicas | default .defaultValues.replicas }}
+  {{- end }}
   revisionHistoryLimit: {{ .revisionHistoryLimit | default .defaultValues.revisionHistoryLimit }}
   {{- if .strategy }}
   strategy:

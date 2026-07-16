@@ -5,7 +5,7 @@ File này được Claude Code tự động đọc ở đầu mỗi phiên làm 
 là để **không phải giải thích lại bối cảnh dự án từ đầu mỗi lần mở chat mới**. Giữ file này
 cập nhật; nó có giá trị bằng đúng mức nó phản ánh đúng thực tế hiện tại.
 
-> **Cập nhật gần nhất: 15/07/2026** (sau khi hoàn tất Mandate #3 core + đính chính trạng thái backlog).
+> **Cập nhật gần nhất: 15/07/2026** (sau cutover GitOps sang nhánh `main` + hoàn tất Mandate #3 core).
 
 ## Bối cảnh (không đổi trong suốt 3 tuần)
 
@@ -52,9 +52,10 @@ Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"tea
 - **Account production giờ là `197826770971`** (không phải account BTC `012619468490` cũ — account
   cũ bị block, team chốt migrate). EKS `techx-corp-tf3`, `ap-southeast-1`, **version 1.35**. ECR
   `197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp`.
-- **Deploy bằng GitOps/ArgoCD (App-of-Apps), KHÔNG còn `helm upgrade` tay.** Nguồn deploy thật là
-  **nhánh `deploy/account-migration-gitops`** (KHÔNG phải `main` — `gitops/apps/*.yaml` trên main còn
-  ghi `targetRevision: main` là lỗi thời). ArgoCD apps: `techx-corp` (chart chính), `techx-edge`,
+- **Deploy bằng GitOps/ArgoCD (App-of-Apps), KHÔNG còn `helm upgrade` tay.** Nguồn deploy thật giờ là
+  **nhánh `main`** (đã cutover từ `deploy/account-migration-gitops` sang `main` ngày 15/07 — 7 ArgoCD app
+  đều `targetRevision: main`, verify Synced/Healthy, zero downtime). `deploy/account-migration-gitops` giờ
+  là **nhánh đóng băng làm rollback/audit** (giữ, không xoá, đã gỡ khỏi CI trigger). ArgoCD apps: `techx-corp` (chart chính), `techx-edge`,
   `techx-infrastructure-app` (`gitops/infrastructure/`), `karpenter`, `karpenter-nodepool`, `kyverno`,
   `kyverno-policies`, `external-secrets`, `flagd-secret-sync`, `argo-rollouts`. Auto-sync + selfHeal + prune.
 - **Terraform** ở `infra/live/production/` (root duy nhất), state S3 `techx-tf3-197826770971-tfstate`,
@@ -70,15 +71,24 @@ Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"tea
   đang audit).
 
 ### Truy cập cluster — 2 đường song song
-- **SSM bastion** (mặc định): `i-02a8d3e39b87180ce`. `aws ssm start-session ... AWS-StartPortForwardingSessionToRemoteHost`
-  → `localhost:8443` → `kubectl config set-cluster ... --server=https://localhost:8443 --insecure-skip-tls-verify`.
-  EKS API private-only. **Tunnel hay tự đóng sau ~10-20 phút idle** — mở lại khi cần.
+- **⚠️ PHẢI dùng `export AWS_PROFILE=techx-new`** cho mọi lệnh AWS/kubectl. Profile `default` trỏ
+  account CŨ `012619468490` (không còn dùng) — quên set là truy cập nhầm account, mọi thứ fail.
+- **SSM bastion** (mặc định): bastion `i-02a8d3e39b87180ce`, cluster endpoint
+  `ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com`. Mở tunnel:
+  ```sh
+  export AWS_PROFILE=techx-new; export MSYS_NO_PATHCONV=1   # Windows git-bash
+  aws ssm start-session --target i-02a8d3e39b87180ce --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters host="ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com",portNumber="443",localPortNumber="8443" --region ap-southeast-1
+  # terminal khác:
+  kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx-corp-tf3 --server=https://localhost:8443 --insecure-skip-tls-verify=true
+  ```
+  EKS API private-only. **Tunnel hay tự đóng sau ~10-20 phút idle** — mở lại khi cần (chạy background).
 - **Cloudflare Zero Trust (REL-17, phiên 14-15/07)**: domain `arthur-ngo.org` (cá nhân, tạm).
   `grafana.arthur-ngo.org` / `jaeger.arthur-ngo.org/jaeger/ui/` / `argocd.arthur-ngo.org` — vào thẳng
   UI qua SSO, **không cần kubectl/IAM**. `kubectl.arthur-ngo.org` cho kubectl (vẫn cần IAM). `cloudflared`
   Deployment chạy trong cluster. Xem [`docs/runbooks/cloudflare-zero-trust-access.md`](docs/runbooks/cloudflare-zero-trust-access.md).
-- **Branch protection** trên `deploy/account-migration-gitops`: **đã bật, chặn force-push + xoá nhánh**
-  (sau khi VietSory force-push 5 lần/1 ngày gây rối). Làm nhánh + PR, base là nhánh migration này.
+- **Branch protection** giờ trên **`main`** (require PR + review + status check, chặn force-push/xoá).
+  Làm nhánh + PR, base là **`main`**. CI (terraform-plan/apply, build-push-ecr) giờ nghe `main`.
 
 ### Mandates
 - **Mandate #1 (network exposure)** — ✅ Đạt: route ops (`/grafana`,`/jaeger`,`/feature`,`/loadgen`) đã
@@ -148,8 +158,7 @@ config hardened, root cause chưa chốt).
 
 ## Quy ước làm việc
 
-- **KHÔNG push thẳng `main` hay `deploy/account-migration-gitops`** — làm nhánh + PR, base là
-  `deploy/account-migration-gitops`. **Luôn branch từ `origin/deploy/account-migration-gitops` sau khi
+- **KHÔNG push thẳng `main`** — làm nhánh + PR, base là **`main`**. **Luôn branch từ `origin/main` sau khi
   `git fetch`** (branch từ local ref cũ đã 2 lần gây conflict). Branch protection chặn force-push.
 - **Verify chart change bằng `helm template`** (đúng flags ArgoCD dùng) trước khi commit — schema
   `values.schema.json` là `additionalProperties:false`, thêm field mà quên update schema sẽ làm ArgoCD
@@ -168,6 +177,6 @@ config hardened, root cause chưa chốt).
 - "Trụ của mình"/"team mình" = CDO02.
 - Trước mọi thay đổi hạ tầng thật (GitOps/K8s/Terraform/CI), nhắc luật flagd/secret ở trên — vi phạm
   là disqualify cho cả TF.
-- **Nguồn deploy thật = nhánh `deploy/account-migration-gitops`, account `197826770971`** — không nhầm
-  với `main`/account cũ.
+- **Nguồn deploy thật = nhánh `main`, account `197826770971`** (đã cutover 15/07 từ nhánh migration).
+  `deploy/account-migration-gitops` chỉ còn là rollback/audit đóng băng — không branch từ nó nữa.
 - Cập nhật mục "Trạng thái hiện tại" + trạng thái backlog mỗi khi có tiến triển lớn — đừng để file lạc hậu.
