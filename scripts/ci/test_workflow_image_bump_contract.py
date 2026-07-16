@@ -3,14 +3,20 @@ import yaml
 import pytest
 from pathlib import Path
 
+from ruamel.yaml import YAML
+
 def get_workflows():
-    build = yaml.safe_load(Path(".github/workflows/build-push-ecr.yml").read_text())
-    pr = yaml.safe_load(Path(".github/workflows/test-image-bump.yml").read_text())
+    yaml = YAML(typ="safe")
+    build = yaml.load(Path(".github/workflows/build-push-ecr.yml").read_text())
+    pr = yaml.load(Path(".github/workflows/test-image-bump.yml").read_text())
     return build, pr
 
 def test_t51_actionlint_passes():
-    # Will be tested by actual actionlint invocation in bash
-    pass
+    import subprocess
+    actionlint_path = Path("actionlint")
+    if actionlint_path.exists():
+        res = subprocess.run(["./actionlint", ".github/workflows/build-push-ecr.yml", ".github/workflows/test-image-bump.yml"], capture_output=True)
+        assert res.returncode == 0
 
 def test_t52_production_two_jobs():
     build, _ = get_workflows()
@@ -62,14 +68,20 @@ def test_t57_strict_metadata_passed():
 
 def test_t58_trivy_contract():
     build_raw = Path(".github/workflows/build-push-ecr.yml").read_text()
-    assert "v0.72.0" in build_raw # Wait, we must pin trivy
+    assert "v0.72.0" in build_raw
     assert "@${digest}" in build_raw
-    # Ensure artifact is uploaded after Trivy (jobs are ordered)
-    pass
+    build, _ = get_workflows()
+    steps = build["jobs"]["build-scan"]["steps"]
+    trivy_idx = next((i for i, s in enumerate(steps) if "trivy image" in s.get("run", "")), -1)
+    upload_idx = next((i for i, s in enumerate(steps) if "actions/upload-artifact" in s.get("uses", "")), -1)
+    assert trivy_idx != -1
+    assert upload_idx != -1
+    assert trivy_idx < upload_idx
 
 def test_t59_validation_workflow_security():
     _, pr = get_workflows()
-    assert pr.get("on", {}).get("pull_request") is not None
+    on_block = pr.get("on") or pr.get(True)
+    assert on_block.get("pull_request") is not None
     assert pr.get("permissions", {}).get("contents") == "read"
     assert pr.get("permissions", {}).get("id-token") is None
 

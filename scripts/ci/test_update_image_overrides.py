@@ -246,9 +246,13 @@ def test_t26_create_override(tmp_path):
 def test_t27_empty_override(tmp_path):
     v_data = "components:\n  ad:\n    imageOverride: {}\n"
     v, m = setup_env(tmp_path, values_data=v_data)
-    run_updater(v, m)
+    res = run_updater(v, m)
+    assert res.returncode == 0
     txt = Path(v).read_text()
-    assert "digest: sha256:000" in txt
+    from ruamel.yaml import YAML
+    yaml = YAML(typ="safe")
+    doc = yaml.load(txt)
+    assert doc["components"]["ad"]["imageOverride"]["digest"] == "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
 def test_t28_null_tag(tmp_path):
     v_data = "components:\n  ad:\n    imageOverride:\n      digest: sha256:old\n      tag: null\n"
@@ -259,7 +263,7 @@ def test_t28_null_tag(tmp_path):
 
 def test_t29_excluded_service(tmp_path):
     v, m = setup_env(tmp_path)
-    res = run_updater(v, m, extra_args=["--excluded-service", "ad", "--expected-services", ""])
+    res = run_updater(v, m, extra_args=["--excluded-service", "ad", "--expected-services", "ad"])
     assert res.returncode == 0
     txt = Path(v).read_text()
     assert "digest: sha256:old" in txt # unchanged
@@ -267,9 +271,11 @@ def test_t29_excluded_service(tmp_path):
 def test_t30_noop(tmp_path):
     v_data = "components:\n  ad:\n    imageOverride:\n      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000\n"
     v, m = setup_env(tmp_path, values_data=v_data)
-    st = os.stat(v).st_mtime
+    import hashlib
+    original_hash = hashlib.sha256(Path(v).read_bytes()).hexdigest()
     run_updater(v, m)
-    assert os.stat(v).st_mtime == st
+    new_hash = hashlib.sha256(Path(v).read_bytes()).hexdigest()
+    assert original_hash == new_hash
 
 def test_t31_multiple_service(tmp_path):
     v_data = "components:\n  ad:\n    imageOverride:\n      digest: old\n  cart:\n    imageOverride:\n      digest: old\n"
@@ -347,8 +353,8 @@ def test_t41_inline_quote_preserved(tmp_path):
     v_data = "components:\n  ad:\n    imageOverride:\n      digest: \"old\"\n"
     v, m = setup_env(tmp_path, values_data=v_data)
     run_updater(v, m)
-    # The regex replaces the value, so quotes might be stripped if the regex is simple, but we only assert semantic or reasonable preservation.
-    pass
+    txt = Path(v).read_text()
+    assert 'digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"' in txt
 
 def test_t42_unrelated_long_lines(tmp_path):
     long_str = "a" * 200
@@ -376,3 +382,23 @@ def test_t44_mode_summary(tmp_path):
     assert oct(os.stat(v).st_mode & 0o777) == oct(0o644)
     summary = os.path.join(tmp_path, "summary.json")
     assert os.path.exists(summary)
+
+def test_t44a_real_values_prod_regression(tmp_path):
+    import shutil
+    prod_path = Path("phase3 - information/deploy/values-prod.yaml")
+    if not prod_path.exists():
+        pytest.skip("No real values-prod.yaml found")
+    v = tmp_path / "values-prod.yaml"
+    shutil.copy(prod_path, v)
+    data = valid_manifest_base()
+    data["services"] = [
+        {"name": "accounting", "tag": "1234567-accounting", "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "manifestMediaType": "application/vnd.oci.image.index.v1+json"}
+    ]
+    m = tmp_path / "approved-images.json"
+    write_json(m, data)
+    res = run_updater(str(v), str(m), extra_args=["--expected-services", "accounting"])
+    assert res.returncode == 0
+    from ruamel.yaml import YAML
+    yaml = YAML(typ="safe")
+    doc = yaml.load(v.read_text())
+    assert doc["components"]["accounting"]["imageOverride"]["digest"] == "sha256:0000000000000000000000000000000000000000000000000000000000000000"

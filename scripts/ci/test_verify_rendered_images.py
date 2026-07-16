@@ -49,6 +49,79 @@ spec:
     r, m = setup_env(tmp_path, valid_manifest(), rendered)
     assert run_verifier(r, m).returncode == 0
 
+def test_t45a_wrong_registry(tmp_path):
+    rendered = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ad
+  labels:
+    app.kubernetes.io/name: ad
+spec:
+  template:
+    spec:
+      containers:
+      - image: malicious.example.com/techx-corp@sha256:0000000000000000000000000000000000000000000000000000000000000000
+"""
+    r, m = setup_env(tmp_path, valid_manifest(), rendered)
+    assert run_verifier(r, m).returncode != 0
+
+def test_t45b_wrong_repository(tmp_path):
+    rendered = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ad
+  labels:
+    app.kubernetes.io/name: ad
+spec:
+  template:
+    spec:
+      containers:
+      - image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp-shadow@sha256:0000000000000000000000000000000000000000000000000000000000000000
+"""
+    r, m = setup_env(tmp_path, valid_manifest(), rendered)
+    assert run_verifier(r, m).returncode != 0
+
+def test_t45c_exact_match(tmp_path):
+    rendered = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ad
+  labels:
+    app.kubernetes.io/name: ad
+spec:
+  template:
+    spec:
+      containers:
+      - image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:0000000000000000000000000000000000000000000000000000000000000000
+"""
+    r, m = setup_env(tmp_path, valid_manifest(), rendered)
+    assert run_verifier(r, m).returncode == 0
+
+def test_t45d_sidecar_wrong_app_wrong(tmp_path):
+    rendered = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ad
+  labels:
+    app.kubernetes.io/name: ad
+spec:
+  template:
+    spec:
+      containers:
+      - name: sidecar
+        image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      - name: ad
+        image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:1111111111111111111111111111111111111111111111111111111111111111
+"""
+    r, m = setup_env(tmp_path, valid_manifest(), rendered)
+    # The script looks at all containers that match repository `techx-corp`.
+    # Since both match `techx-corp`, both are checked. The second one fails.
+    assert run_verifier(r, m).returncode != 0
+
 def test_t46_expected_workload_missing(tmp_path):
     r, m = setup_env(tmp_path, valid_manifest(), "kind: Deployment\n")
     assert run_verifier(r, m).returncode != 0
