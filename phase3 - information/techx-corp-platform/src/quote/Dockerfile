@@ -20,13 +20,10 @@ RUN composer install \
 
 FROM docker.io/library/php:8.4-cli-alpine3.22
 
-# Trivy gate (PM-101): patch known-fixed HIGH CVEs in the Alpine base layer
-# (c-ares CVE-2026-33630, openssl/libcrypto3/libssl3 CVE-2026-45447) instead
-# of waiting for the upstream php:8.4-cli-alpine3.22 tag to be refreshed.
-RUN apk update && apk upgrade --no-cache c-ares libcrypto3 libssl3 openssl
-
 COPY --from=installer /usr/bin/install-php-extensions /usr/local/bin/
 
+# Trivy gate (PM-101): apply every available Alpine security update before
+# installing the runtime extensions.
 RUN apk upgrade --no-cache && \
     install-php-extensions opcache pcntl protobuf opentelemetry
 

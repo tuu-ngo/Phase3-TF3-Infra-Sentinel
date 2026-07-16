@@ -11,15 +11,6 @@ on:
         description: "Build platforms"
         required: false
         default: "linux/amd64,linux/arm64"
-      services:
-        description: "Optional space-separated allowlisted targets (default: all)"
-        required: false
-        default: ""
-      scan_only:
-        description: "Build and run the blocking Trivy gate without ECR push/sign"
-        required: false
-        type: boolean
-        default: false
 
   push:
     branches: [main]
@@ -207,6 +198,17 @@ jobs:
             echo "mode=scoped" >> "$GITHUB_OUTPUT"
             echo "services=$UNIQUE_SERVICES" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.scope.outputs.mode != 'none'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: steps.scope.outputs.mode != 'none'
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up QEMU
         if: steps.scope.outputs.mode != 'none'
@@ -605,7 +607,7 @@ jobs:
           done
 
       - name: Upload signed release evidence
-        if: always() && steps.scope.outputs.mode != 'none' && inputs.scan_only != true
+        if: always() && steps.scope.outputs.mode != 'none'
         uses: actions/upload-artifact@v4
         with:
           name: signed-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
