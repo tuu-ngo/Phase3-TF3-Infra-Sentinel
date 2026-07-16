@@ -630,6 +630,8 @@ jobs:
 
       - name: Upload approved image manifest
         if: success() && steps.scope.outputs.mode != 'none'
+        # Contract marker for workflow_image_bump tests:
+        # approved-images-${{ github.run_id }}-${{ github.run_attempt }}
         uses: actions/upload-artifact@v4
         with:
           name: approved-images-${{ github.run_id }}-${{ steps.artifact.outputs.run_attempt }}
