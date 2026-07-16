@@ -20,6 +20,36 @@ EXCEPTIONS = REPO / "docs" / "evidence" / "mandate-05" / "exception-register.yam
 VERIFY = REPO / "scripts" / "ci" / "verify-runtime-hardening.py"
 
 
+def render_chart_with_dependencies(chart_dir, values):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        chart_copy = Path(tmpdir) / chart_dir.name
+        shutil.copytree(chart_dir, chart_copy)
+        subprocess.run(
+            ["helm", "dependency", "build", str(chart_copy)],
+            cwd=REPO,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        render_result = subprocess.run(
+            [
+                "helm",
+                "template",
+                "techx-corp",
+                str(chart_copy),
+                "--namespace",
+                "techx-tf3",
+                *sum((["-f", str(path)] for path in values), []),
+            ],
+            cwd=REPO,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return render_result.stdout
+
+
 def test_authoritative_render_is_inventory_clean():
     if shutil.which("helm") is None:
         pytest.skip("helm is required for runtime hardening tests")
@@ -28,22 +58,7 @@ def test_authoritative_render_is_inventory_clean():
         rendered = Path(tmpdir) / "rendered.yaml"
         inventory = Path(tmpdir) / "inventory.json"
 
-        render_result = subprocess.run(
-            [
-                "helm",
-                "template",
-                "techx-corp",
-                str(CHART),
-                "--namespace",
-                "techx-tf3",
-                *sum((["-f", str(path)] for path in VALUES), []),
-            ],
-            cwd=REPO,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        rendered.write_text(render_result.stdout, encoding="utf-8")
+        rendered.write_text(render_chart_with_dependencies(CHART, VALUES), encoding="utf-8")
 
         result = subprocess.run(
             [
