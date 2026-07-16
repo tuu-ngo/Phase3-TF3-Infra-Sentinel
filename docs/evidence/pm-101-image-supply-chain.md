@@ -4,23 +4,26 @@
 
 **Backlog:** item #8 / PM-101, extending PM-95 digest pinning and ECR immutability
 
-**Branch:** `feat/pm-101-trivy-cosign-gate`
+**Branch:** `fix/pm-101-production-completion`
 
 **Date:** 2026-07-16
 
-**Status:** implementation ready for PR; remote CI, signature, and live-digest
-evidence remain pending until the workflow is merged and run on `main`
+**Status:** remediation and evidence collection in progress; production
+workflow/signatures/live-digest evidence remain pending.
 
 ## 1. Scope and isolation from PM-92
 
-This branch is created from the current `origin/main` and contains only PM-101
-CI, supply-chain documentation, and evidence changes:
+The original PM-101 implementation was isolated from PM-92. The current
+completion branch also contains the Dockerfile/dependency remediation required
+to make the zero-HIGH/CRITICAL gate pass:
 
 - `.github/workflows/build-push-ecr.yml`
 - `.github/workflows/scan-external-images.yml`
 - `docs/adr/0008-pm-101-image-supply-chain-gate.md`
 - `docs/security/image-supply-chain-controls.md`
 - `docs/evidence/pm-101-image-supply-chain.md`
+- first-party image Dockerfiles and dependency lockfiles needed to clear the
+  blocking gate
 
 It deliberately does **not** contain PM-92 changes to
 `phase3 - information/techx-corp-chart/values.yaml` or application Dockerfiles.
@@ -158,7 +161,34 @@ cannot cause an unreviewed workload rollout.
 - No workflow was dispatched, ECR artifact mutated, GitOps value changed, or
   Kubernetes resource applied while preparing this branch.
 
-## 7. Commands used for final verification
+## 7. Current execution record — 2026-07-16
+
+The branch is not yet eligible for a 100% DoD claim. The following evidence is
+real and reproducible:
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Trivy pre-push gate | Pass in workflow design; failed runs stop before ECR push/sign | Actions run `29479442966` |
+| Full candidate build | 20/20 candidates built; gate exposed remaining findings | Actions run `29479442966`, artifact `trivy-app-images-29479442966` |
+| Local strict Trivy | Pass for frontend, cart, Kafka, ad, LLM, recommendation, email and quote after remediation | local reports and build logs from this branch |
+| External-image scan | Passes as a non-blocking scheduled scan; findings remain upstream exceptions | run `29472103737`, artifact `trivy-external-images-29472103737` |
+| Keyless Cosign implementation | Code path present, but skipped by failed full gate | Actions run `29479442966` shows push/sign skipped |
+| ECR signatures | Not yet proven for the new release | no successful full production run yet |
+| Live digest mapping | Not yet promoted | no GitOps digest promotion yet |
+
+Remediation commits pushed to this branch include `fe6aed2` (frontend),
+`d24fa65` (cart/Kafka), and `ecaa0d9` (Python/Ruby/PHP runtimes). `flagd-ui`
+remediation remains uncommitted while its Tailwind asset build is being
+validated. The last full remote run still reports violations in load-generator,
+image-provider, checkout, product-catalog, payment, fraud-detection,
+frontend-proxy, and related targets; these are not exceptions and must be fixed
+or explicitly reviewed before release.
+
+The next acceptance gate is one green full run on `main`, followed by ECR
+signature verification and live digest evidence. Until then the correct status
+is **partial, not complete**.
+
+## 8. Commands used for final verification
 
 Verify branch isolation before merge:
 
@@ -185,7 +215,7 @@ kubectl get pods -n techx-tf3 -o json \
   | sort -u
 ```
 
-## 8. Rollback
+## 9. Rollback
 
 If the new CI control causes an unintended release outage, revert the PM-101
 merge commit on `main`. This restores the previous workflow and removes the
@@ -194,7 +224,7 @@ digests, alter ECR immutability, expose private operations endpoints, or disable
 flagd. A Security-approved temporary exception must be documented separately;
 do not silently weaken `TRIVY_SEVERITIES` or remove Cosign verification.
 
-## 9. Definition of Done
+## 10. Definition of Done
 
 - [x] Blocking Trivy step is before the normal ECR push in branch code.
 - [x] Threshold is explicitly zero HIGH/CRITICAL.
