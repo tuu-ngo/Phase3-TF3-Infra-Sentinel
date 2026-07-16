@@ -714,7 +714,7 @@ components:
         memory: 100Mi
   fraud-detection:
     imageOverride:
-      digest: sha256:b4797d6b16bf6a3b88ec8ddb9dbcd6c29c208e6be221f4f018af4b5f624fbc13
+      digest: sha256:da9adc9f6e49f9e1693c4d68e23632aab6886f2a7d95e01864ac98f155ec5a36
     resources:
       requests:
         cpu: 50m
