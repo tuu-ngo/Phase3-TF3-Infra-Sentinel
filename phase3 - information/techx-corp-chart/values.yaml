@@ -290,9 +290,13 @@ components:
       allowPrivilegeEscalation: false
       capabilities:
         drop: ["ALL"]
+      readOnlyRootFilesystem: true
     podSecurityContext:
       seccompProfile:
         type: RuntimeDefault
+    mountedEmptyDirs:
+      - name: tmp
+        mountPath: /tmp
 
   checkout:
     enabled: true

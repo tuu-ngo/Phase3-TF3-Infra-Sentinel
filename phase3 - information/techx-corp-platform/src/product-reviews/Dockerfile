@@ -35,5 +35,6 @@ RUN addgroup -S -g 65532 nonroot \
     && chown -R 65532:65532 /app
 USER 65532:65532
 
+
 EXPOSE ${PRODUCT_REVIEWS_PORT}
 ENTRYPOINT [ "/venv/bin/opentelemetry-instrument", "/venv/bin/python", "product_reviews_server.py" ]
