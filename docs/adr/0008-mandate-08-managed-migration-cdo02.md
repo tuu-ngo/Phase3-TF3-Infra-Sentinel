@@ -179,6 +179,14 @@ cấp sau mandate.
 secret, inject qua `valueFrom.secretKeyRef`. Riêng Postgres phải render **3 format khác nhau**
 (.NET `Host=...;` / Go-URL `postgres://` / libpq `host=... user=...`) vì 3 client parse khác nhau.
 
+**Nguyên tắc thao tác (áp cho cả runbook):** credential **chỉ rời Secrets Manager khi bắt buộc**.
+- Thao tác **MSK** chạy từ pod trong cluster, credential bơm bằng **`secretKeyRef`** → giá trị thật
+  **không nằm trong pod spec**, `kubectl get pod -o yaml` không lộ. Truyền credential bằng `--env=`
+  (giá trị thật) chỉ là **break-glass**, và nếu đã dùng thì **phải xoay lại secret** sau đó.
+- Thao tác **RDS/ElastiCache** chạy từ máy vận hành qua SSM tunnel nên **buộc** phải kéo password/token
+  về shell — đây là **giới hạn có ý thức** của việc dùng tunnel, đổi lấy thao tác đơn giản. Bù lại:
+  không ghi ra file, không paste vào PR/chat, và secret **xoay được** sau cutover.
+
 **Gỡ sạch `otelu/otelp` khỏi `values.yaml`** — vá luôn lỗ hổng token plaintext ADR 0002 đã ghi nhận.
 
 **Chi phí:** 3 secret × $0.40 + 1 CMK ~$1 ≈ **$2.20/mo**.

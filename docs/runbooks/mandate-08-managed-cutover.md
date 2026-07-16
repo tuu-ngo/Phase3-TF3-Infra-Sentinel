@@ -17,11 +17,24 @@ Thứ tự: **Valkey → Postgres → Kafka** (dễ → khó). Mỗi store cutov
 dựng lại hoặc người khác chạy. Nếu một lệnh trả rỗng ⇒ tài nguyên đó chưa tồn tại, dừng và xử lý.
 
 ```sh
-# --- Môi trường (đổi 3 dòng này nếu TF/account khác) ---
-export AWS_PROFILE=techx-new            # profile trỏ account chạy TF3 (hiện: 197826770971)
+# --- Môi trường: KHÔNG có giá trị mặc định cho profile. Bạn PHẢI tự set. ---
+# Đây là cutover production: copy-paste nhầm profile = thao tác lên SAI ACCOUNT.
+: "${AWS_PROFILE:?PHAI set truoc, vd: export AWS_PROFILE=ten-profile-tro-dung-account-TF3}"
 export AWS_REGION=ap-southeast-1
 export CLUSTER=techx-corp-tf3
 export NS=techx-tf3
+export EXPECT_ACCOUNT=197826770971      # account TF3 tại thời điểm viết — đổi nếu TF chuyển account
+
+# --- GUARD: sai account/cluster thì DỪNG NGAY, đừng để phát hiện sau khi đã đụng dữ liệu ---
+ACCT=$(aws sts get-caller-identity --query Account --output text) || return 1 2>/dev/null || exit 1
+if [ "$ACCT" != "$EXPECT_ACCOUNT" ]; then
+  echo "DUNG LAI: profile '$AWS_PROFILE' dang tro account $ACCT, mong doi $EXPECT_ACCOUNT"
+  return 1 2>/dev/null || exit 1
+fi
+aws eks describe-cluster --name "$CLUSTER" --region "$AWS_REGION" >/dev/null 2>&1 || {
+  echo "DUNG LAI: khong thay cluster $CLUSTER trong account $ACCT/$AWS_REGION"
+  return 1 2>/dev/null || exit 1; }
+echo "OK: account=$ACCT region=$AWS_REGION cluster=$CLUSTER ns=$NS"
 
 # --- Định danh tài nguyên do team đặt (khớp terraform) ---
 export RDS_ID=techx-tf3-postgres
@@ -54,8 +67,8 @@ sec(){ aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id "$
 export PG_USER=$(sec techx-tf3/postgres        | python -c 'import sys,json;print(json.load(sys.stdin)["username"])')
 export PG_PASS=$(sec techx-tf3/postgres        | python -c 'import sys,json;print(json.load(sys.stdin)["password"])')
 export CACHE_TOKEN=$(sec techx-tf3/elasticache-auth | python -c 'import sys,json;print(json.load(sys.stdin)["auth_token"])')
-export MSK_USER=$(sec AmazonMSK_techx-tf3/kafka-scram | python -c 'import sys,json;print(json.load(sys.stdin)["username"])')
-export MSK_PASS=$(sec AmazonMSK_techx-tf3/kafka-scram | python -c 'import sys,json;print(json.load(sys.stdin)["password"])')
+# ⚠️ KHÔNG kéo credential MSK về máy: pod CLI lấy thẳng từ K8s secret qua secretKeyRef (xem dưới).
+#    Chỉ PG_PASS/CACHE_TOKEN buộc phải có ở đây vì psql/redis-cli chạy từ máy bạn qua tunnel.
 
 # --- Store CŨ in-cluster (dùng cho dual-write ngược + rollback) ---
 export VALKEY_OLD=valkey-cart:6379
@@ -102,34 +115,61 @@ aws ssm start-session --target "$BASTION_ID" --region "$AWS_REGION" \
 
 **(b) MSK → KHÔNG tunnel được, chạy CLI từ pod trong cluster.** Lý do: client Kafka bootstrap xong sẽ
 bị broker trả về **advertised hostname riêng của từng broker** rồi kết nối thẳng tới đó — tunnel một
-cổng không đủ. Dùng helper này (ảnh Kafka đã có sẵn trong ECR):
+cổng không đủ.
+
+Dựng **một pod CLI dùng chung** (ảnh Kafka đã có sẵn trong ECR), credential lấy qua **`secretKeyRef`**
+— giá trị thật **không bao giờ nằm trong pod spec**, chỉ có *tham chiếu* tới secret. Đây là cách **mặc định**:
+
 ```sh
 export KAFKA_IMAGE=$(kubectl -n "$NS" get deploy kafka \
   -o jsonpath='{.spec.template.spec.containers[0].image}')
 
-# dùng: mskcli kafka-topics.sh --list
-#       mskcli kafka-consumer-groups.sh --describe --all-groups
-# (tự thêm --bootstrap-server + --command-config; credential lấy từ env của pod, không nội suy vào lệnh)
-mskcli(){
-  tool="$1"; shift
-  kubectl -n "$NS" run "mskcli-$RANDOM" --rm -i --restart=Never --image="$KAFKA_IMAGE" \
-    --env=MSK_USER="$MSK_USER" --env=MSK_PASS="$MSK_PASS" --env=BS="$MSK_BOOTSTRAP" \
-    --command -- sh -c 'cat > /tmp/c.properties <<EOF
+kubectl -n "$NS" apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mskcli
+spec:
+  restartPolicy: Never
+  containers:
+    - name: cli
+      image: ${KAFKA_IMAGE}
+      command: ["sleep", "7200"]        # sống 2h cho đủ cửa sổ cutover; xoá ở §8
+      env:
+        - name: MSK_USER                # ← chỉ THAM CHIẾU secret, không phải giá trị
+          valueFrom:
+            secretKeyRef: { name: kafka-scram, key: username }
+        - name: MSK_PASS
+          valueFrom:
+            secretKeyRef: { name: kafka-scram, key: password }
+EOF
+kubectl -n "$NS" wait --for=condition=Ready pod/mskcli --timeout=120s
+
+# Sinh file client config BÊN TRONG pod (credential đọc từ env do secretKeyRef bơm vào)
+kubectl -n "$NS" exec mskcli -- sh -c 'umask 077; cat > /tmp/c.properties <<EOF
 security.protocol=SASL_SSL
 sasl.mechanism=SCRAM-SHA-512
 sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="$MSK_USER" password="$MSK_PASS";
-EOF
-exec /opt/kafka/bin/"$0" --bootstrap-server "$BS" --command-config /tmp/c.properties "$@"' "$tool" "$@"
+EOF'
+
+# Helper — dùng: mskcli kafka-topics.sh --list
+#                mskcli kafka-consumer-groups.sh --describe --all-groups
+mskcli(){ tool="$1"; shift
+  kubectl -n "$NS" exec mskcli -- \
+    /opt/kafka/bin/"$tool" --bootstrap-server "$MSK_BOOTSTRAP" \
+    --command-config /tmp/c.properties "$@"
 }
 ```
-**Cách hoạt động:** dạng `sh -c "SCRIPT" TOOL ARGS...` → trong pod, `$0` = tên tool, `$@` = args.
-Heredoc `<<EOF` (không quote) expand `$MSK_USER`/`$MSK_PASS` **từ env của pod**, nên credential
-**không nằm trong chuỗi lệnh** trên máy bạn (không lọt vào shell history).
 
-> ⚠️ **Đánh đổi đã biết:** `--env=` đặt credential vào **pod spec** — ai có quyền
-> `kubectl get pod -o yaml` trong `$NS` đọc được trong lúc pod sống (vài giây, `--rm` xoá ngay).
-> Chấp nhận cho thao tác admin một lần. Nếu muốn chặt hơn: dùng `--overrides` với `envFrom.secretRef`
-> trỏ K8s secret do External Secrets sinh, thay vì `--env=`.
+**Vì sao cách này:** `secretKeyRef` chỉ ghi *tên secret + key* vào pod spec. `kubectl get pod -o yaml`
+**không lộ credential**. Bootstrap string không phải bí mật nên truyền thẳng được. Điều kiện: K8s secret
+`kafka-scram` (keys `username`/`password`) đã được External Secrets sinh từ
+`AmazonMSK_techx-tf3/kafka-scram` — xem bước 3.
+
+> 🔓 **Break-glass — CHỈ khi External Secrets chưa sync kịp và bạn đang phải xử lý sự cố.**
+> `kubectl run mskcli-tmp --rm -i --restart=Never --image="$KAFKA_IMAGE" --env=MSK_USER=... --env=MSK_PASS=... ...`
+> ⚠️ Cách này **ghi credential thẳng vào pod spec** → ai có `kubectl get pod -o yaml` trong `$NS` đọc được.
+> **Không dùng cho thao tác thường.** Nếu đã lỡ dùng: **xoay lại SCRAM secret** sau khi xong.
 
 ## 1. Pre-flight (làm 1 lần, TRƯỚC mọi cutover)
 
@@ -452,6 +492,10 @@ grep -rn "otelp\|otelu" "phase3 - information/techx-corp-chart/values.yaml" \
 **Chỉ làm sau khi mentor đã nghiệm thu xong cả 3 store.** Làm **đúng thứ tự** — mỗi bước đóng một đường lui:
 
 ```sh
+# 0. Dọn pod CLI tạm + tunnel (làm ngay khi hết cần, đừng để pod cầm secret sống lang thang)
+kubectl -n "$NS" delete pod mskcli --ignore-not-found
+#    + đóng các phiên SSM tunnel RDS/ElastiCache ở §0
+
 # 1. Snapshot PVC cũ (EBS snapshot) — đường lui thảm hoạ cuối cùng, làm TRƯỚC TIÊN
 
 # 2. PR gỡ dual-write của cart:  bỏ VALKEY_DUAL_WRITE_ADDR
