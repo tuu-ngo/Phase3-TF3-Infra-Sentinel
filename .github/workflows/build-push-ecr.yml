@@ -243,6 +243,13 @@ jobs:
         run: |
           set -euo pipefail
           set -a; . ./.env.override; set +a
+          EVIDENCE_ROOT="$GITHUB_WORKSPACE/release-evidence"
+          VERIFY_ROOT="$EVIDENCE_ROOT/cosign"
+          SUMMARY="$EVIDENCE_ROOT/signed-images.jsonl"
+          EXPECTED_IDENTITY="https://github.com/${GITHUB_WORKFLOW_REF}"
+          mkdir -p "$VERIFY_ROOT"
+          : > "$SUMMARY"
+
           SERVICES="$ALL_SERVICES"
           if [ "${{ steps.scope.outputs.mode }}" = "scoped" ]; then
             SERVICES="${{ steps.scope.outputs.services }}"
@@ -260,4 +267,36 @@ jobs:
             test -n "$DIGEST" && test "$DIGEST" != "None"
             echo "Signing ${IMAGE}@${DIGEST}"
             cosign sign --yes "${IMAGE}@${DIGEST}"
+
+            VERIFY_REPORT="$VERIFY_ROOT/${svc}.json"
+            echo "Verifying ${IMAGE_NAME}@${DIGEST} as ${EXPECTED_IDENTITY}"
+            cosign verify \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity "$EXPECTED_IDENTITY" \
+              "${IMAGE_NAME}@${DIGEST}" > "$VERIFY_REPORT"
+
+            jq -nc \
+              --arg service "$svc" \
+              --arg image "$IMAGE_NAME" \
+              --arg tag "${IMAGE_VERSION}-${svc}" \
+              --arg digest "$DIGEST" \
+              --arg git_sha "$GITHUB_SHA" \
+              --arg run_id "$GITHUB_RUN_ID" \
+              --arg run_url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              --arg workflow_identity "$EXPECTED_IDENTITY" \
+              --arg trivy_report "trivy-app-images-${GITHUB_RUN_ID}/${svc}.json" \
+              --arg cosign_report "signed-release-evidence-${GITHUB_RUN_ID}/cosign/${svc}.json" \
+              '{service: $service, image: $image, tag: $tag, digest: $digest,
+                git_sha: $git_sha, run_id: $run_id, run_url: $run_url,
+                workflow_identity: $workflow_identity, trivy_report: $trivy_report,
+                cosign_verify_report: $cosign_report}' >> "$SUMMARY"
           done
+
+      - name: Upload signed release evidence
+        if: always() && steps.scope.outputs.mode != 'none'
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-release-evidence-${{ github.run_id }}
+          path: release-evidence/
+          if-no-files-found: warn
+          retention-days: 90
