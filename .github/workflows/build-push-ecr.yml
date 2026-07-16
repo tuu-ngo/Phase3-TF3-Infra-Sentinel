@@ -11,6 +11,15 @@ on:
         description: "Build platforms"
         required: false
         default: "linux/amd64,linux/arm64"
+      services:
+        description: "Optional space-separated allowlisted targets (default: all)"
+        required: false
+        default: ""
+      scan_only:
+        description: "Build and run the blocking Trivy gate without ECR push/sign"
+        required: false
+        type: boolean
+        default: false
 
   push:
     branches: [main]
@@ -68,8 +77,25 @@ jobs:
         id: scope
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-            echo "Manual trigger -> full build of all services."
+            REQUESTED="${{ inputs.services }}"
+            if [ -z "$REQUESTED" ]; then
+              echo "mode=full" >> "$GITHUB_OUTPUT"
+              echo "Manual trigger -> full build of all services."
+              exit 0
+            fi
+
+            SERVICES=""
+            for svc in $REQUESTED; do
+              if ! echo " $ALL_SERVICES " | grep -q " $svc "; then
+                echo "Unknown build target: $svc" >&2
+                exit 1
+              fi
+              SERVICES="$SERVICES $svc"
+            done
+            UNIQ=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+            echo "mode=scoped" >> "$GITHUB_OUTPUT"
+            echo "services=$UNIQ" >> "$GITHUB_OUTPUT"
+            echo "Manual scoped build -> $UNIQ"
             exit 0
           fi
 
@@ -121,17 +147,6 @@ jobs:
             echo "services=$UNIQ" >> "$GITHUB_OUTPUT"
             echo "Scoped build -> $UNIQ"
           fi
-
-      - name: Configure AWS credentials (OIDC)
-        if: steps.scope.outputs.mode != 'none'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        if: steps.scope.outputs.mode != 'none'
-        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up QEMU
         if: steps.scope.outputs.mode != 'none'
@@ -211,8 +226,22 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+      # Registry credentials are intentionally requested only after the local
+      # vulnerability gate passes. scan_only remediation runs never receive AWS
+      # credentials and therefore cannot mutate ECR.
+      - name: Configure AWS credentials (OIDC)
+        if: steps.scope.outputs.mode != 'none' && inputs.scan_only != true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: steps.scope.outputs.mode != 'none' && inputs.scan_only != true
+        uses: aws-actions/amazon-ecr-login@v2
+
       - name: Build & push all pre-scanned app images
-        if: steps.scope.outputs.mode == 'full'
+        if: steps.scope.outputs.mode == 'full' && inputs.scan_only != true
         run: |
           set -euo pipefail
           set -a; . ./.env.override; set +a
@@ -222,7 +251,7 @@ jobs:
             "${SERVICES[@]}"
 
       - name: Build & push pre-scanned changed service images only
-        if: steps.scope.outputs.mode == 'scoped'
+        if: steps.scope.outputs.mode == 'scoped' && inputs.scan_only != true
         run: |
           set -euo pipefail
           set -a; . ./.env.override; set +a
@@ -235,11 +264,11 @@ jobs:
       # Cosign uses GitHub Actions' short-lived OIDC token (id-token: write), so
       # there is no static private signing key in the repository or its secrets.
       - name: Install Cosign
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && inputs.scan_only != true
         uses: sigstore/cosign-installer@v4.1.0
 
       - name: Sign pushed image digests with keyless Cosign
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && inputs.scan_only != true
         run: |
           set -euo pipefail
           set -a; . ./.env.override; set +a
@@ -293,7 +322,7 @@ jobs:
           done
 
       - name: Upload signed release evidence
-        if: always() && steps.scope.outputs.mode != 'none'
+        if: always() && steps.scope.outputs.mode != 'none' && inputs.scan_only != true
         uses: actions/upload-artifact@v4
         with:
           name: signed-release-evidence-${{ github.run_id }}
