@@ -116,6 +116,11 @@ def security_findings(identity, template, container_type, container):
     sc = container.get("securityContext") or {}
     findings = []
 
+    def effective_run_as_non_root():
+        if "runAsNonRoot" in sc:
+            return sc.get("runAsNonRoot")
+        return pod_sc.get("runAsNonRoot")
+
     def add(rule, message, details=None):
         findings.append(
             {
@@ -129,7 +134,7 @@ def security_findings(identity, template, container_type, container):
             }
         )
 
-    if sc.get("runAsNonRoot") is not True and pod_sc.get("runAsNonRoot") is not True:
+    if effective_run_as_non_root() is not True:
         add("require-effective-non-root", "runAsNonRoot is not effectively true")
     if pod_sc.get("runAsUser") == 0 or sc.get("runAsUser") == 0:
         add("deny-container-run-as-user-zero", "runAsUser is 0")

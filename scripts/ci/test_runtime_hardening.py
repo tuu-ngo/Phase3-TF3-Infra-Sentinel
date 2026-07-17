@@ -85,3 +85,62 @@ def test_authoritative_render_is_inventory_clean():
         data = json.loads(inventory.read_text(encoding="utf-8"))
         assert data["inventoryDelta"] == {"missing": [], "unexpected": []}
         assert data["summary"]["unresolvedFindingCount"] == 0
+
+
+def test_verifier_honors_container_run_as_non_root_override(tmp_path):
+    rendered = tmp_path / "rendered.yaml"
+    inventory = tmp_path / "inventory.json"
+    rendered.write_text(
+        """\
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nonroot-container-override
+  namespace: techx-tf3
+  labels:
+    app.kubernetes.io/name: mandate05-test
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: registry.k8s.io/pause:3.10
+      securityContext:
+        runAsNonRoot: false
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 5m
+          memory: 8Mi
+        limits:
+          cpu: 50m
+          memory: 32Mi
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VERIFY),
+            "--rendered",
+            str(rendered),
+            "--mode",
+            "inventory",
+            "--output",
+            str(inventory),
+        ],
+        cwd=REPO,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    data = json.loads(inventory.read_text(encoding="utf-8"))
+    assert data["summary"]["unresolvedFindingCount"] == 1
+    assert data["unresolvedFindings"][0]["rule"] == "require-effective-non-root"
