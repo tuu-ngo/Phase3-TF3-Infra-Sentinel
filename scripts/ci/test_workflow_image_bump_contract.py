@@ -23,11 +23,17 @@ def test_t51_actionlint_gate_is_mandatory():
     assert "build-push-ecr.yml" in actionlint_steps[0]["run"]
     assert "test-image-bump.yml" in actionlint_steps[0]["run"]
 
-def test_t52_production_two_jobs():
+def test_t52_production_service_matrix_jobs():
     build, _ = get_workflows()
     jobs = build.get("jobs", {})
-    assert set(jobs.keys()) == {"build-scan", "open-image-bump-pr"}
-    assert jobs["open-image-bump-pr"].get("needs") == "build-scan"
+    assert set(jobs.keys()) == {"prepare", "build-scan", "aggregate", "open-image-bump-pr"}
+    assert jobs["build-scan"].get("needs") == "prepare"
+    assert jobs["aggregate"].get("needs") == ["prepare", "build-scan"]
+    assert jobs["open-image-bump-pr"].get("needs") == ["prepare", "aggregate"]
+    strategy = jobs["build-scan"]["strategy"]
+    assert strategy["fail-fast"] is False
+    assert strategy["max-parallel"] == 3
+    assert "fromJSON(needs.prepare.outputs.matrix)" in strategy["matrix"]["service"]
 
 def test_t53_permissions_separated():
     build, _ = get_workflows()
@@ -43,10 +49,16 @@ def test_t53_permissions_separated():
     assert pr_perms.get("pull-requests") == "write"
     assert "id-token" not in pr_perms
 
+    aggregate_perms = jobs["aggregate"].get("permissions", {})
+    assert aggregate_perms.get("contents") == "read"
+    assert "id-token" not in aggregate_perms
+
 def test_t54_artifact_branch_identity():
     build_raw = Path(".github/workflows/build-push-ecr.yml").read_text()
     assert "approved-images-${{ github.run_id }}-${{ github.run_attempt }}" in build_raw
     assert "ci/bump-images-${{ github.run_id }}-${{ github.run_attempt }}" in build_raw
+    assert "approved-image-${{ github.run_id }}-${{ matrix.service }}" in build_raw
+    assert "pattern: approved-image-${{ github.run_id }}-*" in build_raw
 
 def test_t55_publication_fail_closed():
     build_raw = Path(".github/workflows/build-push-ecr.yml").read_text()
@@ -95,3 +107,38 @@ def test_t60_shell_git_safety():
     assert "set -euo pipefail" in build_raw
     assert "git push -f" not in build_raw
     assert "git rebase" not in build_raw
+
+
+def test_t61_preserves_all_security_evidence_gates_per_service():
+    build_raw = Path(".github/workflows/build-push-ecr.yml").read_text()
+    required_markers = [
+        "Smoke build checkout",
+        "Build local image candidates for the Trivy gate",
+        "Scan local image candidates with Trivy (blocking pre-push gate)",
+        "Upload pre-push Trivy reports",
+        "Scan pushed immutable images with Trivy (blocking post-push gate)",
+        "Upload post-push Trivy reports",
+        "Sign and verify approved image digests with keyless Cosign",
+        "signed-images.jsonl",
+        "Upload signed release evidence",
+        "final image tag exceeds 128 characters",
+        "invalid media type",
+        "manifestMediaType",
+        "## Safety checks",
+    ]
+    for marker in required_markers:
+        assert marker in build_raw
+
+    assert "SERVICE: ${{ matrix.service }}" in build_raw
+    assert 'docker buildx bake -f docker-compose.yml --push "$SERVICE"' in build_raw
+    assert '"${SERVICES[@]}"' not in build_raw
+    assert '--set "*.platform=' not in build_raw
+
+
+def test_t62_aggregate_is_fail_closed_for_exact_expected_services():
+    build, _ = get_workflows()
+    raw = "\n".join(step.get("run", "") for step in build["jobs"]["aggregate"]["steps"])
+    assert "missing or unexpected service evidence" in raw
+    assert "duplicate service evidence" in raw
+    assert 'test("^sha256:[0-9a-f]{64}$")' in raw
+    assert "manifestMediaType" in raw
