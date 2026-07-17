@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import json
-from collections import defaultdict
 from pathlib import Path
 
 import yaml
@@ -17,11 +16,21 @@ def load_json(path):
         return json.load(handle)
 
 
-def selector_matches_app(selector, app_name):
-    if not app_name:
-        return False
+def selector_matches_labels(selector, labels):
     match_labels = (selector or {}).get("matchLabels") or {}
-    return app_name in match_labels.values()
+    if not match_labels:
+        return False
+    labels = labels or {}
+    for key, expected in match_labels.items():
+        actual = labels.get(key)
+        if actual == expected:
+            continue
+        if key == "app.kubernetes.io/name" and labels.get("app") == expected:
+            continue
+        if key == "app" and labels.get("app.kubernetes.io/name") == expected:
+            continue
+        return False
+    return True
 
 
 def main():
@@ -46,6 +55,7 @@ def main():
         active_pods[uid] = {
             "name": metadata.get("name"),
             "namespace": metadata.get("namespace"),
+            "labels": labels,
             "app": labels.get("app.kubernetes.io/name") or labels.get("app"),
         }
     active_uids = set(active_pods)
@@ -77,7 +87,10 @@ def main():
                         for exc in exception_records
                         if exc.get("policy") == entry["policy"]
                         and entry["rule"] in (exc.get("rules") or [])
-                        and selector_matches_app(exc.get("selector"), entry["app"])
+                        and selector_matches_labels(
+                            exc.get("selector"),
+                            active_pods.get(uid, {}).get("labels"),
+                        )
                     ),
                     None,
                 )
@@ -89,6 +102,18 @@ def main():
                 stale_results.append(entry)
             else:
                 unresolved_results.append(entry)
+
+    sort_key = lambda item: (
+        item.get("policy") or "",
+        item.get("rule") or "",
+        item.get("namespace") or "",
+        item.get("resource") or "",
+        item.get("exceptionId") or "",
+    )
+    active_failures.sort(key=sort_key)
+    approved_exceptions.sort(key=sort_key)
+    stale_results.sort(key=sort_key)
+    unresolved_results.sort(key=sort_key)
 
     output = {
         "activeFailures": active_failures,
