@@ -29,6 +29,8 @@ public class ValkeyCartStore : ICartStore
     private readonly string _connectionString;
     private readonly string _dualWriteConnectionString;
     private readonly bool _isDualWriteEnabled;
+    private const int DualWriteConnectRetry = 1;
+    private const int DualWriteTimeoutMs = 1000;
 
     private static readonly ActivitySource CartActivitySource = new("OpenTelemetry.Demo.Cart");
     private static readonly Meter CartMeter = new Meter("OpenTelemetry.Demo.Cart");
@@ -69,7 +71,12 @@ public class ValkeyCartStore : ICartStore
         if (_isDualWriteEnabled)
         {
             _dualWriteConnectionString = BuildSafeConnectionString(dualWriteAddress, dualWriteTls, dualWriteAuthToken);
-            _dualWriteConnectionOptions = BuildConnectionOptions(dualWriteAddress, dualWriteTls, dualWriteAuthToken);
+            _dualWriteConnectionOptions = BuildConnectionOptions(
+                dualWriteAddress,
+                dualWriteTls,
+                dualWriteAuthToken,
+                DualWriteConnectRetry,
+                DualWriteTimeoutMs);
         }
         else
         {
@@ -274,14 +281,26 @@ public class ValkeyCartStore : ICartStore
         }
     }
 
-    private static ConfigurationOptions BuildConnectionOptions(string address, bool useTls, string authToken)
+    private static ConfigurationOptions BuildConnectionOptions(
+        string address,
+        bool useTls,
+        string authToken,
+        int connectRetry = RedisRetryNumber,
+        int? timeoutMs = null)
     {
         var options = ConfigurationOptions.Parse(BuildBaseConnectionString(address, useTls));
 
         // Try to reconnect multiple times if the first retry fails.
-        options.ConnectRetry = RedisRetryNumber;
+        options.ConnectRetry = connectRetry;
         options.ReconnectRetryPolicy = new ExponentialRetry(1000);
         options.KeepAlive = 180;
+
+        if (timeoutMs.HasValue)
+        {
+            options.ConnectTimeout = timeoutMs.Value;
+            options.SyncTimeout = timeoutMs.Value;
+            options.AsyncTimeout = timeoutMs.Value;
+        }
 
         if (!string.IsNullOrWhiteSpace(authToken))
         {
