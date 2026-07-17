@@ -16,7 +16,7 @@ Mandate 08 hiện **chưa được triển khai trên hạ tầng live**. AWS ac
 | Valkey | Pod `valkey-cart`, PVC `valkey-cart` 1Gi | ElastiCache Valkey 9.0 | Chưa migrate |
 | Kafka | Pod `kafka`, PVC `kafka-data` 3Gi | MSK Kafka 3.9.x KRaft | Chưa migrate |
 
-Điểm tốt: dữ liệu hiện khá nhỏ, version managed khớp version self-hosted, Kafka retention 7 ngày, Valkey key mẫu đều có TTL. Điểm rủi ro lớn nhất vẫn là thứ tự cutover Kafka và code hỗ trợ TLS/auth/dual-write chưa được xác nhận là đã deploy.
+Điểm tốt: dữ liệu hiện khá nhỏ, version managed khớp version self-hosted, Kafka retention 7 ngày, Valkey key mẫu đều có TTL. Điểm rủi ro lớn nhất không phải bản thân code `cart` trong PR chuẩn bị, mà là semantics khi cutover: phải xác nhận image mới đã deploy, target managed đã sẵn sàng, dual-write không có lỗi trong cửa sổ quan sát, và thứ tự Kafka không bị làm sai.
 
 ## GitOps và cluster
 
@@ -121,13 +121,16 @@ User tables:
 | DBSIZE | 4085 keys |
 | TTL sample | 50/50 key mẫu có TTL dương |
 
-TTL 50 key đầu dao động trong mẫu từ `40` đến `3586` giây, không thấy key `-1` trong mẫu. Điều này ủng hộ lập luận trong ADR 0009: nếu dual-write chạy đủ 60 phút hoặc an toàn hơn 65-70 phút, mọi cart còn sống sẽ được ghi sang ElastiCache trước khi lật read.
+TTL 50 key đầu dao động trong mẫu từ `40` đến `3586` giây, không thấy key `-1` trong mẫu. Điều này chỉ ủng hộ giả thuyết vận hành cho cutover Valkey: nếu cart TTL thật sự là 60 phút, và nếu dual-write sang ElastiCache chạy ổn định trong 60 phút hoặc an toàn hơn 65-70 phút, thì tập cart còn sống có cơ sở để hội tụ sang ElastiCache trước khi lật read.
+
+Lưu ý quan trọng: dual-write của `cart` là **best-effort**, không phải cơ chế bảo đảm tuyệt đối. Thiết kế này cố ý ưu tiên SLO khách hàng: ghi primary thành công thì request vẫn thành công, lỗi ghi sang target phụ chỉ log warning. Vì vậy bằng chứng cutover Valkey không được chỉ dựa vào câu "đã bật dual-write đủ 60 phút"; phải kèm log/metric cho lỗi dual-write, so sánh key/TTL giữa Valkey cũ và ElastiCache mới, và smoke test cart/checkout trước khi lật read.
 
 Điều kiện cần trước khi cutover Valkey:
 
 - Code `cart` phải có `VALKEY_TLS`, `VALKEY_AUTH_TOKEN`, và `VALKEY_DUAL_WRITE_ADDR`.
-- Lỗi ghi sang target dual-write không được làm fail request khách.
+- Lỗi ghi sang target dual-write không được làm fail request khách; đây là behavior đúng cho SLO, nhưng đồng nghĩa với việc lỗi target phụ phải được quan sát bằng log/metric.
 - Phải chạy lại scan TTL trước T0; nếu còn key không TTL thì lập luận 60 phút không còn đủ.
+- Trong cửa sổ dual-write Phase A phải thu evidence rằng không có hoặc đã xử lý được lỗi ghi sang ElastiCache trước khi coi dữ liệu đã hội tụ.
 
 ## Kafka baseline
 
@@ -161,8 +164,8 @@ Broker retention:
 ## Việc cần làm tiếp theo
 
 1. Tạo PR hạ tầng dựng song song RDS, ElastiCache, MSK, Secrets Manager, KMS, security group private-only. Chỉ chạy `terraform plan` cho review; chưa apply nếu chưa có cửa sổ và xác nhận.
-2. Tạo PR code cho TLS/auth gated bằng env:
-   - `cart`: Valkey TLS/auth + dual-write.
+2. Hoàn thiện PR code cho TLS/auth gated bằng env:
+   - `cart`: Valkey TLS/auth + dual-write best-effort, mặc định tắt; PR này chỉ chuẩn bị image/code path, chưa chứng minh cutover live.
    - `checkout`: Kafka SASL_SSL/SCRAM cho Sarama.
    - `accounting`: Kafka SASL_SSL/SCRAM.
    - `fraud-detection`: Kafka SASL_SSL/SCRAM.
