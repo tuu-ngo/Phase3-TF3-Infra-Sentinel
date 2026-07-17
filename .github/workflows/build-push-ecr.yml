@@ -702,7 +702,6 @@ jobs:
           python3 scripts/ci/update-image-overrides.py \
             --values "phase3 - information/deploy/values-prod.yaml" \
             --manifest approved-images.json \
-            --excluded-service flagd-ui \
             --summary-output image-bump-summary.json \
             --expected-source-sha "$EXPECTED_SOURCE_SHA" \
             --expected-source-short-sha "$EXPECTED_SOURCE_SHORT_SHA" \
@@ -763,8 +762,7 @@ jobs:
             --rendered /tmp/techx-rendered.yaml \
             --manifest approved-images.json \
             --registry "$ECR_REGISTRY" \
-            --repository "$ECR_REPOSITORY" \
-            --excluded-service flagd-ui
+            --repository "$ECR_REPOSITORY"
 
       - name: Push image-bump branch and create pull request
         if: env.no_changes != 'true'

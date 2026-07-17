@@ -9,6 +9,15 @@ def fail(msg):
     print(f"FAIL: {msg}", file=sys.stderr)
     sys.exit(1)
 
+# Services that render as a named container inside a DIFFERENT workload's Pod
+# (a sidecar) rather than owning their own Deployment/StatefulSet/etc. Mapped
+# to the pod-identity (opentelemetry.io/name / app.kubernetes.io/name) of the
+# workload that hosts them. Must match NESTED_SIDECAR_SERVICES in
+# update-image-overrides.py.
+NESTED_SIDECAR_SERVICES = {
+    "flagd-ui": "flagd",
+}
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--rendered', required=True)
@@ -82,16 +91,32 @@ def main():
         if not svc_identity:
             continue
             
+        pod_spec = pod_template.get("spec", {})
+        containers = pod_spec.get("containers", [])
+
         # Is this one of our expected services?
         if svc_identity in expected_digests:
-            pod_spec = pod_template.get("spec", {})
-            containers = pod_spec.get("containers", [])
             for c in containers:
                 # We expect the app container to share the service name, or be the first/only one?
                 # Usually in our chart, the main container is named after the service or "app".
                 image = c.get("image", "")
                 if args.repository in image:
                     found_images[svc_identity].append(image)
+
+        # Nested sidecars (e.g. flagd-ui inside the flagd Pod) never match
+        # svc_identity above - the Pod's own identity belongs to its main
+        # component. Match those by their own container `name` instead, and
+        # only within the Pod that actually hosts them, so an unrelated
+        # container elsewhere named the same can't be picked up by accident.
+        for sidecar_name, parent_identity in NESTED_SIDECAR_SERVICES.items():
+            if sidecar_name not in expected_digests or svc_identity != parent_identity:
+                continue
+            for c in containers:
+                if c.get("name") != sidecar_name:
+                    continue
+                image = c.get("image", "")
+                if args.repository in image:
+                    found_images[sidecar_name].append(image)
 
     all_digests_in_manifest = set(expected_digests.values())
 

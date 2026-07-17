@@ -15,6 +15,14 @@ ALLOWED_SERVICES = {
     "product-reviews", "quote", "recommendation", "shipping", "flagd-ui"
 }
 
+# Services that are not their own top-level `components.<name>` entry, but a
+# named entry inside another component's `sidecarContainers` list. flagd-ui
+# ships as a Phoenix sidecar next to the flagd (flagd core) container, in the
+# same Pod - it has no component of its own to key off of.
+NESTED_SIDECAR_SERVICES = {
+    "flagd-ui": {"component": "flagd", "sidecar_name": "flagd-ui"},
+}
+
 ALLOWED_MEDIA_TYPES = {
     "application/vnd.oci.image.index.v1+json",
     "application/vnd.docker.distribution.manifest.list.v2+json",
@@ -149,6 +157,49 @@ def parse_yaml_strict(filepath):
 def find_indent(line):
     return len(line) - len(line.lstrip())
 
+def resolve_target_node(components, name):
+    """Return the CommentedMap that owns `imageOverride` for this service -
+    either components[name] directly, or (for NESTED_SIDECAR_SERVICES) the
+    matching entry inside the parent component's sidecarContainers list.
+    Calls fail() and exits if the service can't be located."""
+    nested = NESTED_SIDECAR_SERVICES.get(name)
+    if nested is None:
+        if name not in components:
+            fail(f"UNKNOWN_PRODUCTION_COMPONENT: {name}")
+        if not isinstance(components[name], dict):
+            fail(f"component {name} value is non-mapping")
+        return components[name]
+
+    parent_name = nested["component"]
+    sidecar_name = nested["sidecar_name"]
+    if parent_name not in components:
+        fail(f"UNKNOWN_PRODUCTION_COMPONENT: {parent_name}")
+    parent = components[parent_name]
+    if not isinstance(parent, dict):
+        fail(f"component {parent_name} value is non-mapping")
+    sidecars = parent.get("sidecarContainers")
+    if not isinstance(sidecars, list):
+        fail(f"UNKNOWN_PRODUCTION_SIDECAR: {name} ({parent_name}.sidecarContainers is missing or not a list)")
+    for item in sidecars:
+        if isinstance(item, dict) and item.get("name") == sidecar_name:
+            return item
+    fail(f"UNKNOWN_PRODUCTION_SIDECAR: {name} (no entry named {sidecar_name} under {parent_name}.sidecarContainers)")
+
+def case_d_anchor(components, name, lines):
+    """Return (anchor_line_idx, child_indent) for inserting a brand-new
+    imageOverride block for `name` that currently has none at all."""
+    if name in NESTED_SIDECAR_SERVICES:
+        target = resolve_target_node(components, name)
+        # ruamel gives each sidecar list-item CommentedMap its own start
+        # line/col (the position of its first key, e.g. `name:`) - reuse
+        # that directly as the sibling-key indent instead of guessing from
+        # the raw line text, since list items may be formatted either as
+        # `- name: x` or `-\n    name: x`.
+        return target.lc.line, target.lc.col
+    line_idx = components.lc.data[name][0]
+    indent = find_indent(lines[line_idx]) + 2
+    return line_idx, indent
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--values', required=True)
@@ -191,13 +242,10 @@ def main():
         name = svc_info["name"]
         if name in args.excluded_service:
             continue
-        if name not in components:
-            fail(f"UNKNOWN_PRODUCTION_COMPONENT: {name}")
-        if not isinstance(components[name], dict):
-            fail(f"component {name} value is non-mapping")
-        io = components[name].get('imageOverride')
+        target = resolve_target_node(components, name)
+        io = target.get('imageOverride')
         # io could be {} or None, but if it exists and is scalar, fail
-        if "imageOverride" in components[name] and io is not None and not isinstance(io, dict):
+        if "imageOverride" in target and io is not None and not isinstance(io, dict):
             fail(f"imageOverride for {name} is non-mapping")
 
     with open(values_path, "rb") as f:
@@ -226,9 +274,9 @@ def main():
             
         new_digest = svc_info["digest"]
         new_tag = svc_info["tag"]
-        
-        comp_node = components[name]
-        
+
+        comp_node = resolve_target_node(components, name)
+
         if "imageOverride" in comp_node:
             io_node = comp_node.get('imageOverride')
             io_line_idx = comp_node.lc.data['imageOverride'][0]
@@ -323,11 +371,9 @@ def main():
                 
         else:
             # Case D: imageOverride does not exist.
-            svc_line_idx = doc['components'].lc.data[name][0]
-            svc_line = lines[svc_line_idx]
-            indent = find_indent(svc_line) + 2
+            svc_line_idx, indent = case_d_anchor(components, name, lines)
             spaces = " " * indent
-            
+
             insert_str = f"{spaces}imageOverride:\n{spaces}  digest: {new_digest}\n"
             edits[svc_line_idx + 0.5] = insert_str
             
@@ -373,7 +419,15 @@ def main():
         for svc_info in summary["updated"]:
             svc = svc_info["service"]
             try:
-                found_digest = verified_doc["components"][svc]["imageOverride"]["digest"]
+                nested = NESTED_SIDECAR_SERVICES.get(svc)
+                if nested is None:
+                    found_digest = verified_doc["components"][svc]["imageOverride"]["digest"]
+                else:
+                    parent_sidecars = verified_doc["components"][nested["component"]]["sidecarContainers"]
+                    matches = [s for s in parent_sidecars if isinstance(s, dict) and s.get("name") == nested["sidecar_name"]]
+                    if not matches:
+                        raise KeyError(nested["sidecar_name"])
+                    found_digest = matches[0]["imageOverride"]["digest"]
                 if found_digest != svc_info["newDigest"]:
                     fail(f"Semantic verification failed for {svc} digest")
             except KeyError:
