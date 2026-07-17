@@ -173,6 +173,7 @@ exceptions:
   - id: m05-baseline-aiops-engine-runtime
     policy: custom-baseline-security-context
     rules:
+      - require-effective-non-root
       - require-allow-privilege-escalation-false
       - drop-all-capabilities
       - require-seccomp-profile-runtime-default
