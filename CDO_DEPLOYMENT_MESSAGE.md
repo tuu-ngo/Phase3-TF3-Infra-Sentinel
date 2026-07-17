@@ -15,10 +15,11 @@ Bên AIO/AIE1 đã hoàn thành việc nâng cấp dịch vụ `product-reviews`
 * Đã bổ sung các biến môi trường: `LLM_PROVIDER: bedrock`, `LLM_MODEL: amazon.nova-lite-v1:0` và `AWS_REGION: us-east-1`. Nhờ anh em dùng file này khi chạy `helm upgrade`.
 
 ### 3. Cấp quyền truy cập AWS Bedrock (Quan trọng):
-* Pod của `product-reviews` trên EKS cần có quyền gọi Bedrock (bao gồm cả mô hình tóm tắt `amazon.nova-lite-v1:0` và mô hình giám khảo/judge `amazon.nova-micro-v1:0`). Nhờ anh em cấu hình theo 1 trong 2 cách:
+* Pod của `product-reviews` trên EKS cần có quyền gọi Bedrock (bao gồm cả mô hình tóm tắt `amazon.nova-lite-v1:0` và mô hình giám khảo/judge `amazon.nova-micro-v1:0` cũng như Bedrock Guardrail). Nhờ anh em cấu hình theo 1 trong 2 cách:
   * **Cách 1 (Khuyên dùng):** Gắn IAM Policy cho ServiceAccount của Pod `product-reviews` trên EKS với các quyền:
     * `bedrock:InvokeModel`
     * `bedrock:InvokeModelWithResponseStream`
+    * `bedrock:ApplyGuardrail`
     *(Lưu ý: AWS IAM xác thực các API Converse qua hành động `InvokeModel`, chứ không có hành động `bedrock:Converse`).*
   * **Cách 2:** Nếu chưa bật IRSA, nhờ anh em tạo Kubernetes Secret chứa `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (có quyền gọi 2 model Bedrock trên) rồi map vào `envOverrides` của Pod.
 
