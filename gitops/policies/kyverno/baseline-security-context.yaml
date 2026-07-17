@@ -40,6 +40,9 @@ spec:
             deny:
               conditions:
                 any:
+                  - key: "{{ lookup(element.securityContext || `{}`, 'runAsNonRoot') }}"
+                    operator: Equals
+                    value: false
                   - key: "{{ element.securityContext.runAsNonRoot || request.object.spec.securityContext.runAsNonRoot || `false` }}"
                     operator: NotEquals
                     value: true
@@ -47,6 +50,9 @@ spec:
             deny:
               conditions:
                 any:
+                  - key: "{{ lookup(element.securityContext || `{}`, 'runAsNonRoot') }}"
+                    operator: Equals
+                    value: false
                   - key: "{{ element.securityContext.runAsNonRoot || request.object.spec.securityContext.runAsNonRoot || `false` }}"
                     operator: NotEquals
                     value: true

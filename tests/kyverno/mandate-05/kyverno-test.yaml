@@ -12,6 +12,7 @@ resources:
   - resources/pod-good-first-party-digest.yaml
   - resources/pod-missing-resources.yaml
   - resources/pod-root.yaml
+  - resources/pod-nonroot-container-override.yaml
   - resources/pod-latest.yaml
   - resources/pod-first-party-tag.yaml
   - resources/pod-bad-init-container.yaml
@@ -41,6 +42,7 @@ results:
     rule: require-effective-non-root
     resources:
       - mandate05-root
+      - mandate05-nonroot-container-override
     kind: Pod
     result: fail
   - policy: custom-baseline-security-context
