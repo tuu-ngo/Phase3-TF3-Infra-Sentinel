@@ -120,7 +120,7 @@ components:
   ad:
     replicasManagedExternally: true
     imageOverride:
-      digest: sha256:a45fdb96972c11c4b75261ef1205f96c92f5c23fb5edbc47f3b6bb95eb3f27bb
+      digest: sha256:04d1460d9a48b35182d85b17d416f4a4d16b74011bb42fdee417f288340a2052
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -178,7 +178,7 @@ components:
             matchLabels:
               opentelemetry.io/name: frontend
     imageOverride:
-      digest: sha256:047faed92fe4ecf8b2bb7d3d99c191a2d495f41024abc44c204fe94a9ae019a3
+      digest: sha256:e6874914182473a905354d9e17c55fc1aec7d690c5f1428758c0b6c78e114e9e
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -238,8 +238,8 @@ components:
               opentelemetry.io/name: product-catalog
     replicas: 2        # backend traffic cao nhất + có crash history (REL-14)
     imageOverride: # CDO02 fix main.go - xem comment imageOverride đầu components:
-      digest: sha256:412f75faac8b02fc48676c1fe2d3bc695e39b9cf6c0fbd6bb941c1fbea80f83f
-      tag: 6a3fe95-product-catalog
+      digest: sha256:8bfd3b9a23a2fd7624bc116844248ccd2bbb246635927899f0b4208fd179d2ed
+      tag: 43dcf62-29569108433-product-catalog
     resources:
       requests:
         cpu: 100m
@@ -314,8 +314,8 @@ components:
       failureThreshold: 3
     replicas: 2
     imageOverride: # CDO02 fix HealthCheckService.cs - xem comment imageOverride đầu components:
-      digest: sha256:1cc20ba4d7f195245429e084e5aa495a305ed0b14539261953f8595ab50c05b6
-      tag: 6a3fe95-cart
+      digest: sha256:bff18e3c5ded67d25be28c80c0ac56ad9bf3c00e790ce33aed9c91b278481bd6
+      tag: 43dcf62-29569108433-cart
     resources:
       requests:
         cpu: 100m
@@ -334,8 +334,8 @@ components:
           seconds: 5
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
-      digest: sha256:a774cb69f27795406f768881a7c575ba882f024f8e99ca928413047f3b3eb532
-      tag: 7527509-checkout
+      digest: sha256:0c1c6e063c2e6e2d26bade678520a1d15a04bf8085a1fc5287d7885332c1cb7f
+      tag: 43dcf62-29569108433-checkout
     # Mandate 2 remediation: 2 pod stable từng bị xếp chung 1 node (xác nhận qua
     # kubectl trước load test) - checkout là service chịu tải chính, mất cả node đó
     # là mất cả 2 pod dù có PDB. hostname dùng ScheduleAnyway (soft) để không chặn
@@ -409,7 +409,7 @@ components:
             matchLabels:
               opentelemetry.io/name: payment
     imageOverride:
-      digest: sha256:839b9cb5e5c50ba9a03acea8a4b15e29be724089e30cf18904530a1bc07bede5
+      digest: sha256:7cbf0699119e7170fee132cb0a994b6c6fff9004a42b402706aa10a078d7679f
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -471,7 +471,7 @@ components:
             matchLabels:
               opentelemetry.io/name: currency
     imageOverride:
-      digest: sha256:e4e4c76b27fea4d82bbc25aa2f2d6c2163450a223f89c71e7ae4985fb6c0203a
+      digest: sha256:f01846d1253f755c96e37b9c321553a9520c3f06ec54780a63048a3966d32fa0
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -529,7 +529,7 @@ components:
             matchLabels:
               opentelemetry.io/name: shipping
     imageOverride:
-      digest: sha256:4952c73703cca38ec8afe934a3571f5f0a5f5e8e2adeb4af3eafc5cfa5ddb3ec
+      digest: sha256:a3c486d60884913b50b0a4858c8d1cd89dfdf8a30c9505577327e308afe990c6
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -588,7 +588,7 @@ components:
             matchLabels:
               opentelemetry.io/name: quote
     imageOverride:
-      digest: sha256:97fbf36ede49bb20218b75bfe0f2c9e90ed976114813091abb11ca789f567df3
+      digest: sha256:445421455ac16010ed81361a66de4798e7e727ced81bcc7b6244f3a3852876c1
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -649,8 +649,8 @@ components:
               opentelemetry.io/name: product-reviews
     replicas: 2        # đứng sau tính năng AI tóm tắt review
     imageOverride: # CDO02 fix database.py + product_reviews_server.py - xem comment imageOverride đầu components:
-      digest: sha256:4d3811fa4bf160d94e8254bd370bcf0a81a84ce670dc691d8cb4103162f7f538
-      tag: f6e9532-product-reviews
+      digest: sha256:bbf660788c9c1b5881bd626f691e26e26a1d5774be13515ebbeefae481afe858
+      tag: 43dcf62-29569108433-product-reviews
     resources:
       requests:
         cpu: 100m
@@ -675,8 +675,8 @@ components:
   recommendation:
     replicasManagedExternally: true
     imageOverride: # CDO02 fix recommendation_server.py - xem comment imageOverride đầu components:
-      digest: sha256:7b1246d011356a0e6d2b0b94b854b2bc3eb0ee06a502d02d9a79a3163b447b78
-      tag: 6a3fe95-recommendation
+      digest: sha256:9cd92fccd5050dbb696beb6a205fd73290a7de311db585cb993bcc35a7c03a35
+      tag: 43dcf62-29569108433-recommendation
     resources:
       requests:
         cpu: 100m
@@ -700,8 +700,8 @@ components:
       failureThreshold: 3
   accounting:
     imageOverride: # CDO02 fix Consumer.cs - xem comment imageOverride đầu components:
-      digest: sha256:8fc8a91f98ae40d6be284ff9009b32dd0e1e1c3152532362ed363f8bc71c4ed6
-      tag: 6a3fe95-accounting
+      digest: sha256:ddc93c804109526cdb40b117884084bc3fce004f3cf95bc040fa6034ea9fca4c
+      tag: 43dcf62-29569108433-accounting
     resources:
       requests:
         cpu: 50m
@@ -711,7 +711,7 @@ components:
         memory: 350Mi
   email:
     imageOverride:
-      digest: sha256:ca14e55cc0855e3a8a2de19098d75f69772408d2bef6f9b52663e864ae1a545f
+      digest: sha256:afdbc98c923cff6e7652d84bee0bea0e658dab0bad99299ae8a9e423969d82f4
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -737,7 +737,7 @@ components:
         memory: 100Mi
   fraud-detection:
     imageOverride:
-      digest: sha256:b4797d6b16bf6a3b88ec8ddb9dbcd6c29c208e6be221f4f018af4b5f624fbc13
+      digest: sha256:c5f6771355bb9f68a7cac48a05ea894d97ef67465a70dbba6afc45481c9c14d5
     resources:
       requests:
         cpu: 50m
@@ -747,7 +747,7 @@ components:
         memory: 512Mi
   image-provider:
     imageOverride:
-      digest: sha256:00b73a3efd2caab3e69fce24b40b4e176da5c5f89b7b2c8ae2f37c25400cf44a
+      digest: sha256:004425421f2b16697f836d8463ca8528190582baf8faacc3215bae6c98a69ff6
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -772,6 +772,8 @@ components:
         cpu: 100m
         memory: 50Mi
   kafka:
+    imageOverride:
+      digest: sha256:efc188d08627ea302b98a45bae30ae2868c7ffd1d69a4359019c26dd553419b0
     service:
       # REL-10: KRaft 1-node tu noi controller cua chinh no qua Service kafka:9093. Pod PHAI nam
       # trong Service endpoints NGAY khi chua ready, neu khong startupProbe/readinessProbe se loai pod
@@ -843,7 +845,7 @@ components:
       failureThreshold: 3
   llm:
     imageOverride:
-      digest: sha256:85a7578ef9b826196632fdd219eaa131f0caed024753499d036fc5baabf374b8
+      digest: sha256:62804f4d68d8dafbadffd2703c5ec7f7c3d417fb04b4c1117ea1e0f67027a9f8
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
@@ -869,7 +871,7 @@ components:
         memory: 256Mi
   load-generator:
     imageOverride:
-      digest: sha256:db7016dbed1d6b24c5aa6beb1102fd11148aa791a6b61b745ef8fdebc6146641
+      digest: sha256:71b9499757000f0eaaccf15d083c2f5073221949839b76455b24ab8ee852a634
     envOverrides:
       - name: LOCUST_AUTOSTART
         value: "true"
@@ -1025,6 +1027,8 @@ components:
     # copy in the same PR or production will silently diverge from it.
     sidecarContainers:
       - name: flagd-ui
+        imageOverride:
+          digest: sha256:fe39070cf36d8d1f1524c6aa7c67393d4ee5871813dd453e36bb79e38910417c
         useDefault:
           env: true
         service:
@@ -1099,8 +1103,8 @@ components:
       failureThreshold: 3
     replicas: 2        # cổng vào DUY NHẤT (Envoy) — SPOF của toàn hệ thống
     imageOverride: # mandate-01: gỡ route Envoy - xem comment imageOverride đầu components:
-      digest: sha256:7cf4dd2e0c5cdf097ee8c56600ca94b31d4bd1fc04965dac13f6c26262287630
-      tag: 6a3fe95-frontend-proxy
+      digest: sha256:6b8243bbf1d91d1bc195703fdbe2e8029a948c38b5717efec8b41ecf1847b3f0
+      tag: 43dcf62-29569108433-frontend-proxy
     resources:
       requests:
         cpu: 100m
