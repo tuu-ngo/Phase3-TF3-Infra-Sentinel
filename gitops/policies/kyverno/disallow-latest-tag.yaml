@@ -27,29 +27,29 @@ spec:
             deny:
               conditions:
                 any:
-                  - key: "{{ element.image }}"
-                    operator: Matches
-                    value: "^(.+/)?[^/@]+:latest$"
-                  - key: "{{ element.image }}"
-                    operator: NotMatches
-                    value: "^.+(:[^/]+|@sha256:[0-9a-f]{64})$"
+                  - key: "{{ regex_match('^(.+/)?[^/@]+:latest$', element.image) }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ regex_match('^.+(:[^/]+|@sha256:[0-9a-f]{64})$', element.image) }}"
+                    operator: Equals
+                    value: false
           - list: "request.object.spec.initContainers || `[]`"
             deny:
               conditions:
                 any:
-                  - key: "{{ element.image }}"
-                    operator: Matches
-                    value: "^(.+/)?[^/@]+:latest$"
-                  - key: "{{ element.image }}"
-                    operator: NotMatches
-                    value: "^.+(:[^/]+|@sha256:[0-9a-f]{64})$"
+                  - key: "{{ regex_match('^(.+/)?[^/@]+:latest$', element.image) }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ regex_match('^.+(:[^/]+|@sha256:[0-9a-f]{64})$', element.image) }}"
+                    operator: Equals
+                    value: false
           - list: "request.object.spec.ephemeralContainers || `[]`"
             deny:
               conditions:
                 any:
-                  - key: "{{ element.image }}"
-                    operator: Matches
-                    value: "^(.+/)?[^/@]+:latest$"
-                  - key: "{{ element.image }}"
-                    operator: NotMatches
-                    value: "^.+(:[^/]+|@sha256:[0-9a-f]{64})$"
+                  - key: "{{ regex_match('^(.+/)?[^/@]+:latest$', element.image) }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ regex_match('^.+(:[^/]+|@sha256:[0-9a-f]{64})$', element.image) }}"
+                    operator: Equals
+                    value: false

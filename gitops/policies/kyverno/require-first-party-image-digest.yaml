@@ -27,29 +27,29 @@ spec:
             deny:
               conditions:
                 all:
-                  - key: "{{ element.image }}"
-                    operator: Matches
-                    value: "^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp.*"
-                  - key: "{{ element.image }}"
-                    operator: NotMatches
-                    value: "^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp@sha256:[0-9a-f]{64}$"
+                  - key: "{{ regex_match('^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp.*', element.image) }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ regex_match('^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp@sha256:[0-9a-f]{64}$', element.image) }}"
+                    operator: Equals
+                    value: false
           - list: "request.object.spec.initContainers || `[]`"
             deny:
               conditions:
                 all:
-                  - key: "{{ element.image }}"
-                    operator: Matches
-                    value: "^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp.*"
-                  - key: "{{ element.image }}"
-                    operator: NotMatches
-                    value: "^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp@sha256:[0-9a-f]{64}$"
+                  - key: "{{ regex_match('^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp.*', element.image) }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ regex_match('^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp@sha256:[0-9a-f]{64}$', element.image) }}"
+                    operator: Equals
+                    value: false
           - list: "request.object.spec.ephemeralContainers || `[]`"
             deny:
               conditions:
                 all:
-                  - key: "{{ element.image }}"
-                    operator: Matches
-                    value: "^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp.*"
-                  - key: "{{ element.image }}"
-                    operator: NotMatches
-                    value: "^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp@sha256:[0-9a-f]{64}$"
+                  - key: "{{ regex_match('^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp.*', element.image) }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ regex_match('^197826770971\\.dkr\\.ecr\\.ap-southeast-1\\.amazonaws\\.com/techx-corp@sha256:[0-9a-f]{64}$', element.image) }}"
+                    operator: Equals
+                    value: false
