@@ -193,6 +193,139 @@ spec:
     r, m = setup_env(tmp_path, valid_manifest(), rendered)
     assert run_verifier(r, m).returncode != 0
 
+def test_t51_nested_sidecar_flagd_ui_matched(tmp_path):
+    man = {
+        "services": [
+            {"name": "flagd-ui", "tag": "123-flagd-ui", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ]
+    }
+    rendered = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  labels:
+    app.kubernetes.io/name: flagd
+spec:
+  template:
+    spec:
+      containers:
+      - name: flagd
+        image: ghcr.io/open-feature/flagd:v0.12.9
+      - name: flagd-ui
+        image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:2222222222222222222222222222222222222222222222222222222222222222
+"""
+    r, m = setup_env(tmp_path, man, rendered)
+    res = run_verifier(r, m)
+    assert res.returncode == 0, res.stderr
+
+def test_t52_nested_sidecar_flagd_ui_wrong_digest(tmp_path):
+    man = {
+        "services": [
+            {"name": "flagd-ui", "tag": "123-flagd-ui", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ]
+    }
+    rendered = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  labels:
+    app.kubernetes.io/name: flagd
+spec:
+  template:
+    spec:
+      containers:
+      - name: flagd
+        image: ghcr.io/open-feature/flagd:v0.12.9
+      - name: flagd-ui
+        image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:3333333333333333333333333333333333333333333333333333333333333333
+"""
+    r, m = setup_env(tmp_path, man, rendered)
+    res = run_verifier(r, m)
+    assert res.returncode != 0
+
+def test_t53_nested_sidecar_flagd_ui_missing(tmp_path):
+    man = {
+        "services": [
+            {"name": "flagd-ui", "tag": "123-flagd-ui", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ]
+    }
+    # flagd Pod exists but has no flagd-ui container at all.
+    rendered = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  labels:
+    app.kubernetes.io/name: flagd
+spec:
+  template:
+    spec:
+      containers:
+      - name: flagd
+        image: ghcr.io/open-feature/flagd:v0.12.9
+"""
+    r, m = setup_env(tmp_path, man, rendered)
+    res = run_verifier(r, m)
+    assert res.returncode != 0
+
+def test_t54_nested_sidecar_scoped_to_its_own_parent_pod(tmp_path):
+    # A container named flagd-ui living in some OTHER, unrelated workload
+    # (not the flagd Pod, and not itself an expected service) must be
+    # ignored entirely - only the one actually inside the flagd Pod counts.
+    man = {
+        "services": [
+            {"name": "ad", "tag": "123-ad", "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+            {"name": "flagd-ui", "tag": "123-flagd-ui", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"},
+        ]
+    }
+    rendered = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ad
+  labels:
+    app.kubernetes.io/name: ad
+spec:
+  template:
+    spec:
+      containers:
+      - name: ad
+        image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:0000000000000000000000000000000000000000000000000000000000000000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: some-other-service
+  labels:
+    app.kubernetes.io/name: some-other-service
+spec:
+  template:
+    spec:
+      containers:
+      - name: flagd-ui
+        image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:9999999999999999999999999999999999999999999999999999999999999999
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  labels:
+    app.kubernetes.io/name: flagd
+spec:
+  template:
+    spec:
+      containers:
+      - name: flagd
+        image: ghcr.io/open-feature/flagd:v0.12.9
+      - name: flagd-ui
+        image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:2222222222222222222222222222222222222222222222222222222222222222
+"""
+    r, m = setup_env(tmp_path, man, rendered)
+    res = run_verifier(r, m)
+    assert res.returncode == 0, res.stderr
+
 def test_t50_excluded_service(tmp_path):
     man = valid_manifest()
     man["services"].append({"name": "flagd-ui", "tag": "123-flagd-ui", "digest": "sha256:222"})

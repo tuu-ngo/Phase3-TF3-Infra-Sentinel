@@ -985,7 +985,37 @@ components:
       - "8016"
       - "--sources"
       - '[{"uri":"https://122.248.223.194.sslip.io/flags.json","provider":"http","authHeader":"Bearer $(FLAGD_SYNC_TOKEN)"}]'
-    sidecarContainers: []
+    # Full copy of components.flagd.sidecarContainers[0] from the chart
+    # default (../techx-corp-chart/values.yaml), not just an imageOverride -
+    # Helm replaces arrays wholesale on override (no per-item merge), so a
+    # partial or empty array here silently drops flagd-ui entirely. That is
+    # exactly what the previous `sidecarContainers: []` did, undetected,
+    # since the initial GitOps bootstrap (2026-07-12). If flagd-ui's env,
+    # resources, or volumeMounts change in the chart default, update this
+    # copy in the same PR or production will silently diverge from it.
+    sidecarContainers:
+      - name: flagd-ui
+        useDefault:
+          env: true
+        service:
+          port: 4000
+        env:
+          - name: FLAGD_METRICS_EXPORTER
+            value: otel
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://$(OTEL_COLLECTOR_NAME):4318
+          - name: FLAGD_UI_PORT
+            value: "4000"
+          - name: SECRET_KEY_BASE
+            value: yYrECL4qbNwleYInGJYvVnSkwJuSQJ4ijPTx5tirGUXrbznFIBFVJdPl5t6O9ASw
+          - name: PHX_HOST
+            value: localhost
+        resources:
+          limits:
+            memory: 250Mi
+        volumeMounts:
+          - name: config-rw
+            mountPath: /app/data
   frontend-proxy:
     replicasManagedExternally: true
     # Mandate 3: graceful shutdown - RIENG frontend-proxy dai hon cac service khac (5s) vi day la
