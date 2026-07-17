@@ -17,6 +17,18 @@ spec:
         - podSelector:
             matchLabels:
               app: aiops-engine
+        # otel-collector ghi metrics OTLP vào /api/v1/otlp/v1/metrics — thiếu là
+        # toàn bộ app metrics dừng khi pod collector bị tạo lại (sự cố 17/07 11:44)
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+        # jaeger SPM (Monitor tab) query PROMETHEUS_ADDR=prometheus:9090
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: jaeger
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: argo-rollouts
       ports:
         - protocol: TCP
           port: 9090

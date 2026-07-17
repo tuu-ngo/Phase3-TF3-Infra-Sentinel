@@ -20,6 +20,36 @@ exceptions:
     remediationPlan: "Test flagd values-level securityContext and podSecurityContext in Audit, then remove this exception before Enforce."
     rollbackBehavior: "Revert the exception-removal commit; do not kubectl edit GitOps-managed policies."
 
+  - id: m05-resources-flagd-ui-sidecar
+    policy: require-resource-requests
+    rules:
+      - require-cpu-memory-requests-limits
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: flagd
+    observedViolation: "The flagd-ui sidecar in the flagd control-plane Pod has only a memory limit and lacks explicit CPU request, memory request, and CPU limit."
+    reason: "flagd remains the BTC incident-injection control plane; do not roll it again in this follow-up just to change sidecar resource metadata."
+    owner: CDO01 / TF3 Security
+    approval: pending mentor review
+    reviewDate: 2026-07-24
+    remediationPlan: "Add full flagd-ui sidecar requests/limits in a separately reviewed rollout window, then remove the policy exclude and this exception."
+    rollbackBehavior: "Revert only the exception/exclude removal if flagd readiness or incident-injection behavior regresses."
+
+  - id: m05-image-flagd-ui-digest-pin
+    policy: require-first-party-image-digest
+    rules:
+      - require-techx-ecr-sha256-digest
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: flagd
+    observedViolation: "The flagd-ui sidecar uses the first-party ECR tag form instead of an immutable digest."
+    reason: "Digest pinning flagd-ui would roll the shared flagd Pod; keep it as a time-bounded control-plane exception until a dedicated rollout is approved."
+    owner: CDO01 / TF3 Security
+    approval: pending mentor review
+    reviewDate: 2026-07-24
+    remediationPlan: "Pin flagd-ui to a verified digest during a controlled flagd maintenance window, then remove the policy exclude and this exception."
+    rollbackBehavior: "Revert only the digest-pin rollout if flagd readiness or incident-injection behavior regresses."
+
   - id: m05-baseline-kafka-init-chown
     policy: custom-baseline-security-context
     rules:
