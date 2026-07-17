@@ -24,8 +24,14 @@ module "eks_platform" {
   stateful_node_instance_type = var.stateful_node_instance_type
   eks_admin_principal_arns    = var.eks_admin_principal_arns
   eks_kubernetes_group_principals = {
-    (aws_iam_role.tf3_production_operator.arn) = ["tf3-production-operators"]
-    (aws_iam_role.tf3_production_readonly.arn) = ["tf3-production-readers"]
+    operator = {
+      principal_arn     = aws_iam_role.tf3_production_operator.arn
+      kubernetes_groups = ["tf3-production-operators"]
+    }
+    readonly = {
+      principal_arn     = aws_iam_role.tf3_production_readonly.arn
+      kubernetes_groups = ["tf3-production-readers"]
+    }
   }
 }
 

@@ -143,9 +143,9 @@ module "eks" {
       }
     },
     {
-      for arn, groups in var.eks_kubernetes_group_principals : arn => {
-        principal_arn     = arn
-        kubernetes_groups = groups
+      for name, entry in var.eks_kubernetes_group_principals : name => {
+        principal_arn     = entry.principal_arn
+        kubernetes_groups = entry.kubernetes_groups
       }
     }
   )
