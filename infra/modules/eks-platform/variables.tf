@@ -50,5 +50,5 @@ variable "eks_kubernetes_group_principals" {
     principal_arn     = string
     kubernetes_groups = list(string)
   }))
-  default     = {}
+  default = {}
 }
