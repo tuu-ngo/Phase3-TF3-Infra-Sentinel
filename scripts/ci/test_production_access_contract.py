@@ -77,6 +77,14 @@ def test_eks_group_mapping_keeps_existing_admin_path():
     assert "kubernetes_groups" in text
 
 
+def test_eks_group_mapping_uses_static_for_each_keys():
+    root = Path("infra/live/production/main.tf").read_text()
+    assert "operator = {" in root
+    assert "readonly = {" in root
+    assert "(aws_iam_role.tf3_production_operator.arn)" not in root
+    assert "aws_iam_role.tf3_production_operator.arn" in root
+
+
 def test_ci_workflow_covers_all_access_paths():
     text = Path(".github/workflows/validate-production-access.yml").read_text()
     for path in (

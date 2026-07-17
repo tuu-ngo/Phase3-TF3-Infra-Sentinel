@@ -3,56 +3,55 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-requests
   annotations:
-    policies.kyverno.io/title: Require Resource Requests and Limits
+    policies.kyverno.io/title: Require CPU and memory requests and limits
+    policies.kyverno.io/category: Mandate 5 Runtime Admission Enforcement
 spec:
   validationFailureAction: Audit
   background: true
   rules:
-    - name: check-memory-requests-limits
+    - name: require-cpu-memory-requests-limits
       match:
         any:
-        - resources:
-            kinds:
-              - Pod
-      exclude:
-        any:
-        - resources:
-            namespaces:
-              - kube-system
-              - argocd
-              - kyverno
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
+              operations:
+                - CREATE
+                - UPDATE
       validate:
-        message: "Containers must have memory requests and limits defined."
-        pattern:
-          spec:
-            containers:
-              - resources:
-                  requests:
-                    memory: "?*"
-                  limits:
-                    memory: "?*"
-
-    - name: check-cpu-requests
-      match:
-        any:
-        - resources:
-            kinds:
-              - Pod
-      exclude:
-        any:
-        - resources:
-            namespaces:
-              - kube-system
-              - argocd
-              - kyverno
-      validate:
-        message: "Containers must have CPU requests defined."
-        pattern:
-          spec:
-            containers:
-              - resources:
-                  requests:
-                    cpu: "?*"
-                  # CPU limits are optional in many environments, but if required we can add it. User asked for: "Bắt buộc container có resources.requests/resources.limits"
-                  limits:
-                    cpu: "?*"
+        message: "All containers and initContainers must define requests.cpu, requests.memory, limits.cpu, and limits.memory."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.resources.requests.cpu || '' }}"
+                    operator: Equals
+                    value: ""
+                  - key: "{{ element.resources.requests.memory || '' }}"
+                    operator: Equals
+                    value: ""
+                  - key: "{{ element.resources.limits.cpu || '' }}"
+                    operator: Equals
+                    value: ""
+                  - key: "{{ element.resources.limits.memory || '' }}"
+                    operator: Equals
+                    value: ""
+          - list: "request.object.spec.initContainers || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.resources.requests.cpu || '' }}"
+                    operator: Equals
+                    value: ""
+                  - key: "{{ element.resources.requests.memory || '' }}"
+                    operator: Equals
+                    value: ""
+                  - key: "{{ element.resources.limits.cpu || '' }}"
+                    operator: Equals
+                    value: ""
+                  - key: "{{ element.resources.limits.memory || '' }}"
+                    operator: Equals
+                    value: ""
