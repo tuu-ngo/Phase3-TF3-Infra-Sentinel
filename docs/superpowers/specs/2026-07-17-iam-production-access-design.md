@@ -38,14 +38,14 @@ Each user receives an AWS console login profile with a generated random temporar
 
 - The four individual operator users must change their password on first login.
 - The shared read-only user does not force a first-login password change because the first member to change it would lock out the others.
-- No access keys are created.
+- Each user receives one access key for local AWS CLI authentication. The key has no direct production permission; it can only use the source user's limited IAM policy and assume the assigned shared role.
 - MFA is not required by the role trust policies, per the approved scope.
 - Role session-name format is not constrained, per the approved scope.
-- No password may appear in Terraform state, Git, command arguments, terminal output, chat, or tool output.
-- Bootstrap passwords are generated at execution time and written only to a local `0600` handoff file outside the repository.
+- No password, access-key ID, or secret access key may appear in Terraform state, Git, command arguments, terminal output, chat, or tool output.
+- Bootstrap passwords and access keys are generated at execution time and written only to a local `0600` handoff file outside the repository.
 - The handoff file path is reported after successful creation; the file must be securely deleted after credentials are distributed.
 
-IAM users and login profiles are created through an audited bootstrap procedure rather than Terraform because storing generated login-profile passwords in Terraform inputs or state would create avoidable credential exposure.
+IAM users, login profiles, and the initial access keys are created through an audited bootstrap procedure rather than Terraform because storing generated credentials in Terraform inputs or state would create avoidable credential exposure.
 
 ## IAM Role Model
 
@@ -147,7 +147,8 @@ Bootstrap procedure owns:
 
 - IAM user creation;
 - console login-profile creation;
-- local temporary-password handoff file.
+- initial access-key creation;
+- local credential handoff file.
 
 This separation keeps credentials out of Terraform state while keeping durable authorization policy reviewable and reproducible.
 
@@ -155,10 +156,10 @@ This separation keeps credentials out of Terraform state while keeping durable a
 
 1. Add the Kubernetes Roles and RoleBindings through GitOps.
 2. Verify Argo CD reports `techx-infrastructure-app` as `Synced/Healthy`; no workload should roll.
-3. Add IAM roles, assume-role policies, and EKS access entries through Terraform.
-4. Run `terraform plan` and require review before apply.
-5. Apply the reviewed Terraform plan through the production workflow.
-6. Create IAM users and login profiles with the bootstrap procedure.
+3. Create the five IAM users and login profiles with the bootstrap procedure. At this point the users have no production permissions.
+4. Add IAM roles, assume-role policies, source-user policy attachments, and EKS access entries through Terraform.
+5. Run `terraform plan` and require review before apply.
+6. Apply the reviewed Terraform plan through the production workflow.
 7. Test each role using impersonation and real assumed-role credentials.
 8. Confirm storefront and business SLOs are unchanged.
 9. Keep the existing `cdo-2-admin-team` cluster-admin entry until all positive and negative tests pass.
@@ -213,7 +214,7 @@ Rollback order:
 3. Revert the GitOps RBAC commit if the Roles are incorrect.
 4. Remove source-user assume-role permissions.
 5. Delete login profiles before deleting unused IAM users.
-6. Delete the local password handoff file after credential revocation or successful distribution.
+6. Delete the local credential handoff file after credential revocation or successful distribution.
 
 No rollback step may remove the Argo CD service account's deployment authority or the existing verified recovery path.
 
@@ -224,15 +225,17 @@ No rollback step may remove the Argo CD service account's deployment authority o
 - Any manual containment action must record actor, UTC timestamp, command, resource, reason, and resulting SLO state.
 - Manual desired-state changes must be codified in Git before incident closure.
 - The shared read-only password is rotated whenever membership changes or exposure is suspected.
+- Each individual access key is rotated at least every 90 days and immediately when exposure is suspected.
+- The shared read-only access key and password are rotated whenever membership changes.
 - No credential is transmitted through Git, chat, ticket text, or screenshots.
 
 ## Acceptance Criteria
 
-- All five IAM users exist with console login profiles and no access keys.
+- All five IAM users exist with console login profiles and exactly one active access key each.
 - Four individual users can assume only the operator role; the shared user can assume only the read-only role.
 - Operator and read-only permissions match the verification matrix.
 - Argo CD remains `Synced/Healthy`.
 - No application pod restarts as a result of the access rollout.
 - Storefront smoke probes and business SLOs show no regression.
 - Existing cluster-admin access remains unchanged until a separately approved de-privileging change.
-- Temporary passwords are delivered from a `0600` local handoff file and that file is deleted after distribution.
+- Temporary passwords and initial access keys are delivered from a `0600` local handoff file and that file is deleted after distribution.
