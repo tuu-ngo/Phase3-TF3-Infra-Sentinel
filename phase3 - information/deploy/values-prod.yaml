@@ -178,7 +178,7 @@ components:
             matchLabels:
               opentelemetry.io/name: frontend
     imageOverride:
-      digest: sha256:047faed92fe4ecf8b2bb7d3d99c191a2d495f41024abc44c204fe94a9ae019a3
+      digest: sha256:950f3267c25bf966c2672134c3351df07f54503fcac3070efc5ebbd15823f80c
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
