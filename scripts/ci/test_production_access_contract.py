@@ -75,3 +75,17 @@ def test_eks_group_mapping_keeps_existing_admin_path():
     assert "var.eks_admin_principal_arns" in text
     assert "var.eks_kubernetes_group_principals" in text
     assert "kubernetes_groups" in text
+
+
+def test_ci_workflow_covers_all_access_paths():
+    text = Path(".github/workflows/validate-production-access.yml").read_text()
+    for path in (
+        "scripts/access/**",
+        "scripts/ci/test_production_access_contract.py",
+        "gitops/infrastructure/rbac-production-access.yaml",
+        "infra/live/production/**",
+        "infra/modules/eks-platform/**",
+    ):
+        assert path in text
+    assert "terraform validate" in text
+    assert "test_production_access_contract.py" in text
