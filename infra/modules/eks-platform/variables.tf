@@ -46,6 +46,9 @@ variable "eks_admin_principal_arns" {
 
 variable "eks_kubernetes_group_principals" {
   description = "IAM principal ARNs mapped to Kubernetes groups without an EKS cluster access policy."
-  type        = map(list(string))
+  type = map(object({
+    principal_arn     = string
+    kubernetes_groups = list(string)
+  }))
   default     = {}
 }
