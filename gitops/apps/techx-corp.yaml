@@ -15,6 +15,7 @@ spec:
         - ../deploy/values-flagd-sync.yaml
         - ../deploy/values-prod.yaml
         - ../deploy/values-aio-llm.yaml
+        - ../deploy/values-serviceaccounts.yaml
       parameters:
         - name: default.image.repository
           value: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
