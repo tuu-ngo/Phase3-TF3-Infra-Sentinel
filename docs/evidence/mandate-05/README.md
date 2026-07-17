@@ -8,7 +8,7 @@ This directory stores non-secret evidence for Mandate 05 runtime admission harde
 - PR #194 introduces or updates four Audit policies:
   `require-resource-requests`, `custom-baseline-security-context`,
   `disallow-latest-tag`, and `require-first-party-image-digest`.
-- The current exception register contains 8 time-bounded exceptions that must be
+- The current exception register contains 9 time-bounded exceptions that must be
   remediated or accepted before Enforce.
 
 ## Local verification flow

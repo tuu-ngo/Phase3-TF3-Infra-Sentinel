@@ -772,8 +772,6 @@ components:
         cpu: 100m
         memory: 50Mi
   kafka:
-    imageOverride:
-      digest: sha256:afc05edcd00b7f56c8331d5e4a83c7ff6bf46182fd0667033529c964bccc2e68
     service:
       # REL-10: KRaft 1-node tu noi controller cua chinh no qua Service kafka:9093. Pod PHAI nam
       # trong Service endpoints NGAY khi chua ready, neu khong startupProbe/readinessProbe se loai pod

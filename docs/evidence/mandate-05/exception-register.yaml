@@ -38,6 +38,21 @@ exceptions:
     remediationPlan: "Validate fsGroup/subPath-free ownership or pre-provisioned volume ownership, then remove root init and the exception."
     rollbackBehavior: "Revert the Kafka hardening/remediation commit if broker startup or PVC writes regress."
 
+  - id: m05-image-kafka-digest-pin
+    policy: require-first-party-image-digest
+    rules:
+      - require-techx-ecr-sha256-digest
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: kafka
+    observedViolation: "Kafka is intentionally rendered as a tag-only first-party image in PR #194 to avoid triggering a Recreate rollout on the singleton broker."
+    reason: "Preserve the current broker pod while Mandate 5 remains in Audit; digest pinning can be reintroduced with a dedicated, reviewed rollout window."
+    owner: CDO02 / TF3 Reliability
+    approval: pending mentor review
+    reviewDate: 2026-07-24
+    remediationPlan: "Schedule a controlled Kafka rollout window, then restore the digest pin after validating that broker restarts are safe."
+    rollbackBehavior: "Revert the digest pin removal only after a planned maintenance window and broker failover plan are in place."
+
   - id: m05-baseline-postgresql-stateful
     policy: custom-baseline-security-context
     rules:
