@@ -88,6 +88,9 @@ def bootstrap_users(
             record["Password"] = password
             record["LoginProfileStatus"] = "created"
 
+        records.append(record)
+        _write_handoff(output_path, records)
+
         existing_keys = iam_client.list_access_keys(UserName=username)["AccessKeyMetadata"]
         if existing_keys:
             record["AccessKeyStatus"] = "existing-access-key-not-retrievable"
@@ -97,7 +100,6 @@ def bootstrap_users(
             record["SecretAccessKey"] = key["SecretAccessKey"]
             record["AccessKeyStatus"] = "created"
 
-        records.append(record)
         _write_handoff(output_path, records)
 
     return records

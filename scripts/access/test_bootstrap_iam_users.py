@@ -50,6 +50,11 @@ class FakeIAM:
             pass
 
 
+class AccessKeyFailureIAM(FakeIAM):
+    def create_access_key(self, UserName):
+        raise RuntimeError("simulated access-key API failure")
+
+
 def test_bootstrap_creates_exact_users_and_protected_handoff(tmp_path: Path):
     iam = FakeIAM()
     output = tmp_path / "handoff.json"
@@ -97,3 +102,13 @@ def test_bootstrap_does_not_create_second_access_key(tmp_path: Path):
     record = next(item for item in records if item["UserName"] == "cdo01-pm")
     assert record["AccessKeyStatus"] == "existing-access-key-not-retrievable"
     assert "SecretAccessKey" not in record
+
+
+def test_bootstrap_persists_password_before_access_key_failure(tmp_path: Path):
+    iam = AccessKeyFailureIAM()
+    output = tmp_path / "handoff.json"
+
+    with pytest.raises(RuntimeError, match="access-key API failure"):
+        bootstrap_users(iam, "197826770971", output, lambda: "Strong-temp-Password-42!")
+
+    assert "Strong-temp-Password-42!" in output.read_text(encoding="utf-8")

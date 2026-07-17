@@ -1,8 +1,8 @@
 # TF3 IAM and EKS Production Access Design
 
-**Date:** 2026-07-17  
-**Status:** Approved design; implementation pending  
-**Scope:** IAM identities, shared operator/read-only roles, EKS access entries, and namespace RBAC  
+**Date:** 2026-07-17
+**Status:** Approved design; implementation pending
+**Scope:** IAM identities, shared operator/read-only roles, EKS access entries, and namespace RBAC
 **Explicitly out of scope:** Argo CD `AppProject`, live workload changes, NetworkPolicy changes, and removal of existing administrator access
 
 ## Objective
