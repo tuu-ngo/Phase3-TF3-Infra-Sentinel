@@ -409,7 +409,7 @@ components:
             matchLabels:
               opentelemetry.io/name: payment
     imageOverride:
-      digest: sha256:7cbf0699119e7170fee132cb0a994b6c6fff9004a42b402706aa10a078d7679f
+      digest: sha256:801b602b7ac4afc3887a27cb3a97b13ea10ce35bce64afe047e3dd2b42ae5f1d
     # REL-03: tcpSocket probe (an toan - chi check port mo, khong false-fail vi thieu
     # grpc-health/sai HTTP path). liveness long hon readiness.
     readinessProbe:
