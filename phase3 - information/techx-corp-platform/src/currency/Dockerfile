@@ -52,6 +52,9 @@ RUN mkdir -p build && cd build \
 FROM base AS release
 
 COPY --from=builder /usr/local /usr/local
+RUN addgroup -S -g 65532 nonroot \
+    && adduser -S -u 65532 -G nonroot nonroot
+USER 65532:65532
 
 EXPOSE ${CURRENCY_PORT}
 

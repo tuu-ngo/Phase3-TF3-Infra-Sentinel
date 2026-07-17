@@ -22,7 +22,10 @@ FROM docker.io/library/php:8.4-cli-alpine3.22
 
 COPY --from=installer /usr/bin/install-php-extensions /usr/local/bin/
 
-RUN install-php-extensions opcache pcntl protobuf opentelemetry
+# Trivy gate (PM-101): apply every available Alpine security update before
+# installing the runtime extensions.
+RUN apk upgrade --no-cache && \
+    install-php-extensions opcache pcntl protobuf opentelemetry
 
 WORKDIR /var/www
 

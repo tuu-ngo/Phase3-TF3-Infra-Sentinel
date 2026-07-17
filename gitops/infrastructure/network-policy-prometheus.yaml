@@ -8,13 +8,15 @@ spec:
     matchLabels:
       app.kubernetes.io/name: prometheus
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  # Chỉ cho phép Grafana truy cập vào Prometheus để lấy dữ liệu (cổng 9090)
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: grafana
-    ports:
-    - protocol: TCP
-      port: 9090
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+        - podSelector:
+            matchLabels:
+              app: aiops-engine
+      ports:
+        - protocol: TCP
+          port: 9090

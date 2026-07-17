@@ -3,6 +3,9 @@
 
 FROM nginxinc/nginx-unprivileged:1.29.0-alpine3.22-otel
 
+USER root
+RUN apk upgrade --no-cache
+
 USER 101
 
 COPY src/image-provider/static/ /static/

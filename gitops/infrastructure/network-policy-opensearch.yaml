@@ -8,19 +8,24 @@ spec:
     matchLabels:
       app.kubernetes.io/name: opensearch
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  # Chỉ cho phép fluent-bit, grafana, và jaeger gọi vào OpenSearch
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: fluent-bit
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: grafana
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: jaeger
-    ports:
-    - protocol: TCP
-      port: 9200
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: fluent-bit
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: jaeger
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+        - podSelector:
+            matchLabels:
+              app: aiops-engine
+      ports:
+        - protocol: TCP
+          port: 9200
