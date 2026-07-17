@@ -1,7 +1,13 @@
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
 
-FROM docker.io/library/node:22-slim AS builder
+# Run the builder natively on the CI host arch regardless of TARGETARCH - its
+# output (.next/standalone + .next/static, copied below) is portable JS/static
+# assets, so cross-compiling here is free. This avoids running `npm ci`/
+# `npm run build` under QEMU emulation, which has hung for multi-hour periods
+# on this image's linux/arm64 leg (native npm/swc under binfmt emulation is a
+# known class of issue, see nodejs/docker-node#1335, #1973).
+FROM --platform=$BUILDPLATFORM docker.io/library/node:22-slim AS builder
 
 WORKDIR /app
 
@@ -33,14 +39,44 @@ RUN npm run build
 
 # -----------------------------------------------------------------------------
 
-FROM docker.io/library/node:22-slim AS deps
+# Same QEMU-hang avoidance as the builder stage above, but this stage's
+# node_modules ARE shipped into the final runtime image (COPY --from=deps
+# below), so a naive --platform=$BUILDPLATFORM would install native
+# optionalDependencies (@next/swc-*, sharp) matching the CI host's arch
+# instead of TARGETARCH. npm 10 (bundled with node:22) resolves
+# platform-specific optionalDependencies from the `cpu`/`os`/`libc` config
+# keys (NOT `arch`/`platform` - verified directly against `npm config list -l`
+# in this exact base image; those older key names are silently ignored and
+# fall back to auto-detecting the host). Setting them forces npm to resolve
+# and download the same packages an emulated `npm ci` on TARGETARCH would
+# have picked - only *where* the process runs changes, not *what* gets
+# installed. libc stays glibc to match this stage's own node:22-slim
+# (Debian) base, same as the existing (pre-fix) behavior.
+FROM --platform=$BUILDPLATFORM docker.io/library/node:22-slim AS deps
+
+ARG TARGETARCH
 
 WORKDIR /app
 
 COPY ./src/frontend/package.json package.json
 COPY ./src/frontend/package-lock.json package-lock.json
 
-RUN npm ci --omit=dev --no-audit --no-fund
+# Docker's TARGETARCH ("amd64"/"arm64") and Node's own `cpu` naming
+# ("x64"/"arm64") only agree on arm64 - verified directly that
+# npm_config_cpu=amd64 silently drops @next/swc-*/sharp entirely (no error,
+# just an empty install) instead of matching x64, which would ship a runtime
+# image missing them. Map explicitly rather than assume the two conventions
+# line up.
+RUN set -eu; \
+    case "${TARGETARCH}" in \
+      amd64) npm_arch=x64 ;; \
+      arm64) npm_arch=arm64 ;; \
+      *) echo "unsupported TARGETARCH=${TARGETARCH} for npm cpu mapping" >&2; exit 1 ;; \
+    esac; \
+    npm_config_os=linux \
+    npm_config_cpu="$npm_arch" \
+    npm_config_libc=glibc \
+    npm ci --omit=dev --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
 

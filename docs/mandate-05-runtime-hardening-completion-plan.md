@@ -1,10 +1,10 @@
 # Mandate 5 — Runtime hardening completion plan
 
-**Date:** 2026-07-16
+**Date:** 2026-07-17
 
 **Deadline:** 2026-07-17
 
-**Working branch:** `mandate-5/integration`
+**Working branch:** `codex/mandate-05-runtime-hardening` / PR #194
 
 **Scope:** PM-92 Pod Security, PM-95 image immutability/digest pinning,
 PM-101 Trivy/Cosign, Kyverno admission enforcement, mentor acceptance evidence
@@ -25,10 +25,10 @@ Strict progress against the three Jira DoD lists is currently:
 
 | Work item | Passed DoD | Progress | Main remaining gap |
 | --- | ---: | ---: | --- |
-| PM-92 Pod Security | 3/4 | 75% | Baseline coverage is below 80%. |
-| Kyverno audit policies | 4/5 | 80% | PolicyReport no longer matches the original evidence snapshot. |
-| PM-101 Trivy/Cosign | 1/4 | 25% | No real workflow run, scan artifact or ECR signature yet. |
-| **Combined Jira DoD** | **8/13** | **61.5%** | Implementation exists, production acceptance does not. |
+| PM-92 Pod Security | 3/4 | 75% | 11 time-bounded runtime exceptions still need owner remediation or mentor approval. |
+| Kyverno audit policies | 4/5 | 80% | Policies remain in Audit and still need a fresh post-sync PolicyReport artifact. |
+| PM-101 Trivy/Cosign | 2/4 | 50% | Trivy evidence is partially recorded; full first-party Cosign verification is still missing. |
+| **Combined Jira DoD** | **9/13** | **69.2%** | Implementation exists, production acceptance does not. |
 
 This percentage is planning progress, not a completion claim. Mandate 5 remains
 open until both final acceptance conditions are demonstrated:
@@ -38,22 +38,25 @@ open until both final acceptance conditions are demonstrated:
 
 ## 2. Verified live baseline
 
-Snapshot collected on 2026-07-16 against the production cluster and ECR:
+Snapshot updated for PR #194 on 2026-07-17. The branch-side checks render the
+production chart, validate the runtime inventory and run Kyverno CLI tests. A
+fresh live PolicyReport export must be captured again after the PR is synced by
+Argo CD.
 
 | Control | Current result | Target before closure |
 | --- | ---: | ---: |
 | PSA labels | `audit=baseline`, `warn=baseline`, no `enforce` | Preserve during remediation; enforce only after clean audit. |
 | Kyverno controllers | 4/4 deployments available | 4/4 available throughout cutover. |
-| Kyverno policies | 2 Ready policies, both `Audit` | Required policies switched to `Enforce` in controlled order. |
-| Baseline context: APE=false + drop ALL + seccomp | 10/32 containers | 32/32, or a signed, time-bounded exception. |
-| `runAsNonRoot` | 14/32 containers | All first-party app containers; no unexplained root workload. |
+| Kyverno policies | PR #194 defines 4 Audit policies: resources, baseline security context, no latest tags and first-party digest pinning. | Required policies switched to `Enforce` in controlled order. |
+| Baseline context: APE=false + drop ALL + seccomp | Branch render has zero unexplained findings after exception-register reconciliation. | 0 unexplained findings after live Argo CD sync. |
+| `runAsNonRoot` | Branch render has exact workload exceptions for stateful/observability/control-plane images. | All first-party app containers; no unexplained root workload. |
 | `readOnlyRootFilesystem` | 4/32 containers | Enable where write-path testing proves it safe; document stateful exceptions. |
-| Explicit CPU/memory requests and limits | 31/32 workload containers | 32/32; OTel Collector is the current missing template. |
-| Digest-pinned images | 18/32 containers | 32/32 running refs pinned by digest. |
-| Floating, non-`latest` image refs | 14/32 containers | 0. Fixed tags are still mutable references. |
-| ECR Cosign signatures | 0 | Every agreed first-party application digest signed and verified. |
-| PM-101 Actions runs/artifacts | 0 | Full green run plus retained Trivy/Cosign artifacts. |
-| PolicyReport aggregate | 267 reports, 441 pass, 180 fail | Current-resource report has zero unexplained failures. |
+| Explicit CPU/memory requests and limits | Branch render has zero unresolved resource findings. | Live current-resource report has zero unexplained failures. |
+| Digest-pinned images | Branch render requires first-party ECR images to use exact digests. | Live workload inventory and PM-101 evidence map every required digest. |
+| Floating, non-`latest` image refs | Branch render rejects `:latest`; tag-only external images remain outside first-party digest policy. | 0 unsupported mutable refs, or explicit external-image exceptions. |
+| ECR Cosign signatures | Full first-party verification still incomplete. | Every agreed first-party application digest signed and verified. |
+| PM-101 Actions runs/artifacts | Trivy evidence exists, but signed-release evidence remains incomplete. | Full green run plus retained Trivy/Cosign artifacts. |
+| PolicyReport aggregate | Reconciliation tooling exists; attach a fresh live artifact after Argo CD sync. | Current-resource report has zero unexplained failures. |
 | Storefront smoke test | HTTP 200 | HTTP 200 before, during and after enforce. |
 
 The PolicyReport aggregate contains historical ReplicaSet results. It must not
@@ -62,26 +65,15 @@ UID and active controller revision.
 
 ## 3. Branch and merge safety
 
-`mandate-5/integration` currently contains:
+PR #194 is safe to merge when its required checks are green because all Kyverno
+policies remain in `Audit`. It does not switch admission to `Enforce`, does not
+mutate the live cluster imperatively and does not change flagd or fault-injection
+paths.
 
-- PM-92/non-root work from `e7c10a9`;
-- the earlier PM-101 implementation from `d80df4e` plus `d86f5c8`; and
-- the current `origin/main` baseline at the time the integration branch was
-  assembled.
-
-PM-101 has since been isolated and completed on
-`feat/pm-101-trivy-cosign-gate` in PR #148. Therefore:
-
-1. do not merge this integration branch directly into `main` before PR #148 is
-   reviewed;
-2. merge the isolated PM-101 PR first;
-3. carry PM-92 through its own focused PR or reconcile it after rebasing the
-   integration branch on the new `main`;
-4. drop or resolve the duplicated older PM-101 commits during reconciliation;
-5. keep the Audit-to-Enforce policy change in a separate final PR so rollback
-   does not revert unrelated image or Dockerfile fixes.
-
-This plan document does not authorize a production merge by itself.
+After merge, use Argo CD to sync the Audit policies and capture fresh evidence.
+Keep the Audit-to-Enforce promotion in a separate final PR so rollback can
+change one policy action without reverting the runtime remediation and evidence
+tooling.
 
 ## 4. Missing work beyond the existing Jira descriptions
 
@@ -95,12 +87,12 @@ This plan document does not authorize a production merge by itself.
 - Test application write paths before enabling `readOnlyRootFilesystem`.
 - For PostgreSQL, Kafka, Valkey, OpenSearch and observability workloads, record
   required writable paths and provide `emptyDir`/PVC mounts where appropriate.
-- Remove the broad `currency`, `llm`, and `product-reviews` policy exclusion
-  after their images are fixed. A temporary root exception must not silently
-  exempt APE, capability and seccomp controls that the image can already use.
-- Add explicit resources to OTel Collector and verify every application,
-  sidecar, init container and daemon container has CPU/memory requests and
-  limits in Git, rather than relying only on LimitRange defaults.
+- Track the 11 current exceptions in `docs/evidence/mandate-05/exception-register.yaml`
+  until each owner either remediates the workload or signs a time-bounded
+  acceptance.
+- Verify every application, sidecar, init container and daemon container has
+  CPU/memory requests and limits in Git, rather than relying only on LimitRange
+  defaults.
 
 ### 4.2 Complete image immutability at runtime
 
@@ -109,9 +101,8 @@ This plan document does not authorize a production merge by itself.
   Jaeger, PostgreSQL, Prometheus, Valkey, OpenSearch and OTel Collector.
 - Reconcile the external-image scan list with the images actually running. A
   scan of an inventory digest is not evidence for a different live tag.
-- Add admission policies which reject `:latest` and reject any image reference
-  without `@sha256:`. PM-95 GitOps pinning alone does not prevent a later
-  manifest from reintroducing a mutable tag.
+- Keep the Audit image policies from PR #194 in place and promote them only
+  after live PolicyReports show no unexplained mutable-image failures.
 
 ### 4.3 Complete PM-101 production evidence
 
@@ -166,9 +157,9 @@ acceptable.
 
 Actions:
 
-- Record current `main`, integration, PM-92 and PM-101 commit SHAs.
+- Record current `main`, PR #194 and PM-101 commit SHAs.
 - Export the current workloads, image references, Kyverno policies and
-  PolicyReports.
+  PolicyReports after PR #194 is synced.
 - Separate current Pod/controller results from historical ReplicaSet reports.
 - Confirm the 18-service PM-101 inventory with the team.
 
@@ -176,15 +167,15 @@ Exit gate:
 
 - one authoritative inventory exists for workloads, containers, images,
   exceptions and owners;
-- the integration branch has no unknown or unrelated diff; and
-- the merge order in section 3 is accepted by reviewers.
+- PR #194 has no unknown or unrelated diff; and
+- the PR #194 merge, sync and evidence-capture sequence is accepted by reviewers.
 
 ### Phase 1 — Remediate without enforcement
 
 Actions:
 
 - merge and roll out runtime securityContext/Dockerfile fixes in small batches;
-- add missing resources;
+- add any remaining missing resources found by live PolicyReport reconciliation;
 - pin every live image to a digest;
 - leave Kyverno in Audit while each batch rolls out;
 - smoke-test storefront, checkout flow and flagd after every batch.
@@ -323,7 +314,7 @@ The final ADR must state:
 ## 8. Suggested Jira subtasks
 
 - `M5-01 — Remediate remaining runtime security violations`
-- `M5-02 — Require digest and disallow floating tags at admission`
+- `M5-02 — Promote digest and no-latest policies from Audit to Enforce`
 - `M5-03 — Produce PM-101 CI/ECR scan and signature evidence`
 - `M5-04 — Reconcile PolicyReports and remove stale/invalid exceptions`
 - `M5-05 — Kyverno Audit-to-Enforce cutover`

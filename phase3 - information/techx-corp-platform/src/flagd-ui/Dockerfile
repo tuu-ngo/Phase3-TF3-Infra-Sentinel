@@ -21,14 +21,27 @@ ARG DEBIAN_VERSION=bookworm-20260610-slim
 ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="gcr.io/distroless/cc-debian13:nonroot@sha256:d97bc0a941b8d4be647dc0ee75b264ddbb772f1ac5ba690a4309c00723b23775"
 
-FROM ${BUILDER_IMAGE} AS builder
-
 # Pin the official Tailwind v4 binary so `mix assets.setup` never depends on a
 # best-effort runtime download. The checksum protects the remote ADD against
-# replacement and keeps the builder reproducible.
+# replacement and keeps the builder reproducible. ADD's URL/checksum can't be
+# computed from TARGETARCH, so branch per architecture and let buildx prune
+# the unused one (same pattern as the final-amd64/final-arm64 split below).
+FROM scratch AS tailwind-amd64
 ADD --checksum=sha256:08951af1ce3cd66e715ba647d1f624e63f374885738c5cb525f31518495bcda6 \
     https://github.com/tailwindlabs/tailwindcss/releases/download/v4.0.9/tailwindcss-linux-x64 \
     /opt/tailwindcss
+
+FROM scratch AS tailwind-arm64
+ADD --checksum=sha256:4f9cab2ed98f23b2eac59da9fa6066b97d8381acc6b7eb18b86a623d160aa488 \
+    https://github.com/tailwindlabs/tailwindcss/releases/download/v4.0.9/tailwindcss-linux-arm64 \
+    /opt/tailwindcss
+
+ARG TARGETARCH
+FROM tailwind-${TARGETARCH} AS tailwind-bin
+
+FROM ${BUILDER_IMAGE} AS builder
+
+COPY --from=tailwind-bin /opt/tailwindcss /opt/tailwindcss
 RUN chmod 0755 /opt/tailwindcss
 
 # Materialize the same locked heroicons v2.2.0 source without installing Git.
@@ -96,12 +109,24 @@ RUN mkdir -p /runtime-bin \
   && /bin/busybox --install -s /runtime-bin
 
 # start a new build stage so that the final image will only contain
-# the compiled release and other runtime necessities
-FROM ${RUNNER_IMAGE} AS final
-
+# the compiled release and other runtime necessities.
+#
+# libtinfo/libcrypto live under the Debian multiarch triplet directory
+# (x86_64-linux-gnu vs aarch64-linux-gnu) and RUNNER_IMAGE is distroless
+# (no shell, so TARGETARCH can't be resolved with a RUN/case here) - branch
+# the stage itself per architecture and let buildx prune the unused one.
+FROM ${RUNNER_IMAGE} AS final-amd64
 COPY --from=shell /runtime-bin/ /bin/
 COPY --from=builder /lib/x86_64-linux-gnu/libtinfo.so.6* /lib/x86_64-linux-gnu/
 COPY --from=builder /usr/lib/x86_64-linux-gnu/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/
+
+FROM ${RUNNER_IMAGE} AS final-arm64
+COPY --from=shell /runtime-bin/ /bin/
+COPY --from=builder /lib/aarch64-linux-gnu/libtinfo.so.6* /lib/aarch64-linux-gnu/
+COPY --from=builder /usr/lib/aarch64-linux-gnu/libcrypto.so.3 /usr/lib/aarch64-linux-gnu/
+
+ARG TARGETARCH
+FROM final-${TARGETARCH} AS final
 
 WORKDIR "/app"
 

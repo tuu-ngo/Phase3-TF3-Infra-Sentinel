@@ -402,3 +402,176 @@ def test_t44a_real_values_prod_regression(tmp_path):
     yaml = YAML(typ="safe")
     doc = yaml.load(v.read_text())
     assert doc["components"]["accounting"]["imageOverride"]["digest"] == "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+# --- T51-T55: flagd-ui nested sidecar (components.flagd.sidecarContainers[]) ---
+
+FLAGD_UI_DIGEST_A = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+FLAGD_UI_DIGEST_B = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+
+def flagd_ui_manifest(digest=FLAGD_UI_DIGEST_A):
+    return {
+        "schemaVersion": 1,
+        "repository": "techx-corp",
+        "registry": "197826770971.dkr.ecr.ap-southeast-1.amazonaws.com",
+        "sourceSha": "1234567890abcdef1234567890abcdef12345678",
+        "sourceShortSha": "1234567",
+        "workflowRunId": "123",
+        "workflowRunAttempt": "1",
+        "mode": "scoped",
+        "baseTag": "1234567",
+        "platforms": "linux/amd64,linux/arm64",
+        "services": [
+            {
+                "name": "flagd-ui",
+                "tag": "1234567-flagd-ui",
+                "digest": digest,
+                "manifestMediaType": "application/vnd.oci.image.index.v1+json"
+            }
+        ]
+    }
+
+def run_flagd_ui_updater(v, m):
+    return run_updater(v, m, extra_args=["--expected-services", "flagd-ui"])
+
+def test_t51_nested_sidecar_create_override(tmp_path):
+    v_data = (
+        "components:\n"
+        "  flagd:\n"
+        "    enabled: true\n"
+        "    sidecarContainers:\n"
+        "      - name: flagd-ui\n"
+        "        useDefault:\n"
+        "          env: true\n"
+        "        resources:\n"
+        "          limits:\n"
+        "            memory: 250Mi\n"
+        "    initContainers:\n"
+        "      - name: init-config\n"
+    )
+    v, m = setup_env(tmp_path, manifest_data=flagd_ui_manifest(), values_data=v_data)
+    res = run_flagd_ui_updater(v, m)
+    assert res.returncode == 0, res.stderr
+    from ruamel.yaml import YAML
+    yaml = YAML(typ="safe")
+    doc = yaml.load(Path(v).read_text())
+    sidecars = doc["components"]["flagd"]["sidecarContainers"]
+    flagd_ui = next(s for s in sidecars if s["name"] == "flagd-ui")
+    assert flagd_ui["imageOverride"]["digest"] == FLAGD_UI_DIGEST_A
+    # unrelated sibling keys/structure must survive untouched
+    assert flagd_ui["useDefault"]["env"] is True
+    assert flagd_ui["resources"]["limits"]["memory"] == "250Mi"
+    assert doc["components"]["flagd"]["initContainers"][0]["name"] == "init-config"
+
+def test_t52_nested_sidecar_replace_existing_digest(tmp_path):
+    v_data = (
+        "components:\n"
+        "  flagd:\n"
+        "    sidecarContainers:\n"
+        "      - name: flagd-ui\n"
+        "        imageOverride:\n"
+        "          digest: sha256:old\n"
+        "          tag: old-flagd-ui\n"
+    )
+    v, m = setup_env(tmp_path, manifest_data=flagd_ui_manifest(FLAGD_UI_DIGEST_B), values_data=v_data)
+    res = run_flagd_ui_updater(v, m)
+    assert res.returncode == 0, res.stderr
+    txt = Path(v).read_text()
+    assert f"digest: {FLAGD_UI_DIGEST_B}" in txt
+    assert "tag: 1234567-flagd-ui" in txt
+
+def test_t53_nested_sidecar_empty_override(tmp_path):
+    v_data = (
+        "components:\n"
+        "  flagd:\n"
+        "    sidecarContainers:\n"
+        "      - name: flagd-ui\n"
+        "        imageOverride: {}\n"
+    )
+    v, m = setup_env(tmp_path, manifest_data=flagd_ui_manifest(), values_data=v_data)
+    res = run_flagd_ui_updater(v, m)
+    assert res.returncode == 0, res.stderr
+    from ruamel.yaml import YAML
+    yaml = YAML(typ="safe")
+    doc = yaml.load(Path(v).read_text())
+    sidecars = doc["components"]["flagd"]["sidecarContainers"]
+    flagd_ui = next(s for s in sidecars if s["name"] == "flagd-ui")
+    assert flagd_ui["imageOverride"]["digest"] == FLAGD_UI_DIGEST_A
+
+def test_t54_nested_sidecar_missing_parent_component(tmp_path):
+    v_data = "components:\n  ad:\n    imageOverride:\n      digest: old\n"
+    v, m = setup_env(tmp_path, manifest_data=flagd_ui_manifest(), values_data=v_data)
+    res = run_flagd_ui_updater(v, m)
+    assert res.returncode != 0
+    assert "UNKNOWN_PRODUCTION_COMPONENT: flagd" in res.stderr
+
+def test_t55_nested_sidecar_no_matching_entry(tmp_path):
+    v_data = (
+        "components:\n"
+        "  flagd:\n"
+        "    sidecarContainers:\n"
+        "      - name: some-other-sidecar\n"
+    )
+    v, m = setup_env(tmp_path, manifest_data=flagd_ui_manifest(), values_data=v_data)
+    res = run_flagd_ui_updater(v, m)
+    assert res.returncode != 0
+    assert "UNKNOWN_PRODUCTION_SIDECAR: flagd-ui" in res.stderr
+
+def test_t56_nested_sidecar_no_sidecarcontainers_list(tmp_path):
+    v_data = "components:\n  flagd:\n    enabled: true\n"
+    v, m = setup_env(tmp_path, manifest_data=flagd_ui_manifest(), values_data=v_data)
+    res = run_flagd_ui_updater(v, m)
+    assert res.returncode != 0
+    assert "UNKNOWN_PRODUCTION_SIDECAR: flagd-ui" in res.stderr
+
+def test_t57_nested_sidecar_real_values_prod_regression(tmp_path):
+    import shutil
+    prod_path = Path("phase3 - information/deploy/values-prod.yaml")
+    if not prod_path.exists():
+        pytest.skip("No real values-prod.yaml found")
+    v = tmp_path / "values-prod.yaml"
+    shutil.copy(prod_path, v)
+    m = tmp_path / "approved-images.json"
+    write_json(m, flagd_ui_manifest())
+    res = run_flagd_ui_updater(str(v), str(m))
+    assert res.returncode == 0, res.stderr
+    from ruamel.yaml import YAML
+    yaml = YAML(typ="safe")
+    doc = yaml.load(v.read_text())
+    sidecars = doc["components"]["flagd"]["sidecarContainers"]
+    flagd_ui = next(s for s in sidecars if s["name"] == "flagd-ui")
+    assert flagd_ui["imageOverride"]["digest"] == FLAGD_UI_DIGEST_A
+    # every other top-level component must be byte-for-byte unaffected
+    other_services = [
+        "accounting", "ad", "cart", "checkout", "currency", "email",
+        "fraud-detection", "frontend", "frontend-proxy", "image-provider",
+        "kafka", "llm", "load-generator", "payment", "product-catalog",
+        "product-reviews", "quote", "recommendation", "shipping",
+    ]
+    for svc in other_services:
+        original = yaml.load(prod_path.read_text())["components"].get(svc)
+        current = doc["components"].get(svc)
+        assert current == original, f"unexpected drift in unrelated component {svc}"
+
+def test_t58_kafka_real_values_prod_regression(tmp_path):
+    import shutil
+    prod_path = Path("phase3 - information/deploy/values-prod.yaml")
+    if not prod_path.exists():
+        pytest.skip("No real values-prod.yaml found")
+    v = tmp_path / "values-prod.yaml"
+    shutil.copy(prod_path, v)
+    data = valid_manifest_base()
+    data["services"] = [
+        {"name": "kafka", "tag": "1234567-kafka", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "manifestMediaType": "application/vnd.oci.image.index.v1+json"}
+    ]
+    m = tmp_path / "approved-images.json"
+    write_json(m, data)
+    res = run_updater(str(v), str(m), extra_args=["--expected-services", "kafka"])
+    assert res.returncode == 0, res.stderr
+    from ruamel.yaml import YAML
+    yaml = YAML(typ="safe")
+    doc = yaml.load(v.read_text())
+    assert doc["components"]["kafka"]["imageOverride"]["digest"] == "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    # kafka had no imageOverride before - confirm every other kafka field survives
+    original_kafka = yaml.load(prod_path.read_text())["components"]["kafka"]
+    assert doc["components"]["kafka"]["strategy"] == original_kafka["strategy"]
+    assert doc["components"]["kafka"]["envOverrides"] == original_kafka["envOverrides"]

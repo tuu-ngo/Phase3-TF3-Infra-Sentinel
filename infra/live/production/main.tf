@@ -23,6 +23,16 @@ module "eks_platform" {
   stateful_node_subnet_id     = module.network.private_subnet_ids[index(var.azs, var.stateful_node_availability_zone)]
   stateful_node_instance_type = var.stateful_node_instance_type
   eks_admin_principal_arns    = var.eks_admin_principal_arns
+  eks_kubernetes_group_principals = {
+    operator = {
+      principal_arn     = aws_iam_role.tf3_production_operator.arn
+      kubernetes_groups = ["tf3-production-operators"]
+    }
+    readonly = {
+      principal_arn     = aws_iam_role.tf3_production_readonly.arn
+      kubernetes_groups = ["tf3-production-readers"]
+    }
+  }
 }
 
 module "access" {
