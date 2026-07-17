@@ -89,3 +89,18 @@ def test_ci_workflow_covers_all_access_paths():
         assert path in text
     assert "terraform validate" in text
     assert "test_production_access_contract.py" in text
+
+
+def test_runbook_contains_safety_and_recovery_gates():
+    text = Path("docs/runbooks/production-access-onboarding.md").read_text()
+    for phrase in (
+        "197826770971",
+        "tf3-production-operator",
+        "tf3-production-readonly",
+        "one active access key per user",
+        "do not remove cdo-2-admin-team",
+        "kubectl auth can-i",
+        "delete the handoff file",
+        "Argo CD",
+    ):
+        assert phrase.lower() in text.lower()
