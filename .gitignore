@@ -41,3 +41,8 @@ Thumbs.db
 # --- Private docs with credentials ---
 /phase3 - information/docs/private/
 
+# --- Python cache ---
+__pycache__/
+*.pyc
+*.pyo
+.venv/

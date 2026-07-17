@@ -26,7 +26,7 @@ Chi tiết đầy đủ: [`phase3 - information/RULES.md`](phase3%20-%20informat
 - **Không** đổi TOKEN/URI trong `values-flagd-sync.yaml` sang nguồn khác, không bỏ nó ra
   khỏi lệnh `helm upgrade`.
 - flagd sync token/AWS creds/LLM API key: **không bao giờ** commit giá trị thật vào file
-  tracked. Xem quy tắc chi tiết ở [README.md](README.md#quy-tắc-khi-làm-việc-với-secret-thật-aws-creds-flagd-sync-token-llm-api-key).
+  tracked. Xem quy tắc chi tiết ở [README.md](XBrain-Phase3/Phase3-TF3-Infra-Sentinel/README.md#quy-tắc-khi-làm-việc-với-secret-thật-aws-creds-flagd-sync-token-llm-api-key).
 
 ## Cấu trúc TF3
 
@@ -46,7 +46,7 @@ tuần nào ở mục Trạng thái bên dưới.
 - **Baseline deploy**: *(chưa deploy / đã deploy — cập nhật ngày thực tế khi xong)*
 - **Backlog ưu tiên**: *(chưa dựng / link file khi có)*
 - **CI/CD**: secret-scanning đã bật (gitleaks pre-commit hook + GitHub Actions gate trên
-  `push`/`PR` vào `main`) — xem [README.md](README.md). Branch protection cho `main`
+  `push`/`PR` vào `main`) — xem [README.md](XBrain-Phase3/Phase3-TF3-Infra-Sentinel/README.md). Branch protection cho `main`
   (require PR + status check `gitleaks`) **đã đề xuất, cần bật thủ công trên GitHub**.
 - **Mandates đang mở**: xem [`phase3 - information/mandates/`](phase3%20-%20information/mandates/) — trống lúc đầu, BTC thả vào khi có hiệu lực.
 
