@@ -20,6 +20,12 @@ spec:
               operations:
                 - CREATE
                 - UPDATE
+      exclude:
+        any:
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: flagd
       validate:
         message: "Images from 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp must use @sha256:<64 lowercase hex>."
         foreach:

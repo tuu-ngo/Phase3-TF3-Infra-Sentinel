@@ -25,7 +25,7 @@ Strict progress against the three Jira DoD lists is currently:
 
 | Work item | Passed DoD | Progress | Main remaining gap |
 | --- | ---: | ---: | --- |
-| PM-92 Pod Security | 3/4 | 75% | 9 time-bounded runtime exceptions still need owner remediation or mentor approval. |
+| PM-92 Pod Security | 3/4 | 75% | 11 time-bounded runtime exceptions still need owner remediation or mentor approval. |
 | Kyverno audit policies | 4/5 | 80% | Policies remain in Audit and still need a fresh post-sync PolicyReport artifact. |
 | PM-101 Trivy/Cosign | 2/4 | 50% | Trivy evidence is partially recorded; full first-party Cosign verification is still missing. |
 | **Combined Jira DoD** | **9/13** | **69.2%** | Implementation exists, production acceptance does not. |
@@ -87,7 +87,7 @@ tooling.
 - Test application write paths before enabling `readOnlyRootFilesystem`.
 - For PostgreSQL, Kafka, Valkey, OpenSearch and observability workloads, record
   required writable paths and provide `emptyDir`/PVC mounts where appropriate.
-- Track the 9 current exceptions in `docs/evidence/mandate-05/exception-register.yaml`
+- Track the 11 current exceptions in `docs/evidence/mandate-05/exception-register.yaml`
   until each owner either remediates the workload or signs a time-bounded
   acceptance.
 - Verify every application, sidecar, init container and daemon container has
