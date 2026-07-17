@@ -57,3 +57,21 @@ def test_bindings_target_expected_groups_and_namespace():
     bindings = {doc["metadata"]["name"]: doc for doc in docs if doc["kind"] == "RoleBinding"}
     assert bindings["tf3-production-operator"]["subjects"][0]["name"] == "tf3-production-operators"
     assert bindings["tf3-production-readonly"]["subjects"][0]["name"] == "tf3-production-readers"
+
+
+def test_terraform_declares_expected_roles_and_users():
+    text = Path("infra/live/production/iam-production-access.tf").read_text()
+    for name in ("cdo01-pm", "cdo01-tl", "cdo02-pm", "cdo02-tl", "tf3-members-readonly"):
+        assert name in text
+    assert 'name = "tf3-production-operator"' in text
+    assert 'name = "tf3-production-readonly"' in text
+    assert "AmazonEKSClusterAdminPolicy" not in text
+    assert "aws_iam_access_key" not in text
+    assert "aws:MultiFactorAuthPresent" not in text
+
+
+def test_eks_group_mapping_keeps_existing_admin_path():
+    text = Path("infra/modules/eks-platform/main.tf").read_text()
+    assert "var.eks_admin_principal_arns" in text
+    assert "var.eks_kubernetes_group_principals" in text
+    assert "kubernetes_groups" in text
