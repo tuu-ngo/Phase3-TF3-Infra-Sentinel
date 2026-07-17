@@ -17,6 +17,16 @@ spec:
     targetRevision: 2.41.0
     helm:
       values: |
+        podSecurityContext:
+          runAsNonRoot: true
+        containerSecurityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: true
+          seccompProfile:
+            type: RuntimeDefault
         controller:
           resources:
             requests:

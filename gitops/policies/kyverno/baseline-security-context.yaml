@@ -192,6 +192,38 @@ spec:
                     operator: NotEquals
                     value: false
 
+    - name: require-run-as-non-root
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      exclude:
+        any:
+        - resources:
+            namespaces:
+              - kube-system
+              - argocd
+              - kyverno
+        - resources:
+            namespaces:
+              - techx-tf3
+            selector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - currency
+                - llm
+                - product-reviews
+      validate:
+        message: "Containers must set runAsNonRoot: true."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  runAsNonRoot: true
+
     - name: drop-all-capabilities
       match:
         any:
