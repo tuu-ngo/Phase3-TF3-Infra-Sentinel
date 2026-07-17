@@ -33,6 +33,10 @@ spec:
                       - kafka
                       - opentelemetry-collector
                       - postgresql
+          - resources:
+              selector:
+                matchLabels:
+                  app: aiops-engine
       validate:
         message: "Containers and initContainers must run as non-root."
         foreach:
