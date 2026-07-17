@@ -2,10 +2,32 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-FROM apache/kafka:3.9.1
+FROM apache/kafka:4.3.1
 
 USER root
 ARG OTEL_JAVA_AGENT_VERSION
+
+# Keep the supported Alpine base current at build time. Kafka 4.3.1 is the
+# latest supported bug-fix release and contains the patched dependency set.
+RUN apk upgrade --no-cache
+
+# Kafka 4.3.1 predates the patched Jackson 2.21.4 artifact. Replace only the
+# vulnerable jar and verify the Maven Central payload at build time.
+ADD --checksum=sha256:3888e9e69ab66fbacaacc9aea0e9ffbf15368288e4aca468b024dba11c09fbf9 \
+    https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.21.4/jackson-databind-2.21.4.jar \
+    /tmp/jackson-databind-2.21.4.jar
+
+# The broker does not expose JLine's optional Telnet server. Remove that module
+# (classes and Maven metadata) from the otherwise retained JLine CLI bundle.
+RUN apk add --no-cache zip \
+  && rm /opt/kafka/libs/jackson-databind-*.jar \
+  && mv /tmp/jackson-databind-2.21.4.jar /opt/kafka/libs/ \
+  && zip -q -d /opt/kafka/libs/jline-3.30.4.jar \
+       'org/jline/builtins/telnet/*' \
+       'META-INF/maven/org.jline/jline-remote-telnet/*' \
+  && apk del zip \
+  && chown appuser:appuser /opt/kafka/libs/jackson-databind-2.21.4.jar \
+                           /opt/kafka/libs/jline-3.30.4.jar
 
 USER appuser
 

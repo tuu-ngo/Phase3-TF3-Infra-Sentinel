@@ -8,7 +8,9 @@ WORKDIR /app
 COPY ./src/frontend/package.json package.json
 COPY ./src/frontend/package-lock.json package-lock.json
 
-RUN npm ci
+# Trivy evaluates the assembled runtime image below. Disable npm's separate
+# network audit here so reproducible builds do not stall on the advisory API.
+RUN npm ci --no-audit --no-fund
 
 COPY ./src/frontend/components/ components/
 COPY ./src/frontend/gateways/ gateways/
@@ -38,23 +40,35 @@ WORKDIR /app
 COPY ./src/frontend/package.json package.json
 COPY ./src/frontend/package-lock.json package-lock.json
 
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
 
-FROM gcr.io/distroless/nodejs22-debian12:nonroot
+FROM docker.io/library/node:22-alpine3.23
+
+# Pull patched Alpine packages into the immutable application image before the
+# strict Trivy gate evaluates it (notably OpenSSL/libexpat fixes).
+RUN apk upgrade --no-cache
+
+# Package managers are build-time tools. Removing them from the runtime image
+# shrinks the attack surface and avoids shipping npm's unused Sigstore client.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+  && corepack disable \
+  && rm -f /usr/local/bin/corepack
 
 WORKDIR /app
 
-COPY --from=builder /app/.next/standalone/ ./
-COPY --from=builder /app/.next/static/ .next/static/
+COPY --from=builder --chown=node:node /app/.next/standalone/ ./
+COPY --from=builder --chown=node:node /app/.next/static/ .next/static/
 
-COPY --from=deps /app/node_modules/ node_modules/
+COPY --from=deps --chown=node:node /app/node_modules/ node_modules/
 
-COPY ./src/frontend/public/ public/
+COPY --chown=node:node ./src/frontend/public/ public/
 
-COPY ./src/frontend/utils/telemetry/Instrumentation.js Instrumentation.js
+COPY --chown=node:node ./src/frontend/utils/telemetry/Instrumentation.js Instrumentation.js
 
+USER node
 EXPOSE ${FRONTEND_PORT}
 
-CMD ["--require=./Instrumentation.js", "server.js"]
+CMD ["node", "--require=./Instrumentation.js", "server.js"]
