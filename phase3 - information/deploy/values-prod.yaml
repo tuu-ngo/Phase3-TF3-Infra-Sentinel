@@ -1025,6 +1025,12 @@ components:
     # since the initial GitOps bootstrap (2026-07-12). If flagd-ui's env,
     # resources, or volumeMounts change in the chart default, update this
     # copy in the same PR or production will silently diverge from it.
+    #
+    # Already happened once: PR #207 added `securityContext` to flagd-ui in
+    # the chart default (2026-07-17) but this copy predated it, so production
+    # ran flagd-ui without the intended non-root hardening until this fix
+    # (caught via Kyverno Audit PolicyViolation on containers[1], not a crash
+    # - flagd-ui runs fine either way, this only closes the drift).
     sidecarContainers:
       - name: flagd-ui
         imageOverride:
@@ -1047,6 +1053,13 @@ components:
         resources:
           limits:
             memory: 250Mi
+        securityContext:
+          runAsUser: 65532
+          runAsGroup: 65532
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         volumeMounts:
           - name: config-rw
             mountPath: /app/data
