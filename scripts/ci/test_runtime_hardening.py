@@ -128,6 +128,53 @@ def test_baseline_policy_handles_missing_security_context_without_engine_errors(
         assert key.index("element.securityContext") < key.index("request.object.spec.securityContext")
 
 
+def test_baseline_non_root_rules_validate_pod_controllers_directly():
+    policy = yaml.safe_load(BASELINE_POLICY.read_text(encoding="utf-8"))
+    rules = {rule["name"]: rule for rule in policy["spec"]["rules"]}
+    controller_kinds = {"Deployment", "StatefulSet", "DaemonSet"}
+
+    for rule_name in ("require-effective-non-root", "require-run-as-non-root"):
+        rule = rules[rule_name]
+        matched_kinds = {
+            kind
+            for match in rule["match"]["any"]
+            for kind in match["resources"]["kinds"]
+        }
+        assert matched_kinds == {"Pod", *controller_kinds}
+        assert "exclude" not in rule
+
+    effective = rules["require-effective-non-root"]
+    effective_preconditions = effective["preconditions"]["all"]
+    assert [condition["value"] for condition in effective_preconditions] == [
+        "kafka",
+        "aiops-engine",
+    ]
+    assert all(
+        "request.object.spec.template.metadata.labels" in condition["key"]
+        for condition in effective_preconditions
+    )
+    assert all(
+        validation["list"].startswith("request.object.spec.template.spec.")
+        for validation in effective["validate"]["foreach"]
+    )
+
+    explicit = rules["require-run-as-non-root"]
+    assert explicit["preconditions"]["all"][0]["value"] == "aiops-engine"
+    assert explicit["validate"]["foreach"][0]["list"].startswith(
+        "request.object.spec.template.spec.containers"
+    )
+
+    for rule_name, rule in rules.items():
+        if rule_name in {"require-effective-non-root", "require-run-as-non-root"}:
+            continue
+        matched_kinds = {
+            kind
+            for match in rule["match"]["any"]
+            for kind in match["resources"]["kinds"]
+        }
+        assert controller_kinds.isdisjoint(matched_kinds)
+
+
 def test_verifier_honors_container_run_as_non_root_override(tmp_path):
     rendered = tmp_path / "rendered.yaml"
     inventory = tmp_path / "inventory.json"
