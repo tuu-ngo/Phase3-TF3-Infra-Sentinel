@@ -46,6 +46,24 @@ module "access" {
   cluster_endpoint          = module.eks_platform.cluster_endpoint
 }
 
+module "datastores" {
+  source = "../../modules/datastores"
+
+  enabled      = var.enable_managed_datastores
+  cluster_name = var.cluster_name
+  name_prefix  = var.datastores_name_prefix
+
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+
+  # Pod EKS đi ra qua cluster security group (VPC CNI gắn SG này lên node/pod ENI).
+  allowed_client_security_group_ids = [module.eks_platform.cluster_security_group_id]
+  bastion_security_group_id         = module.access.bastion_security_group_id
+  external_secrets_role_name        = module.eks_platform.external_secrets_role_name
+
+  # Thông số right-size + Multi-AZ mặc định trong module (ADR 0009). Override qua tfvars nếu cần.
+}
+
 module "edge" {
   source = "../../modules/edge"
 

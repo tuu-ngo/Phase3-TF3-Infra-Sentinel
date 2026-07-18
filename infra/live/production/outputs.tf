@@ -69,6 +69,27 @@ output "ssm_tunnel_command" {
   value       = module.access.ssm_tunnel_command
 }
 
+# ---------- Mandate #8: managed datastores ----------
+output "rds_endpoint_address" {
+  description = "RDS PostgreSQL host (Mandate #8). Null khi enable_managed_datastores=false."
+  value       = module.datastores.rds_endpoint_address
+}
+
+output "rds_master_user_secret_arn" {
+  description = "ARN secret master RDS tự quản (ESO đọc). Null khi tắt."
+  value       = module.datastores.rds_master_user_secret_arn
+}
+
+output "elasticache_primary_endpoint" {
+  description = "ElastiCache Valkey primary endpoint (Mandate #8). Null khi tắt."
+  value       = module.datastores.elasticache_primary_endpoint
+}
+
+output "msk_bootstrap_brokers_sasl_scram" {
+  description = "MSK bootstrap SASL/SCRAM (cổng 9096). Null khi tắt."
+  value       = module.datastores.msk_bootstrap_brokers_sasl_scram
+}
+
 output "cloudfront_domain_name" {
   description = "Public HTTPS address for the storefront."
   value       = module.edge.cloudfront_domain_name
