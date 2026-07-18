@@ -258,7 +258,10 @@ Prepare three minimal negative manifests:
 
 - `bad-root.yaml`: root-capable container or missing required runtime context;
 - `bad-latest-image.yaml`: mutable/latest image reference; and
-- `bad-missing-resources.yaml`: missing requests/limits.
+- `bad-missing-resources.yaml`: use the tracked
+  `tests/kyverno/mandate-05/resources/pod-missing-cpu-resources.yaml` fixture.
+  It includes memory request/limit but omits CPU request/limit, so the live
+  rejection comes from Kyverno after LimitRange defaulting is removed.
 
 The mentor must run real `kubectl apply` commands and see all three rejected.
 After the demo, show:
@@ -284,6 +287,10 @@ Rollback is policy-specific and does not disable Kyverno globally:
    endpoints or weaken unrelated controls; and
 6. record any temporary exception with owner, reason and expiry before retrying
    enforcement.
+
+Resource-defaulting rollback restores `gitops/infrastructure/limit-range.yaml`
+through Git and lets `techx-infrastructure-app` reconcile it. Do not recreate
+`techx-limits` imperatively.
 
 PM-101 rollback reverts the workflow merge; it does not delete existing ECR
 signatures or change deployed digests. Digest-pinning rollback selects a

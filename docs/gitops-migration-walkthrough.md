@@ -196,7 +196,8 @@ requests.memory: 6438Mi/16Gi
 limits.memory: 11228Mi/24Gi
 
 LimitRange:
-techx-limits
+retired by Mandate 05 after all workload resources became explicit; Kyverno
+now rejects missing requests/limits instead of allowing silent defaulting
 ```
 
 PDB da co cho cac workload quan trong nhu `frontend`, `frontend-proxy`, `checkout`, `cart`, `product-catalog`, `product-reviews`, `payment`, `shipping`, `quote`, `currency`, `opensearch`.

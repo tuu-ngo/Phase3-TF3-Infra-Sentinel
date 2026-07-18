@@ -14,6 +14,10 @@ This directory stores non-secret evidence for Mandate 05 runtime admission harde
 - PR #222 added explicit `flagd-ui` resources and removed the resource-policy
   exception for `flagd`, so resource enforcement no longer relies on namespace
   `LimitRange` defaulting for that sidecar.
+- Namespace-wide resource defaulting is removed once
+  `gitops/infrastructure/limit-range.yaml` is pruned. Every production container
+  and initContainer declares resources in Git, while Kyverno rejects omissions
+  instead of allowing the API server to fill them silently.
 
 ## Local verification flow
 
@@ -24,6 +28,10 @@ This directory stores non-secret evidence for Mandate 05 runtime admission harde
    then reconcile them against `exception-register.yaml`.
 5. Collect server-side admission denial evidence only after the relevant policy
    has been promoted from Audit to Enforce.
+6. For the resource-policy denial, use
+   `tests/kyverno/mandate-05/resources/pod-missing-cpu-resources.yaml`. It sets
+   memory request/limit but omits CPU request/limit so the denial is attributable
+   to Kyverno rather than the namespace memory ResourceQuota.
 
 Example live reconciliation commands:
 
