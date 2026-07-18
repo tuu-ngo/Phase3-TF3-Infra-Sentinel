@@ -6,7 +6,7 @@ metadata:
     policies.kyverno.io/title: Disallow latest and implicit latest image references
     policies.kyverno.io/category: Mandate 5 Runtime Admission Enforcement
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-explicit-non-latest-image-reference
