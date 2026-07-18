@@ -700,8 +700,8 @@ components:
       failureThreshold: 3
   accounting:
     imageOverride: # CDO02 fix Consumer.cs - xem comment imageOverride đầu components:
-      digest: sha256:ddc93c804109526cdb40b117884084bc3fce004f3cf95bc040fa6034ea9fca4c
-      tag: 43dcf62-29569108433-accounting
+      digest: sha256:32aeb5e03cd55a4f6a9927b950d019393e39e480541877471e622f002c3107f7
+      tag: e43df42-29655320898-accounting
     resources:
       requests:
         cpu: 50m
@@ -737,7 +737,7 @@ components:
         memory: 100Mi
   fraud-detection:
     imageOverride:
-      digest: sha256:c5f6771355bb9f68a7cac48a05ea894d97ef67465a70dbba6afc45481c9c14d5
+      digest: sha256:45fc3b08aa4a1ef057866565970aaac5672d4a0c6b6a7dd91c1ec0ff65517bb2
     resources:
       requests:
         cpu: 50m
