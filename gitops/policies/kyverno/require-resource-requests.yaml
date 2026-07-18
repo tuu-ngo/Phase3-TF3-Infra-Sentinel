@@ -6,7 +6,7 @@ metadata:
     policies.kyverno.io/title: Require CPU and memory requests and limits
     policies.kyverno.io/category: Mandate 5 Runtime Admission Enforcement
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-cpu-memory-requests-limits
