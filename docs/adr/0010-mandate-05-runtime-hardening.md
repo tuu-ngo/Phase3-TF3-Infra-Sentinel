@@ -6,7 +6,7 @@
 
 **Collaborators/reviewers:** TF3 platform owner, CDO02, mentor
 
-**Status:** Draft for PR 0 / PR 1 preparation
+**Status:** Accepted for Audit-to-Enforce cutover preparation
 
 ## Context
 
@@ -29,7 +29,14 @@ Mandate 05 closes the remaining runtime admission gaps for `techx-tf3` without c
 
 ## Exceptions
 
-Approved exceptions must be exact label matches on `app.kubernetes.io/name`, with an owner, reason, remediation plan, and review date. Current draft exceptions are recorded in `docs/evidence/mandate-05/exception-register.yaml`.
+Approved exceptions must be exact label matches, with an owner, reason,
+remediation plan, and review date. Current exceptions are recorded in
+`docs/evidence/mandate-05/exception-register.yaml` and are limited to:
+
+- `kafka` init-container PVC ownership setup, which still requires root until a
+  non-root ownership approach is validated; and
+- `aiops-engine`, which is managed outside this GitOps tree and still lacks the
+  required container-level baseline hardening.
 
 ## Rollback
 
@@ -40,4 +47,6 @@ Approved exceptions must be exact label matches on `app.kubernetes.io/name`, wit
 
 ## Follow-up
 
-This ADR becomes final when the first render/inventory pass, reconciliation script, admission tests, and runtime smoke tests are complete.
+Proceed with one-policy-at-a-time Enforce PRs after Argo CD syncs the exception
+cleanup and the live reconciliation gate remains clean. Admission rejection
+evidence must be captured after each relevant policy is promoted to `Enforce`.

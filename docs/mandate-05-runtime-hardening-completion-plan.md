@@ -21,14 +21,15 @@ the main implementation areas; the mandate additionally requires production
 remediation, admission enforcement, a real rejection demonstration and a
 signed end-to-end decision/evidence record.
 
-Strict progress against the three Jira DoD lists is currently:
+Strict progress against the three Jira DoD lists was rechecked after PR #222 and
+the stale-exception cleanup:
 
 | Work item | Passed DoD | Progress | Main remaining gap |
 | --- | ---: | ---: | --- |
-| PM-92 Pod Security | 3/4 | 75% | 11 time-bounded runtime exceptions still need owner remediation or mentor approval. |
-| Kyverno audit policies | 4/5 | 80% | Policies remain in Audit and still need a fresh post-sync PolicyReport artifact. |
-| PM-101 Trivy/Cosign | 2/4 | 50% | Trivy evidence is partially recorded; full first-party Cosign verification is still missing. |
-| **Combined Jira DoD** | **9/13** | **69.2%** | Implementation exists, production acceptance does not. |
+| PM-92 Pod Security | 3/4 | 75% | 2 time-bounded runtime exceptions remain: Kafka init ownership and out-of-tree aiops-engine. |
+| Kyverno audit policies | 4/5 | 80% | Policies remain in Audit; Enforce promotion is the remaining admission-control step. |
+| PM-101 Trivy/Cosign | 3/4 | 75% | 20/20 live first-party digests verify with Cosign; retained Trivy/Cosign evidence still needs final packaging. |
+| **Combined Jira DoD** | **10/13** | **76.9%** | Runtime is clean enough for controlled Enforce, but admission rejection evidence is not captured yet. |
 
 This percentage is planning progress, not a completion claim. Mandate 5 remains
 open until both final acceptance conditions are demonstrated:
@@ -49,14 +50,14 @@ Argo CD.
 | Kyverno controllers | 4/4 deployments available | 4/4 available throughout cutover. |
 | Kyverno policies | PR #194 defines 4 Audit policies: resources, baseline security context, no latest tags and first-party digest pinning. | Required policies switched to `Enforce` in controlled order. |
 | Baseline context: APE=false + drop ALL + seccomp | Branch render has zero unexplained findings after exception-register reconciliation. | 0 unexplained findings after live Argo CD sync. |
-| `runAsNonRoot` | Branch render has exact workload exceptions for stateful/observability/control-plane images. | All first-party app containers; no unexplained root workload. |
+| `runAsNonRoot` | Live and render checks leave only Kafka init and aiops-engine as explained exceptions. | All first-party app containers; no unexplained root workload. |
 | `readOnlyRootFilesystem` | 4/32 containers | Enable where write-path testing proves it safe; document stateful exceptions. |
 | Explicit CPU/memory requests and limits | Branch render has zero unresolved resource findings. | Live current-resource report has zero unexplained failures. |
 | Digest-pinned images | Branch render requires first-party ECR images to use exact digests. | Live workload inventory and PM-101 evidence map every required digest. |
 | Floating, non-`latest` image refs | Branch render rejects `:latest`; tag-only external images remain outside first-party digest policy. | 0 unsupported mutable refs, or explicit external-image exceptions. |
-| ECR Cosign signatures | Full first-party verification still incomplete. | Every agreed first-party application digest signed and verified. |
+| ECR Cosign signatures | 20/20 live first-party ECR digests verify with the GitHub OIDC workflow identity. | Retain the verification output in the final evidence pack. |
 | PM-101 Actions runs/artifacts | Trivy evidence exists, but signed-release evidence remains incomplete. | Full green run plus retained Trivy/Cosign artifacts. |
-| PolicyReport aggregate | Reconciliation tooling exists; attach a fresh live artifact after Argo CD sync. | Current-resource report has zero unexplained failures. |
+| PolicyReport aggregate | Live reconciliation gate is clean: no active or unresolved failures. | Keep this clean after each Enforce PR. |
 | Storefront smoke test | HTTP 200 | HTTP 200 before, during and after enforce. |
 
 The PolicyReport aggregate contains historical ReplicaSet results. It must not
@@ -87,7 +88,7 @@ tooling.
 - Test application write paths before enabling `readOnlyRootFilesystem`.
 - For PostgreSQL, Kafka, Valkey, OpenSearch and observability workloads, record
   required writable paths and provide `emptyDir`/PVC mounts where appropriate.
-- Track the 11 current exceptions in `docs/evidence/mandate-05/exception-register.yaml`
+- Track the 2 current exceptions in `docs/evidence/mandate-05/exception-register.yaml`
   until each owner either remediates the workload or signs a time-bounded
   acceptance.
 - Verify every application, sidecar, init container and daemon container has
@@ -96,9 +97,10 @@ tooling.
 
 ### 4.2 Complete image immutability at runtime
 
-- Replace all 14 remaining tag-only workload references with exact digests.
-- Include Kafka, AIOps Engine, Cloudflared, Flagd, Grafana and its sidecars,
-  Jaeger, PostgreSQL, Prometheus, Valkey, OpenSearch and OTel Collector.
+- Keep the 20 first-party ECR images pinned by digest and reject any new
+  first-party tag-only reference before promotion.
+- External images remain fixed non-`latest` references and are covered by the
+  external-image review workflow rather than TF3 Cosign signatures.
 - Reconcile the external-image scan list with the images actually running. A
   scan of an inventory digest is not evidence for a different live tag.
 - Keep the Audit image policies from PR #194 in place and promote them only
