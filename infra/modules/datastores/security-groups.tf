@@ -7,7 +7,7 @@ resource "aws_security_group" "rds" {
   count = local.count_flag
 
   name        = "${var.name_prefix}-rds"
-  description = "RDS PostgreSQL — inbound 5432 chỉ từ node/cluster SG + bastion"
+  description = "RDS PostgreSQL - inbound 5432 from node/cluster SG and bastion"
   vpc_id      = var.vpc_id
 
   tags = merge(local.common_tags, { Name = "${var.name_prefix}-rds" })
@@ -32,7 +32,7 @@ resource "aws_security_group" "elasticache" {
   count = local.count_flag
 
   name        = "${var.name_prefix}-elasticache"
-  description = "ElastiCache Valkey — inbound 6379 chỉ từ node/cluster SG + bastion"
+  description = "ElastiCache Valkey - inbound 6379 from node/cluster SG and bastion"
   vpc_id      = var.vpc_id
 
   tags = merge(local.common_tags, { Name = "${var.name_prefix}-elasticache" })
@@ -58,7 +58,7 @@ resource "aws_security_group" "msk" {
   count = local.count_flag
 
   name        = "${var.name_prefix}-msk"
-  description = "MSK Kafka — inbound 9092/9094/9096 chỉ từ node/cluster SG"
+  description = "MSK Kafka - inbound 9092/9094/9096 from node/cluster SG"
   vpc_id      = var.vpc_id
 
   tags = merge(local.common_tags, { Name = "${var.name_prefix}-msk" })

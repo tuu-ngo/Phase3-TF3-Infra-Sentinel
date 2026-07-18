@@ -22,7 +22,7 @@ resource "aws_elasticache_replication_group" "valkey" {
   count = local.count_flag
 
   replication_group_id = "${var.name_prefix}-valkey"
-  description          = "TechX TF3 cart store — Valkey ${var.elasticache_engine_version}"
+  description          = "TechX TF3 cart store - Valkey ${var.elasticache_engine_version}"
 
   engine         = "valkey"
   engine_version = var.elasticache_engine_version
