@@ -115,9 +115,12 @@ variable "msk_kafka_version" {
 }
 
 variable "msk_broker_instance_type" {
-  description = "Instance type broker MSK (kafka.t3.small)."
+  # MSK 3.9.x KHONG con ho tro kafka.t3.small (CreateCluster tra BadRequest). Instance nho nhat
+  # hop le hien tai la kafka.m7g.large (Graviton, re nhat trong danh sach valid). Da verify qua
+  # loi API tra ve danh sach valid types.
+  description = "Instance type broker MSK. 3.9.x yeu cau m5.large / m7g.large tro len (t3.small bi loai)."
   type        = string
-  default     = "kafka.t3.small"
+  default     = "kafka.m7g.large"
 }
 
 variable "msk_number_of_brokers" {
