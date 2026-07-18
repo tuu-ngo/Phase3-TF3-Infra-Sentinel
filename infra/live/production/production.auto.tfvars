@@ -15,4 +15,9 @@ cloudflare_allowed_emails = [
   "hiimtuu@gmail.com",
   "tutc.work@gmail.com",
   "trongtanaws@gmail.com",
+  # Mentors — SSO access tới Grafana/Jaeger/ArgoCD UI qua Cloudflare Zero Trust (REL-17).
+  "nghia.huynh@techxcorp.com",
+  "toan.le@techxcorp.com",
+  "khanh.nguyen@techxcorp.com",
+  "namhong.ta@techxcorp.com",
 ]
