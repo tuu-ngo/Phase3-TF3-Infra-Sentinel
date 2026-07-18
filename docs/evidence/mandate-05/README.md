@@ -4,10 +4,14 @@ This directory stores non-secret evidence for Mandate 05 runtime admission harde
 
 ## Working set
 
-- `exception-register.yaml` - approved exact-label exceptions for Audit-to-Enforce review.
-- PR #194 introduces or updates four Audit policies:
+- `exception-register.yaml` - approved exact-label exceptions retained through
+  Enforce review.
+- PR #194 introduced or updated four Audit policies:
   `require-resource-requests`, `custom-baseline-security-context`,
   `disallow-latest-tag`, and `require-first-party-image-digest`.
+- PRs #224 through #230 fixed and promoted those policies one at a time. All
+  four are now `Enforce` and `Ready=True`.
+- `enforce-cutover-20260718.md` records the live deny/allow and health evidence.
 - The current exception register contains 2 time-bounded exceptions that must be
   remediated or accepted before final closure: Kafka PVC ownership init and the
   out-of-tree `aiops-engine` runtime hardening gap.
@@ -20,8 +24,8 @@ This directory stores non-secret evidence for Mandate 05 runtime admission harde
 1. Render production with all four Argo CD values files.
 2. Run `scripts/ci/verify-runtime-hardening.py` in `inventory` mode.
 3. Run Kyverno CLI tests from `tests/kyverno/mandate-05/`.
-4. After PR #194 is synced by Argo CD, export live PolicyReports and active Pods,
-   then reconcile them against `exception-register.yaml`.
+4. After any policy change is synced by Argo CD, export live PolicyReports and
+   active Pods, then reconcile them against `exception-register.yaml`.
 5. Collect server-side admission denial evidence only after the relevant policy
    has been promoted from Audit to Enforce.
 
@@ -41,13 +45,13 @@ Expected post-sync gate: `activeFailures` and `unresolvedResults` are empty.
 Historical `staleResults` from old ReplicaSets are acceptable only when they are
 not tied to an active Pod UID.
 
-Current pre-Enforce readiness gate after the exception cleanup:
-`activeFailures=0`, `unresolvedResults=0`, 20 first-party ECR digests are
-running without tag-only references, and all 20 verify with the GitHub OIDC
-Cosign identity used by `build-push-ecr.yml`.
+Current post-Enforce gate at `677e74b`: `activeFailures=0`,
+`staleResults=0`, `unresolvedResults=0`, 20 first-party ECR digests are running
+without tag-only references, and all 20 verify with the GitHub OIDC Cosign
+identity used by `build-push-ecr.yml`.
 
 ## Non-goals
 
 - No kubeconfig, tokens, or secrets are stored here.
 - No imperative cluster mutation is recorded here.
-- No Enforce promotion is implied by the presence of these files.
+- Evidence files do not apply policy or workload changes imperatively.

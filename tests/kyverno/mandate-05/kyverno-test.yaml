@@ -40,6 +40,55 @@ results:
     kind: Pod
     result: pass
   - policy: custom-baseline-security-context
+    rule: deny-pod-run-as-user-zero
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: deny-container-run-as-user-zero
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: deny-privileged-containers
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: require-allow-privilege-escalation-false
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: require-run-as-non-root
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: drop-all-capabilities
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: require-seccomp-profile-runtime-default
+    resources:
+      - mandate05-good-third-party
+      - mandate05-good-first-party
+    kind: Pod
+    result: pass
+  - policy: custom-baseline-security-context
     rule: require-effective-non-root
     resources:
       - mandate05-root

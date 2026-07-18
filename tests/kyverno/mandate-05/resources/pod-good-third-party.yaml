@@ -15,6 +15,7 @@ spec:
     - name: app
       image: registry.k8s.io/pause:3.10
       securityContext:
+        runAsNonRoot: true
         allowPrivilegeEscalation: false
         capabilities:
           drop: ["ALL"]
