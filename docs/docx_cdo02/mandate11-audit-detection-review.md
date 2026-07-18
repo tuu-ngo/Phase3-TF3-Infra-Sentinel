@@ -78,7 +78,7 @@ API/actions to match directly:
 - `cloudtrail:DeleteTrail`
 - `cloudtrail:UpdateTrail`
 - `cloudtrail:PutEventSelectors`
-- `cloudtrail:StartLogging`
+- `cloudtrail:StartLogging` when it follows an unexpected stop or occurs on a sensitive trail
 - `logs:DeleteLogGroup`
 - `logs:PutRetentionPolicy`
 - plus any direct bucket or KMS policy change that affects the audit log storage path, if configured
@@ -151,6 +151,7 @@ What must be detected:
 - switching a policy to a broader default version;
 - changing trust relationships so additional principals can use a role;
 - adding a user to a privileged group;
+- renaming an IAM user in a way that obscures attribution or disguises a privileged identity;
 - turning a previously narrow access path into a broad one.
 
 API/actions to match directly:
@@ -163,6 +164,7 @@ API/actions to match directly:
 - `iam:SetDefaultPolicyVersion`
 - `iam:UpdateAssumeRolePolicy`
 - `iam:AddUserToGroup`
+- `iam:UpdateUser`
 - plus any permission-boundary or access-path mutation API if the team later uses them
 
 Why this group matters:
@@ -395,7 +397,90 @@ Important point:
 
 ---
 
-## 7. Cost Position
+## 7. Noise Control and Mentor Verification
+
+### 7.1. Noise control requirements
+
+To stay credible and avoid alert fatigue, the detector should apply a small set of explicit noise-control rules:
+
+- keep an allowlist of known automation principals, such as CI/CD roles and approved IRSA roles;
+- treat human secret access differently from automation secret access;
+- use time-bounded maintenance suppressions with at least:
+  - `actor`
+  - `resource`
+  - `start`
+  - `end`
+  - `reason`
+- make suppressions expire automatically instead of leaving them open-ended;
+- page only on the highest-risk groups by default:
+  - Group 1 - blinding audit
+  - Group 2 - creating new access paths
+  - Group 4 - broadening cluster or runtime access
+- keep Group 3 and Group 5 at review or high severity unless the target or actor makes them critical;
+- set Group 6 severity based on the target, with destructive actions against evidence, keys, or critical datastores treated as `critical`.
+
+This is the minimum needed to satisfy the directive requirement that alerts remain trustworthy and are not muted as noise.
+
+### 7.1.1. Minimum implementation
+
+The recommended minimum implementation is intentionally small:
+
+- keep one detector configuration file directly inside the Lambda package;
+- store:
+  - `allowed_principals`
+  - `human_principals`
+  - `secret_reader_principals`
+  - `suppressions`
+- make each suppression contain:
+  - `actor`
+  - `resource`
+  - `start`
+  - `end`
+  - `reason`
+- make the detector evaluate each event in this order:
+  1. check whether the principal is an approved automation principal;
+  2. check whether a valid, unexpired suppression exists;
+  3. check whether the event is secret access by a human principal;
+  4. map the event into a severity based on the event group and target.
+
+The recommended default severity mapping is:
+
+- Group 1, Group 2, Group 4 -> `critical`
+- Group 3, Group 5 -> `high`
+- Group 6 -> `high` by default, `critical` when the target is an evidence store, a KMS key, or a critical datastore
+
+This is enough to answer the mentor's likely questions about CI/CD activity, approved automation, and planned maintenance without building a full alert-management product or adding extra configuration infrastructure.
+
+### 7.2. Mentor self-verification expectations
+
+The mentor must be able to perform one harmless but clearly dangerous action and verify the result without relying on verbal explanation.
+
+The verification flow should therefore show:
+
+- the action performed by the mentor;
+- the resulting alert arriving within the committed threshold;
+- the alert contents:
+  - who
+  - what
+  - when
+  - from where
+  - time-to-detect
+- the end-to-end alert path:
+  - event source
+  - processing step
+  - recipient channel
+
+Suitable self-verification actions include:
+
+- `iam:CreateAccessKey`
+- `eks:CreateAccessEntry`
+- `cloudtrail:StopLogging` followed by `cloudtrail:StartLogging` on an approved test target
+
+The important point is not the specific test action by itself, but that the mentor can independently see the alert, the routing path, and the measured detection time.
+
+---
+
+## 8. Cost Position
 
 For the scoped design of management events + EventBridge + Lambda + SNS email:
 
