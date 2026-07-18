@@ -15,16 +15,14 @@ spec:
           - resources:
               kinds:
                 - Pod
-              namespaces:
-                - techx-tf3
-              operations:
-                - CREATE
-                - UPDATE
-          - resources:
-              kinds:
                 - Deployment
                 - StatefulSet
                 - DaemonSet
+                - Job
+                - CronJob
+                - ReplicaSet
+                - ReplicationController
+                - Rollout
               namespaces:
                 - techx-tf3
               operations:
@@ -32,33 +30,33 @@ spec:
                 - UPDATE
       preconditions:
         all:
-          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.\"app.kubernetes.io/name\" || request.object.spec.template.metadata.labels.\"app.kubernetes.io/name\" || '' }}"
+          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.\"app.kubernetes.io/name\" || request.object.spec.jobTemplate.spec.template.metadata.labels.\"app.kubernetes.io/name\" || request.object.spec.template.metadata.labels.\"app.kubernetes.io/name\" || '' }}"
             operator: NotEquals
             value: kafka
-          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.app || request.object.spec.template.metadata.labels.app || '' }}"
+          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.app || request.object.spec.jobTemplate.spec.template.metadata.labels.app || request.object.spec.template.metadata.labels.app || '' }}"
             operator: NotEquals
             value: aiops-engine
       validate:
         message: "Containers and initContainers must run as non-root."
         foreach:
-          - list: "request.object.spec.template.spec.containers || request.object.spec.containers"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.containers || request.object.spec.template.spec.containers || request.object.spec.containers"
             deny:
               conditions:
                 any:
                   - key: "{{ to_string(lookup(element.securityContext || `{}`, 'runAsNonRoot')) }}"
                     operator: Equals
                     value: "false"
-                  - key: "{{ element.securityContext.runAsNonRoot || request.object.spec.template.spec.securityContext.runAsNonRoot || request.object.spec.securityContext.runAsNonRoot || `false` }}"
+                  - key: "{{ element.securityContext.runAsNonRoot || request.object.spec.jobTemplate.spec.template.spec.securityContext.runAsNonRoot || request.object.spec.template.spec.securityContext.runAsNonRoot || request.object.spec.securityContext.runAsNonRoot || `false` }}"
                     operator: NotEquals
                     value: true
-          - list: "request.object.spec.template.spec.initContainers || request.object.spec.initContainers || `[]`"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.initContainers || request.object.spec.template.spec.initContainers || request.object.spec.initContainers || `[]`"
             deny:
               conditions:
                 any:
                   - key: "{{ to_string(lookup(element.securityContext || `{}`, 'runAsNonRoot')) }}"
                     operator: Equals
                     value: "false"
-                  - key: "{{ element.securityContext.runAsNonRoot || request.object.spec.template.spec.securityContext.runAsNonRoot || request.object.spec.securityContext.runAsNonRoot || `false` }}"
+                  - key: "{{ element.securityContext.runAsNonRoot || request.object.spec.jobTemplate.spec.template.spec.securityContext.runAsNonRoot || request.object.spec.template.spec.securityContext.runAsNonRoot || request.object.spec.securityContext.runAsNonRoot || `false` }}"
                     operator: NotEquals
                     value: true
 
@@ -68,6 +66,14 @@ spec:
           - resources:
               kinds:
                 - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+                - ReplicaSet
+                - ReplicationController
+                - Rollout
               namespaces:
                 - techx-tf3
               operations:
@@ -78,7 +84,7 @@ spec:
         deny:
           conditions:
             any:
-              - key: "{{ request.object.spec.securityContext.runAsUser || `-1` }}"
+              - key: "{{ request.object.spec.jobTemplate.spec.template.spec.securityContext.runAsUser || request.object.spec.template.spec.securityContext.runAsUser || request.object.spec.securityContext.runAsUser || `-1` }}"
                 operator: Equals
                 value: 0
 
@@ -88,31 +94,35 @@ spec:
           - resources:
               kinds:
                 - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+                - ReplicaSet
+                - ReplicationController
+                - Rollout
               namespaces:
                 - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
-      exclude:
-        any:
-          - resources:
-              selector:
-                matchExpressions:
-                  - key: app.kubernetes.io/name
-                    operator: In
-                    values:
-                      - kafka
+      preconditions:
+        all:
+          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.\"app.kubernetes.io/name\" || request.object.spec.jobTemplate.spec.template.metadata.labels.\"app.kubernetes.io/name\" || request.object.spec.template.metadata.labels.\"app.kubernetes.io/name\" || '' }}"
+            operator: NotEquals
+            value: kafka
       validate:
         message: "Container and initContainer runAsUser must not be 0."
         foreach:
-          - list: "request.object.spec.containers"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.containers || request.object.spec.template.spec.containers || request.object.spec.containers"
             deny:
               conditions:
                 any:
                   - key: "{{ element.securityContext.runAsUser || `-1` }}"
                     operator: Equals
                     value: 0
-          - list: "request.object.spec.initContainers || `[]`"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.initContainers || request.object.spec.template.spec.initContainers || request.object.spec.initContainers || `[]`"
             deny:
               conditions:
                 any:
@@ -126,6 +136,14 @@ spec:
           - resources:
               kinds:
                 - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+                - ReplicaSet
+                - ReplicationController
+                - Rollout
               namespaces:
                 - techx-tf3
               operations:
@@ -134,14 +152,14 @@ spec:
       validate:
         message: "Privileged containers are not allowed."
         foreach:
-          - list: "request.object.spec.containers"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.containers || request.object.spec.template.spec.containers || request.object.spec.containers"
             deny:
               conditions:
                 any:
                   - key: "{{ element.securityContext.privileged || `false` }}"
                     operator: Equals
                     value: true
-          - list: "request.object.spec.initContainers || `[]`"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.initContainers || request.object.spec.template.spec.initContainers || request.object.spec.initContainers || `[]`"
             deny:
               conditions:
                 any:
@@ -191,16 +209,14 @@ spec:
           - resources:
               kinds:
                 - Pod
-              namespaces:
-                - techx-tf3
-              operations:
-                - CREATE
-                - UPDATE
-          - resources:
-              kinds:
                 - Deployment
                 - StatefulSet
                 - DaemonSet
+                - Job
+                - CronJob
+                - ReplicaSet
+                - ReplicationController
+                - Rollout
               namespaces:
                 - techx-tf3
               operations:
@@ -208,13 +224,13 @@ spec:
                 - UPDATE
       preconditions:
         all:
-          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.app || request.object.spec.template.metadata.labels.app || '' }}"
+          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.app || request.object.spec.jobTemplate.spec.template.metadata.labels.app || request.object.spec.template.metadata.labels.app || '' }}"
             operator: NotEquals
             value: aiops-engine
       validate:
         message: "Containers must set runAsNonRoot: true."
         foreach:
-          - list: "request.object.spec.template.spec.containers || request.object.spec.containers"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.containers || request.object.spec.template.spec.containers || request.object.spec.containers"
             deny:
               conditions:
                 any:

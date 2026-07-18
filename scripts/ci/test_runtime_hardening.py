@@ -128,12 +128,28 @@ def test_baseline_policy_handles_missing_security_context_without_engine_errors(
         assert key.index("element.securityContext") < key.index("request.object.spec.securityContext")
 
 
-def test_baseline_non_root_rules_validate_pod_controllers_directly():
+def test_baseline_root_controls_validate_pod_controllers_directly():
     policy = yaml.safe_load(BASELINE_POLICY.read_text(encoding="utf-8"))
     rules = {rule["name"]: rule for rule in policy["spec"]["rules"]}
-    controller_kinds = {"Deployment", "StatefulSet", "DaemonSet"}
+    controller_kinds = {
+        "Deployment",
+        "StatefulSet",
+        "DaemonSet",
+        "Job",
+        "CronJob",
+        "ReplicaSet",
+        "ReplicationController",
+        "Rollout",
+    }
+    root_control_rules = {
+        "require-effective-non-root",
+        "deny-pod-run-as-user-zero",
+        "deny-container-run-as-user-zero",
+        "deny-privileged-containers",
+        "require-run-as-non-root",
+    }
 
-    for rule_name in ("require-effective-non-root", "require-run-as-non-root"):
+    for rule_name in root_control_rules:
         rule = rules[rule_name]
         matched_kinds = {
             kind
@@ -141,7 +157,6 @@ def test_baseline_non_root_rules_validate_pod_controllers_directly():
             for kind in match["resources"]["kinds"]
         }
         assert matched_kinds == {"Pod", *controller_kinds}
-        assert "exclude" not in rule
 
     effective = rules["require-effective-non-root"]
     effective_preconditions = effective["preconditions"]["all"]
@@ -150,22 +165,25 @@ def test_baseline_non_root_rules_validate_pod_controllers_directly():
         "aiops-engine",
     ]
     assert all(
-        "request.object.spec.template.metadata.labels" in condition["key"]
+        "request.object.spec.jobTemplate.spec.template.metadata.labels" in condition["key"]
+        and "request.object.spec.template.metadata.labels" in condition["key"]
         for condition in effective_preconditions
     )
     assert all(
-        validation["list"].startswith("request.object.spec.template.spec.")
+        validation["list"].startswith(
+            "request.object.spec.jobTemplate.spec.template.spec."
+        )
         for validation in effective["validate"]["foreach"]
     )
 
     explicit = rules["require-run-as-non-root"]
     assert explicit["preconditions"]["all"][0]["value"] == "aiops-engine"
     assert explicit["validate"]["foreach"][0]["list"].startswith(
-        "request.object.spec.template.spec.containers"
+        "request.object.spec.jobTemplate.spec.template.spec.containers"
     )
 
     for rule_name, rule in rules.items():
-        if rule_name in {"require-effective-non-root", "require-run-as-non-root"}:
+        if rule_name in root_control_rules:
             continue
         matched_kinds = {
             kind
