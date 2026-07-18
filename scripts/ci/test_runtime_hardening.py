@@ -20,6 +20,7 @@ VALUES = [
 EXCEPTIONS = REPO / "docs" / "evidence" / "mandate-05" / "exception-register.yaml"
 VERIFY = REPO / "scripts" / "ci" / "verify-runtime-hardening.py"
 RESOURCE_POLICY = REPO / "gitops" / "policies" / "kyverno" / "require-resource-requests.yaml"
+INFRASTRUCTURE = REPO / "gitops" / "infrastructure"
 
 
 def render_chart_with_dependencies(chart_dir, values):
@@ -102,6 +103,17 @@ def test_resource_policy_uses_structural_quantity_patterns():
                 "limits": {"cpu": "?*", "memory": "?*"},
             }
         }
+
+
+def test_infrastructure_does_not_default_container_resources():
+    for manifest in INFRASTRUCTURE.glob("*.yaml"):
+        documents = yaml.safe_load_all(manifest.read_text(encoding="utf-8"))
+        for document in documents:
+            if not document or document.get("kind") != "LimitRange":
+                continue
+            for limit in document.get("spec", {}).get("limits", []):
+                assert "default" not in limit, manifest
+                assert "defaultRequest" not in limit, manifest
 
 
 def test_verifier_honors_container_run_as_non_root_override(tmp_path):

@@ -11,6 +11,7 @@ resources:
   - resources/pod-good-third-party.yaml
   - resources/pod-good-first-party-digest.yaml
   - resources/pod-missing-resources.yaml
+  - resources/pod-missing-cpu-resources.yaml
   - resources/pod-root.yaml
   - resources/pod-nonroot-container-override.yaml
   - resources/pod-latest.yaml
@@ -28,6 +29,7 @@ results:
     rule: require-cpu-memory-requests-limits
     resources:
       - mandate05-missing-resources
+      - mandate05-missing-cpu-resources
       - mandate05-bad-init
     kind: Pod
     result: fail
