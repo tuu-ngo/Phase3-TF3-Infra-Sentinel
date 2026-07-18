@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mandate05-bad-root-daemonset
+  namespace: techx-tf3
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mandate05-bad-root-daemonset
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mandate05-bad-root-daemonset
+    spec:
+      containers:
+        - name: app
+          image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi

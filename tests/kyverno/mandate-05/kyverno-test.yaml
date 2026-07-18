@@ -17,6 +17,17 @@ resources:
   - resources/pod-first-party-tag.yaml
   - resources/pod-bad-init-container.yaml
   - resources/pod-insecure-baseline.yaml
+  - resources/deployment-good-baseline.yaml
+  - resources/deployment-bad-root.yaml
+  - resources/deployment-aiops-exception.yaml
+  - resources/deployment-kafka-exception.yaml
+  - resources/deployment-controller-label-bypass.yaml
+  - resources/deployment-explicitly-unsafe.yaml
+  - resources/deployment-bad-init-baseline.yaml
+  - resources/statefulset-bad-root.yaml
+  - resources/daemonset-bad-root.yaml
+  - resources/cronjob-bad-root.yaml
+  - resources/rollout-bad-root.yaml
 results:
   - policy: require-resource-requests
     rule: require-cpu-memory-requests-limits
@@ -169,4 +180,290 @@ results:
     resources:
       - mandate05-first-party-tag
     kind: Pod
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-effective-non-root
+    resources:
+      - mandate05-good-controller
+      - mandate05-explicitly-unsafe-controller
+      - mandate05-bad-init-controller
+    kind: Deployment
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: require-effective-non-root
+    resources:
+      - mandate05-bad-root-controller
+      - mandate05-controller-label-bypass
+    kind: Deployment
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-effective-non-root
+    resources:
+      - mandate05-kafka-exception
+      - mandate05-aiops-exception
+    kind: Deployment
+    result: skip
+  - policy: custom-baseline-security-context
+    rule: require-run-as-non-root
+    resources:
+      - mandate05-good-controller
+      - mandate05-kafka-exception
+      - mandate05-explicitly-unsafe-controller
+      - mandate05-bad-init-controller
+    kind: Deployment
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: require-run-as-non-root
+    resources:
+      - mandate05-bad-root-controller
+      - mandate05-controller-label-bypass
+    kind: Deployment
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-run-as-non-root
+    resources:
+      - mandate05-aiops-exception
+    kind: Deployment
+    result: skip
+  - policy: custom-baseline-security-context
+    rule: require-effective-non-root
+    resources:
+      - mandate05-bad-root-statefulset
+    kind: StatefulSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-run-as-non-root
+    resources:
+      - mandate05-bad-root-statefulset
+    kind: StatefulSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-effective-non-root
+    resources:
+      - mandate05-bad-root-daemonset
+    kind: DaemonSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-run-as-non-root
+    resources:
+      - mandate05-bad-root-daemonset
+    kind: DaemonSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: deny-pod-run-as-user-zero
+    resources:
+      - mandate05-good-controller
+      - mandate05-bad-root-controller
+      - mandate05-controller-label-bypass
+      - mandate05-kafka-exception
+      - mandate05-aiops-exception
+      - mandate05-bad-init-controller
+    kind: Deployment
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: deny-pod-run-as-user-zero
+    resources:
+      - mandate05-explicitly-unsafe-controller
+    kind: Deployment
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: deny-container-run-as-user-zero
+    resources:
+      - mandate05-good-controller
+      - mandate05-bad-root-controller
+      - mandate05-controller-label-bypass
+      - mandate05-aiops-exception
+      - mandate05-bad-init-controller
+    kind: Deployment
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: deny-container-run-as-user-zero
+    resources:
+      - mandate05-kafka-exception
+    kind: Deployment
+    result: skip
+  - policy: custom-baseline-security-context
+    rule: deny-container-run-as-user-zero
+    resources:
+      - mandate05-explicitly-unsafe-controller
+    kind: Deployment
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: deny-privileged-containers
+    resources:
+      - mandate05-good-controller
+      - mandate05-bad-root-controller
+      - mandate05-controller-label-bypass
+      - mandate05-kafka-exception
+      - mandate05-aiops-exception
+      - mandate05-bad-init-controller
+    kind: Deployment
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: deny-privileged-containers
+    resources:
+      - mandate05-explicitly-unsafe-controller
+    kind: Deployment
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-allow-privilege-escalation-false
+    resources:
+      - mandate05-good-controller
+      - mandate05-explicitly-unsafe-controller
+    kind: Deployment
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: require-allow-privilege-escalation-false
+    resources:
+      - mandate05-bad-root-controller
+      - mandate05-controller-label-bypass
+      - mandate05-bad-init-controller
+    kind: Deployment
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-allow-privilege-escalation-false
+    resources:
+      - mandate05-kafka-exception
+      - mandate05-aiops-exception
+    kind: Deployment
+    result: skip
+  - policy: custom-baseline-security-context
+    rule: drop-all-capabilities
+    resources:
+      - mandate05-good-controller
+      - mandate05-explicitly-unsafe-controller
+    kind: Deployment
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: drop-all-capabilities
+    resources:
+      - mandate05-bad-root-controller
+      - mandate05-controller-label-bypass
+      - mandate05-bad-init-controller
+    kind: Deployment
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: drop-all-capabilities
+    resources:
+      - mandate05-kafka-exception
+      - mandate05-aiops-exception
+    kind: Deployment
+    result: skip
+  - policy: custom-baseline-security-context
+    rule: require-seccomp-profile-runtime-default
+    resources:
+      - mandate05-good-controller
+      - mandate05-explicitly-unsafe-controller
+      - mandate05-kafka-exception
+    kind: Deployment
+    result: pass
+  - policy: custom-baseline-security-context
+    rule: require-seccomp-profile-runtime-default
+    resources:
+      - mandate05-bad-root-controller
+      - mandate05-controller-label-bypass
+      - mandate05-bad-init-controller
+    kind: Deployment
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-seccomp-profile-runtime-default
+    resources:
+      - mandate05-aiops-exception
+    kind: Deployment
+    result: skip
+  - policy: custom-baseline-security-context
+    rule: require-allow-privilege-escalation-false
+    resources:
+      - mandate05-bad-root-statefulset
+    kind: StatefulSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: drop-all-capabilities
+    resources:
+      - mandate05-bad-root-statefulset
+    kind: StatefulSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-seccomp-profile-runtime-default
+    resources:
+      - mandate05-bad-root-statefulset
+    kind: StatefulSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-allow-privilege-escalation-false
+    resources:
+      - mandate05-bad-root-daemonset
+    kind: DaemonSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: drop-all-capabilities
+    resources:
+      - mandate05-bad-root-daemonset
+    kind: DaemonSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-seccomp-profile-runtime-default
+    resources:
+      - mandate05-bad-root-daemonset
+    kind: DaemonSet
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-effective-non-root
+    resources:
+      - mandate05-bad-root-cronjob
+    kind: CronJob
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-allow-privilege-escalation-false
+    resources:
+      - mandate05-bad-root-cronjob
+    kind: CronJob
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-run-as-non-root
+    resources:
+      - mandate05-bad-root-cronjob
+    kind: CronJob
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: drop-all-capabilities
+    resources:
+      - mandate05-bad-root-cronjob
+    kind: CronJob
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-seccomp-profile-runtime-default
+    resources:
+      - mandate05-bad-root-cronjob
+    kind: CronJob
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-effective-non-root
+    resources:
+      - mandate05-bad-root-rollout
+    kind: Rollout
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-allow-privilege-escalation-false
+    resources:
+      - mandate05-bad-root-rollout
+    kind: Rollout
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-run-as-non-root
+    resources:
+      - mandate05-bad-root-rollout
+    kind: Rollout
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: drop-all-capabilities
+    resources:
+      - mandate05-bad-root-rollout
+    kind: Rollout
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-seccomp-profile-runtime-default
+    resources:
+      - mandate05-bad-root-rollout
+    kind: Rollout
     result: fail
