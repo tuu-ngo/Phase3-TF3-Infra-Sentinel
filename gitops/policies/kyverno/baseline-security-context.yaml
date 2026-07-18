@@ -40,9 +40,9 @@ spec:
             deny:
               conditions:
                 any:
-                  - key: "{{ lookup(element.securityContext || `{}`, 'runAsNonRoot') }}"
+                  - key: "{{ to_string(lookup(element.securityContext || `{}`, 'runAsNonRoot')) }}"
                     operator: Equals
-                    value: false
+                    value: "false"
                   - key: "{{ element.securityContext.runAsNonRoot || request.object.spec.securityContext.runAsNonRoot || `false` }}"
                     operator: NotEquals
                     value: true
@@ -50,9 +50,9 @@ spec:
             deny:
               conditions:
                 any:
-                  - key: "{{ lookup(element.securityContext || `{}`, 'runAsNonRoot') }}"
+                  - key: "{{ to_string(lookup(element.securityContext || `{}`, 'runAsNonRoot')) }}"
                     operator: Equals
-                    value: false
+                    value: "false"
                   - key: "{{ element.securityContext.runAsNonRoot || request.object.spec.securityContext.runAsNonRoot || `false` }}"
                     operator: NotEquals
                     value: true
@@ -172,19 +172,13 @@ spec:
         message: "allowPrivilegeEscalation must be set to false."
         foreach:
           - list: "request.object.spec.containers"
-            deny:
-              conditions:
-                any:
-                  - key: "{{ element.securityContext.allowPrivilegeEscalation }}"
-                    operator: NotEquals
-                    value: false
+            pattern:
+              securityContext:
+                allowPrivilegeEscalation: false
           - list: "request.object.spec.initContainers || `[]`"
-            deny:
-              conditions:
-                any:
-                  - key: "{{ element.securityContext.allowPrivilegeEscalation }}"
-                    operator: NotEquals
-                    value: false
+            pattern:
+              securityContext:
+                allowPrivilegeEscalation: false
 
     - name: require-run-as-non-root
       match:
@@ -239,19 +233,17 @@ spec:
         message: "Containers and initContainers must drop all Linux capabilities."
         foreach:
           - list: "request.object.spec.containers"
-            deny:
-              conditions:
-                all:
-                  - key: "{{ contains(element.securityContext.capabilities.drop || `[]`, 'ALL') }}"
-                    operator: Equals
-                    value: false
+            pattern:
+              securityContext:
+                capabilities:
+                  drop:
+                    - ALL
           - list: "request.object.spec.initContainers || `[]`"
-            deny:
-              conditions:
-                all:
-                  - key: "{{ contains(element.securityContext.capabilities.drop || `[]`, 'ALL') }}"
-                    operator: Equals
-                    value: false
+            pattern:
+              securityContext:
+                capabilities:
+                  drop:
+                    - ALL
 
     - name: require-seccomp-profile-runtime-default
       match:
@@ -277,13 +269,13 @@ spec:
             deny:
               conditions:
                 any:
-                  - key: "{{ request.object.spec.securityContext.seccompProfile.type || element.securityContext.seccompProfile.type || '' }}"
+                  - key: "{{ element.securityContext.seccompProfile.type || request.object.spec.securityContext.seccompProfile.type || '' }}"
                     operator: NotEquals
                     value: RuntimeDefault
           - list: "request.object.spec.initContainers || `[]`"
             deny:
               conditions:
                 any:
-                  - key: "{{ request.object.spec.securityContext.seccompProfile.type || element.securityContext.seccompProfile.type || '' }}"
+                  - key: "{{ element.securityContext.seccompProfile.type || request.object.spec.securityContext.seccompProfile.type || '' }}"
                     operator: NotEquals
                     value: RuntimeDefault

@@ -20,6 +20,7 @@ VALUES = [
 EXCEPTIONS = REPO / "docs" / "evidence" / "mandate-05" / "exception-register.yaml"
 VERIFY = REPO / "scripts" / "ci" / "verify-runtime-hardening.py"
 RESOURCE_POLICY = REPO / "gitops" / "policies" / "kyverno" / "require-resource-requests.yaml"
+BASELINE_POLICY = REPO / "gitops" / "policies" / "kyverno" / "baseline-security-context.yaml"
 
 
 def render_chart_with_dependencies(chart_dir, values):
@@ -102,6 +103,29 @@ def test_resource_policy_uses_structural_quantity_patterns():
                 "limits": {"cpu": "?*", "memory": "?*"},
             }
         }
+
+
+def test_baseline_policy_handles_missing_security_context_without_engine_errors():
+    policy = yaml.safe_load(BASELINE_POLICY.read_text(encoding="utf-8"))
+    rules = {rule["name"]: rule for rule in policy["spec"]["rules"]}
+
+    effective_non_root = rules["require-effective-non-root"]["validate"]["foreach"]
+    for validation in effective_non_root:
+        key = validation["deny"]["conditions"]["any"][0]["key"]
+        assert "to_string(lookup(" in key
+
+    for rule_name in (
+        "require-allow-privilege-escalation-false",
+        "drop-all-capabilities",
+    ):
+        for validation in rules[rule_name]["validate"]["foreach"]:
+            assert "pattern" in validation
+            assert "deny" not in validation
+
+    seccomp = rules["require-seccomp-profile-runtime-default"]["validate"]["foreach"]
+    for validation in seccomp:
+        key = validation["deny"]["conditions"]["any"][0]["key"]
+        assert key.index("element.securityContext") < key.index("request.object.spec.securityContext")
 
 
 def test_verifier_honors_container_run_as_non_root_override(tmp_path):
