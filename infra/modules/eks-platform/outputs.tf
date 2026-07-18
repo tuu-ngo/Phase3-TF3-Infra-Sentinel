@@ -38,6 +38,10 @@ output "external_secrets_role_arn" {
   value = aws_iam_role.external_secrets.arn
 }
 
+output "external_secrets_role_name" {
+  value = aws_iam_role.external_secrets.name
+}
+
 output "product_reviews_bedrock_role_arn" {
   value = aws_iam_role.product_reviews_bedrock.arn
 }
