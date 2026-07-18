@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -18,6 +19,7 @@ VALUES = [
 ]
 EXCEPTIONS = REPO / "docs" / "evidence" / "mandate-05" / "exception-register.yaml"
 VERIFY = REPO / "scripts" / "ci" / "verify-runtime-hardening.py"
+RESOURCE_POLICY = REPO / "gitops" / "policies" / "kyverno" / "require-resource-requests.yaml"
 
 
 def render_chart_with_dependencies(chart_dir, values):
@@ -85,6 +87,21 @@ def test_authoritative_render_is_inventory_clean():
         data = json.loads(inventory.read_text(encoding="utf-8"))
         assert data["inventoryDelta"] == {"missing": [], "unexpected": []}
         assert data["summary"]["unresolvedFindingCount"] == 0
+
+
+def test_resource_policy_uses_structural_quantity_patterns():
+    policy = yaml.safe_load(RESOURCE_POLICY.read_text(encoding="utf-8"))
+    foreach = policy["spec"]["rules"][0]["validate"]["foreach"]
+
+    assert len(foreach) == 2
+    for validation in foreach:
+        assert "deny" not in validation
+        assert validation["pattern"] == {
+            "resources": {
+                "requests": {"cpu": "?*", "memory": "?*"},
+                "limits": {"cpu": "?*", "memory": "?*"},
+            }
+        }
 
 
 def test_verifier_honors_container_run_as_non_root_override(tmp_path):
