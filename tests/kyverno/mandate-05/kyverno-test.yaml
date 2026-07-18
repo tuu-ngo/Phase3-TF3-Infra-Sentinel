@@ -16,6 +16,7 @@ resources:
   - resources/pod-latest.yaml
   - resources/pod-first-party-tag.yaml
   - resources/pod-bad-init-container.yaml
+  - resources/pod-insecure-baseline.yaml
 results:
   - policy: require-resource-requests
     rule: require-cpu-memory-requests-limits
@@ -43,12 +44,55 @@ results:
     resources:
       - mandate05-root
       - mandate05-nonroot-container-override
+      - mandate05-insecure-baseline
+    kind: Pod
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: deny-pod-run-as-user-zero
+    resources:
+      - mandate05-insecure-baseline
     kind: Pod
     result: fail
   - policy: custom-baseline-security-context
     rule: deny-container-run-as-user-zero
     resources:
       - mandate05-root
+      - mandate05-insecure-baseline
+    kind: Pod
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: deny-privileged-containers
+    resources:
+      - mandate05-insecure-baseline
+    kind: Pod
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-allow-privilege-escalation-false
+    resources:
+      - mandate05-bad-init
+      - mandate05-insecure-baseline
+    kind: Pod
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-run-as-non-root
+    resources:
+      - mandate05-root
+      - mandate05-nonroot-container-override
+      - mandate05-bad-init
+      - mandate05-insecure-baseline
+    kind: Pod
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: drop-all-capabilities
+    resources:
+      - mandate05-bad-init
+      - mandate05-insecure-baseline
+    kind: Pod
+    result: fail
+  - policy: custom-baseline-security-context
+    rule: require-seccomp-profile-runtime-default
+    resources:
+      - mandate05-insecure-baseline
     kind: Pod
     result: fail
   - policy: disallow-latest-tag
