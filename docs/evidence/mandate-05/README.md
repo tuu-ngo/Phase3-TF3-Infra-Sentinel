@@ -8,8 +8,12 @@ This directory stores non-secret evidence for Mandate 05 runtime admission harde
 - PR #194 introduces or updates four Audit policies:
   `require-resource-requests`, `custom-baseline-security-context`,
   `disallow-latest-tag`, and `require-first-party-image-digest`.
-- The current exception register contains 11 time-bounded exceptions that must be
-  remediated or accepted before Enforce.
+- The current exception register contains 2 time-bounded exceptions that must be
+  remediated or accepted before final closure: Kafka PVC ownership init and the
+  out-of-tree `aiops-engine` runtime hardening gap.
+- PR #222 added explicit `flagd-ui` resources and removed the resource-policy
+  exception for `flagd`, so resource enforcement no longer relies on namespace
+  `LimitRange` defaulting for that sidecar.
 
 ## Local verification flow
 
@@ -36,6 +40,11 @@ python3 scripts/ci/reconcile-active-policy-reports.py \
 Expected post-sync gate: `activeFailures` and `unresolvedResults` are empty.
 Historical `staleResults` from old ReplicaSets are acceptable only when they are
 not tied to an active Pod UID.
+
+Current pre-Enforce readiness gate after the exception cleanup:
+`activeFailures=0`, `unresolvedResults=0`, 20 first-party ECR digests are
+running without tag-only references, and all 20 verify with the GitHub OIDC
+Cosign identity used by `build-push-ecr.yml`.
 
 ## Non-goals
 

@@ -28,11 +28,7 @@ spec:
                   - key: app.kubernetes.io/name
                     operator: In
                     values:
-                      - flagd
-                      - jaeger
                       - kafka
-                      - opentelemetry-collector
-                      - postgresql
           - resources:
               selector:
                 matchLabels:
@@ -167,13 +163,11 @@ spec:
                   - key: app.kubernetes.io/name
                     operator: In
                     values:
-                      - flagd
-                      - jaeger
                       - kafka
-                      - opensearch
-                      - opentelemetry-collector
-                      - postgresql
-                      - prometheus
+          - resources:
+              selector:
+                matchLabels:
+                  app: aiops-engine
       validate:
         message: "allowPrivilegeEscalation must be set to false."
         foreach:
@@ -195,27 +189,20 @@ spec:
     - name: require-run-as-non-root
       match:
         any:
-        - resources:
-            kinds:
-              - Pod
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
+              operations:
+                - CREATE
+                - UPDATE
       exclude:
         any:
-        - resources:
-            namespaces:
-              - kube-system
-              - argocd
-              - kyverno
-        - resources:
-            namespaces:
-              - techx-tf3
-            selector:
-              matchExpressions:
-              - key: app.kubernetes.io/name
-                operator: In
-                values:
-                - currency
-                - llm
-                - product-reviews
+          - resources:
+              selector:
+                matchLabels:
+                  app: aiops-engine
       validate:
         message: "Containers must set runAsNonRoot: true."
         pattern:
@@ -243,12 +230,11 @@ spec:
                   - key: app.kubernetes.io/name
                     operator: In
                     values:
-                      - flagd
-                      - jaeger
                       - kafka
-                      - opentelemetry-collector
-                      - postgresql
-                      - prometheus
+          - resources:
+              selector:
+                matchLabels:
+                  app: aiops-engine
       validate:
         message: "Containers and initContainers must drop all Linux capabilities."
         foreach:
@@ -282,16 +268,8 @@ spec:
         any:
           - resources:
               selector:
-                matchExpressions:
-                  - key: app.kubernetes.io/name
-                    operator: In
-                    values:
-                      - flagd
-                      - jaeger
-                      - opensearch
-                      - opentelemetry-collector
-                      - postgresql
-                      - prometheus
+                matchLabels:
+                  app: aiops-engine
       validate:
         message: "A RuntimeDefault seccompProfile must be set at Pod or container level."
         foreach:
