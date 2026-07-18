@@ -37,6 +37,17 @@ Expected post-sync gate: `activeFailures` and `unresolvedResults` are empty.
 Historical `staleResults` from old ReplicaSets are acceptable only when they are
 not tied to an active Pod UID.
 
+## Flagd diagnostic pod
+
+Use `scripts/ops/check-flagd-ofrep.sh` for read-only flagd OFREP checks during
+Mandate 5 evidence collection and mentor demos. The script creates a temporary
+`flagdcheck` Pod with a fixed non-`latest` curl image, explicit resources,
+`runAsNonRoot`, `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`,
+`RuntimeDefault` seccomp and no service-account token, then deletes the Pod on
+exit. Do not use ad hoc `kubectl run ... --image=curlimages/curl:latest`
+commands; a completed but undeleted diagnostic Pod will make PolicyReports look
+dirty before Enforce even though production workloads are healthy.
+
 ## Non-goals
 
 - No kubeconfig, tokens, or secrets are stored here.

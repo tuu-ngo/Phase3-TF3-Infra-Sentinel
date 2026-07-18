@@ -161,8 +161,7 @@ export AWS_PROFILE=techx-new
 # 1. Trạng thái pod luồng doanh thu (0 restart -> không phải crash)
 kubectl -n techx-tf3 get pods -l 'opentelemetry.io/name in (checkout,payment,cart,valkey-cart)' -o wide
 # 2. Đọc toàn bộ flag (read-only, KHÔNG gỡ flagd)
-kubectl -n techx-tf3 run flagcheck --rm -i --restart=Never --image=curlimages/curl:8.11.1 --command -- \
-  curl -s -X POST http://flagd:8016/ofrep/v1/evaluate/flags -H "Content-Type: application/json" -d '{"context":{}}'
+scripts/ops/check-flagd-ofrep.sh
 # 3. Chữ ký lỗi ở cart
 kubectl -n techx-tf3 logs cart-8bfd746fb-9l59x --since=60m --timestamps | grep "Wasn't able to connect to redis"
 # 4. Tách span checkout theo status (Prometheus) -> PlaceOrder error=0, EmptyCart error>0

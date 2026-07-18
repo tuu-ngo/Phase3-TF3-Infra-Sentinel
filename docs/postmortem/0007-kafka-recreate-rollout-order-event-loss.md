@@ -138,8 +138,7 @@ kubectl -n techx-tf3 port-forward svc/prometheus 9091:9090 &
 curl -s http://localhost:9091/api/v1/query --data-urlencode \
   "query=sum by (span_name,status_code) (increase(traces_span_metrics_calls_total{service_name='checkout'}[30m]))"
 # 5. Loại trừ BTC: đọc flag (read-only, KHÔNG đụng flagd)
-kubectl -n techx-tf3 run flagcheck --rm -i --restart=Never --image=curlimages/curl:8.11.1 --command -- \
-  curl -s -X POST http://flagd:8016/ofrep/v1/evaluate/flags -H "Content-Type: application/json" -d '{"context":{}}'
+scripts/ops/check-flagd-ofrep.sh
 ```
 
 *Ký: CDO02. Liên quan: ADR 0007 (residual risk Recreate/single-replica), ADR 0009 + Mandate #8
