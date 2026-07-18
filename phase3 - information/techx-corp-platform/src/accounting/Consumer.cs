@@ -187,8 +187,37 @@ internal class Consumer : IDisposable
             EnableAutoCommit = false
         };
 
+        // Mandate #8: TLS + SASL/SCRAM for MSK, gated by env. Empty = Plaintext = current behavior.
+        ApplyKafkaSecurity(conf);
+
         return new ConsumerBuilder<string, byte[]>(conf)
             .Build();
+    }
+
+    // Mandate #8: apply TLS + SASL/SCRAM-SHA-512 from env. No KAFKA_SECURITY_PROTOCOL set =
+    // Plaintext with no auth = the previous in-cluster Kafka behavior (safe to deploy pre-cutover).
+    private static void ApplyKafkaSecurity(ClientConfig conf)
+    {
+        var protocol = Environment.GetEnvironmentVariable("KAFKA_SECURITY_PROTOCOL");
+        if (string.IsNullOrEmpty(protocol))
+        {
+            return;
+        }
+
+        conf.SecurityProtocol = protocol.ToUpperInvariant() switch
+        {
+            "SASL_SSL" => SecurityProtocol.SaslSsl,
+            "SASL_PLAINTEXT" => SecurityProtocol.SaslPlaintext,
+            "SSL" => SecurityProtocol.Ssl,
+            _ => SecurityProtocol.Plaintext
+        };
+
+        if (conf.SecurityProtocol == SecurityProtocol.SaslSsl || conf.SecurityProtocol == SecurityProtocol.SaslPlaintext)
+        {
+            conf.SaslMechanism = SaslMechanism.ScramSha512;
+            conf.SaslUsername = Environment.GetEnvironmentVariable("KAFKA_SASL_USERNAME");
+            conf.SaslPassword = Environment.GetEnvironmentVariable("KAFKA_SASL_PASSWORD");
+        }
     }
 
     public void Dispose()
