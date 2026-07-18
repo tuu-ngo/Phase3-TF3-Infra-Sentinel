@@ -173,32 +173,35 @@ spec:
           - resources:
               kinds:
                 - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+                - ReplicaSet
+                - ReplicationController
+                - Rollout
               namespaces:
                 - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
-      exclude:
-        any:
-          - resources:
-              selector:
-                matchExpressions:
-                  - key: app.kubernetes.io/name
-                    operator: In
-                    values:
-                      - kafka
-          - resources:
-              selector:
-                matchLabels:
-                  app: aiops-engine
+      preconditions:
+        all:
+          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.\"app.kubernetes.io/name\" || request.object.spec.jobTemplate.spec.template.metadata.labels.\"app.kubernetes.io/name\" || request.object.spec.template.metadata.labels.\"app.kubernetes.io/name\" || '' }}"
+            operator: NotEquals
+            value: kafka
+          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.app || request.object.spec.jobTemplate.spec.template.metadata.labels.app || request.object.spec.template.metadata.labels.app || '' }}"
+            operator: NotEquals
+            value: aiops-engine
       validate:
         message: "allowPrivilegeEscalation must be set to false."
         foreach:
-          - list: "request.object.spec.containers"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.containers || request.object.spec.template.spec.containers || request.object.spec.containers"
             pattern:
               securityContext:
                 allowPrivilegeEscalation: false
-          - list: "request.object.spec.initContainers || `[]`"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.initContainers || request.object.spec.template.spec.initContainers || request.object.spec.initContainers || `[]`"
             pattern:
               securityContext:
                 allowPrivilegeEscalation: false
@@ -244,34 +247,37 @@ spec:
           - resources:
               kinds:
                 - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+                - ReplicaSet
+                - ReplicationController
+                - Rollout
               namespaces:
                 - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
-      exclude:
-        any:
-          - resources:
-              selector:
-                matchExpressions:
-                  - key: app.kubernetes.io/name
-                    operator: In
-                    values:
-                      - kafka
-          - resources:
-              selector:
-                matchLabels:
-                  app: aiops-engine
+      preconditions:
+        all:
+          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.\"app.kubernetes.io/name\" || request.object.spec.jobTemplate.spec.template.metadata.labels.\"app.kubernetes.io/name\" || request.object.spec.template.metadata.labels.\"app.kubernetes.io/name\" || '' }}"
+            operator: NotEquals
+            value: kafka
+          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.app || request.object.spec.jobTemplate.spec.template.metadata.labels.app || request.object.spec.template.metadata.labels.app || '' }}"
+            operator: NotEquals
+            value: aiops-engine
       validate:
         message: "Containers and initContainers must drop all Linux capabilities."
         foreach:
-          - list: "request.object.spec.containers"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.containers || request.object.spec.template.spec.containers || request.object.spec.containers"
             pattern:
               securityContext:
                 capabilities:
                   drop:
                     - ALL
-          - list: "request.object.spec.initContainers || `[]`"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.initContainers || request.object.spec.template.spec.initContainers || request.object.spec.initContainers || `[]`"
             pattern:
               securityContext:
                 capabilities:
@@ -284,31 +290,38 @@ spec:
           - resources:
               kinds:
                 - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+                - ReplicaSet
+                - ReplicationController
+                - Rollout
               namespaces:
                 - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
-      exclude:
-        any:
-          - resources:
-              selector:
-                matchLabels:
-                  app: aiops-engine
+      preconditions:
+        all:
+          - key: "{{ request.object.kind == 'Pod' && request.object.metadata.labels.app || request.object.spec.jobTemplate.spec.template.metadata.labels.app || request.object.spec.template.metadata.labels.app || '' }}"
+            operator: NotEquals
+            value: aiops-engine
       validate:
         message: "A RuntimeDefault seccompProfile must be set at Pod or container level."
         foreach:
-          - list: "request.object.spec.containers"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.containers || request.object.spec.template.spec.containers || request.object.spec.containers"
             deny:
               conditions:
                 any:
-                  - key: "{{ element.securityContext.seccompProfile.type || request.object.spec.securityContext.seccompProfile.type || '' }}"
+                  - key: "{{ element.securityContext.seccompProfile.type || request.object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile.type || request.object.spec.template.spec.securityContext.seccompProfile.type || request.object.spec.securityContext.seccompProfile.type || '' }}"
                     operator: NotEquals
                     value: RuntimeDefault
-          - list: "request.object.spec.initContainers || `[]`"
+          - list: "request.object.spec.jobTemplate.spec.template.spec.initContainers || request.object.spec.template.spec.initContainers || request.object.spec.initContainers || `[]`"
             deny:
               conditions:
                 any:
-                  - key: "{{ element.securityContext.seccompProfile.type || request.object.spec.securityContext.seccompProfile.type || '' }}"
+                  - key: "{{ element.securityContext.seccompProfile.type || request.object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile.type || request.object.spec.template.spec.securityContext.seccompProfile.type || request.object.spec.securityContext.seccompProfile.type || '' }}"
                     operator: NotEquals
                     value: RuntimeDefault

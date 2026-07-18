@@ -128,7 +128,7 @@ def test_baseline_policy_handles_missing_security_context_without_engine_errors(
         assert key.index("element.securityContext") < key.index("request.object.spec.securityContext")
 
 
-def test_baseline_root_controls_validate_pod_controllers_directly():
+def test_baseline_rules_validate_pod_controllers_directly():
     policy = yaml.safe_load(BASELINE_POLICY.read_text(encoding="utf-8"))
     rules = {rule["name"]: rule for rule in policy["spec"]["rules"]}
     controller_kinds = {
@@ -141,15 +141,20 @@ def test_baseline_root_controls_validate_pod_controllers_directly():
         "ReplicationController",
         "Rollout",
     }
-    root_control_rules = {
+    controller_rules = {
         "require-effective-non-root",
         "deny-pod-run-as-user-zero",
         "deny-container-run-as-user-zero",
         "deny-privileged-containers",
+        "require-allow-privilege-escalation-false",
         "require-run-as-non-root",
+        "drop-all-capabilities",
+        "require-seccomp-profile-runtime-default",
     }
 
-    for rule_name in root_control_rules:
+    assert set(rules) == controller_rules
+
+    for rule_name in controller_rules:
         rule = rules[rule_name]
         matched_kinds = {
             kind
@@ -157,6 +162,7 @@ def test_baseline_root_controls_validate_pod_controllers_directly():
             for kind in match["resources"]["kinds"]
         }
         assert matched_kinds == {"Pod", *controller_kinds}
+        assert "exclude" not in rule
 
     effective = rules["require-effective-non-root"]
     effective_preconditions = effective["preconditions"]["all"]
@@ -182,15 +188,25 @@ def test_baseline_root_controls_validate_pod_controllers_directly():
         "request.object.spec.jobTemplate.spec.template.spec.containers"
     )
 
-    for rule_name, rule in rules.items():
-        if rule_name in root_control_rules:
-            continue
-        matched_kinds = {
-            kind
-            for match in rule["match"]["any"]
-            for kind in match["resources"]["kinds"]
-        }
-        assert controller_kinds.isdisjoint(matched_kinds)
+    for rule_name in (
+        "require-allow-privilege-escalation-false",
+        "drop-all-capabilities",
+    ):
+        rule = rules[rule_name]
+        assert [condition["value"] for condition in rule["preconditions"]["all"]] == [
+            "kafka",
+            "aiops-engine",
+        ]
+
+    seccomp = rules["require-seccomp-profile-runtime-default"]
+    assert seccomp["preconditions"]["all"][0]["value"] == "aiops-engine"
+    for validation in seccomp["validate"]["foreach"]:
+        assert validation["list"].startswith(
+            "request.object.spec.jobTemplate.spec.template.spec."
+        )
+        key = validation["deny"]["conditions"]["any"][0]["key"]
+        assert "request.object.spec.jobTemplate.spec.template.spec.securityContext" in key
+        assert "request.object.spec.template.spec.securityContext" in key
 
 
 def test_verifier_honors_container_run_as_non_root_override(tmp_path):
