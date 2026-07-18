@@ -6,7 +6,7 @@ metadata:
     policies.kyverno.io/title: Require immutable digest for TechX first-party ECR images
     policies.kyverno.io/category: Mandate 5 Runtime Admission Enforcement
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-techx-ecr-sha256-digest
