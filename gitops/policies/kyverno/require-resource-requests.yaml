@@ -20,12 +20,6 @@ spec:
               operations:
                 - CREATE
                 - UPDATE
-      exclude:
-        any:
-          - resources:
-              selector:
-                matchLabels:
-                  app.kubernetes.io/name: flagd
       validate:
         message: "All containers and initContainers must define requests.cpu, requests.memory, limits.cpu, and limits.memory."
         foreach:
