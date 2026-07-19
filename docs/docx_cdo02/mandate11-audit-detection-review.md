@@ -1,116 +1,135 @@
-# Mandate 11 Audit Detection Review
+# Mandate 11 Review Phát Hiện Audit
 
-## 1. Short Conclusion
+## 1. Kết luận ngắn
 
-The recommended direction for Mandate 11 is to treat auditability as an active detection problem, not only a post-incident investigation capability.
+Hướng phù hợp cho Mandate 11 là xem auditability như một bài toán phát hiện chủ động, không chỉ là khả năng điều tra sau sự cố.
 
-The implementation should focus on:
+Phần triển khai nên tập trung vào:
 
-- high-risk control-plane behaviors;
-- alert routing to a real human recipient;
-- time-to-detect measurement;
-- low operational noise.
+- các hành vi control-plane rủi ro cao;
+- định tuyến cảnh báo tới người nhận thật;
+- đo time-to-detect;
+- giữ mức nhiễu vận hành thấp.
 
-## 2. Recommended Detection Architecture
+## 2. Kiến trúc phát hiện được khuyến nghị
 
-### 2.1. Minimum alerting flow
+### 2.1. Luồng cảnh báo tối thiểu
 
-`CloudTrail management events -> EventBridge rules -> Lambda audit-alert-router -> SNS topic -> operator email`
+`CloudTrail trail đang bật logging -> rule trên EventBridge default bus -> Lambda audit-alert-router -> SNS topic -> email người vận hành`
 
-Why this is the right baseline:
+Vì sao đây là baseline phù hợp:
 
-- **Outside the EKS cluster**: if the cluster is under attack, the detection path still works.
-- **Low cost**: no need for SIEM, CloudTrail Lake, or Security Hub for this mandate.
-- **Fast enough**: EventBridge on CloudTrail management events is generally fast enough for a minutes-level alerting commitment.
-- **Easy to demo**: the mentor can run `aws iam create-access-key ...` or `aws eks create-access-entry ...` and wait for the alert.
+- **Nằm ngoài EKS cluster**: nếu cluster bị tấn công, đường phát hiện vẫn còn hoạt động.
+- **Chi phí thấp**: không cần SIEM, CloudTrail Lake, hay Security Hub cho mandate này.
+- **Đủ nhanh**: EventBridge trên CloudTrail management events thường đủ nhanh cho cam kết cảnh báo ở mức vài phút.
+- **Dễ demo**: mentor có thể chạy `aws iam create-access-key ...` hoặc `aws eks create-access-entry ...` rồi chờ cảnh báo.
+- **Dùng được cho cả write event và một phần read event**: write event dùng match bình thường trên EventBridge, còn read-only management event như `secretsmanager:GetSecretValue` cần rule EventBridge ở trạng thái `ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS`.
 
-### 2.2. Alert delivery channel
+Lưu ý triển khai quan trọng:
 
-Based on the current repo and environment, the recommended first channel is:
+- thiết kế này yêu cầu có `CloudTrail trail` thật và trail đó phải đang bật logging;
+- điều này đặc biệt quan trọng với phát hiện `iam:*` và với phát hiện secret-read của Group 5;
+- `CloudWatch Logs` **không bắt buộc** phải là tầng vận chuyển sự kiện cho vòng triển khai đầu của mandate này;
+- đường phát hiện bắt buộc là `CloudTrail -> EventBridge -> Lambda -> SNS`.
 
-- **Primary**: `SNS email` to the right recipients
-- **Optional**: `AWS Chatbot` only if the team already has a working Slack path
+### 2.2. Kênh chuyển cảnh báo
 
-Email should come first because it is:
+Dựa trên repo và môi trường hiện tại, kênh đầu tiên nên dùng là:
 
-- simpler to deploy;
-- independent from Slack workspace setup and permissions;
-- sufficient to satisfy the requirement that the alert must actually reach a person.
+- **Chính**: `SNS email` tới đúng người nhận
+- **Tùy chọn**: `AWS Chatbot` chỉ nếu team đã có sẵn đường Slack hoạt động ổn
 
-### 2.3. Terraform components that should exist
+Email nên đi trước vì:
+
+- đơn giản để triển khai hơn;
+- không phụ thuộc vào thiết lập workspace Slack và quyền liên quan;
+- đủ để đáp ứng yêu cầu rằng cảnh báo phải thực sự tới tay một người.
+
+### 2.3. Các thành phần Terraform nên có
 
 - `infra/modules/audit-detection/`
   - `main.tf`
   - `variables.tf`
   - `outputs.tf`
-  - a small Lambda folder such as `lambda/index.py`
+  - một thư mục Lambda nhỏ như `lambda/index.py`
 - `infra/live/production/audit-detection.tf`
-- `docs/adr/0010-mandate-11-audit-detection.md`
+- các resource cho:
+  - một `CloudTrail` trail đang bật logging
+  - các rule `EventBridge` trên default bus
+  - `Lambda`
+  - `SNS`
+- `docs/adr/0011-mandate-11-audit-detection.md`
 - `docs/runbooks/mandate-11-audit-detection-demo.md`
 
-This should stay separate from the existing EKS module. This is control-plane security and audit detection, not application runtime logic.
+Phần này nên tách khỏi module EKS hiện có. Đây là security control-plane và phát hiện audit, không phải logic runtime của ứng dụng.
+
+Lưu ý về region:
+
+- `iam:*` và các management event của global service khác nên được xử lý từ `us-east-1`;
+- ví dụ, mentor có thể tạo IAM access key khi đang dùng AWS console từ Singapore, Tokyo, hay bất kỳ vị trí hoặc console region nào khác, nhưng rule phát hiện bắt `iam:CreateAccessKey` vẫn nên được triển khai ở `us-east-1`;
+- các dịch vụ theo region như `eks:*` và `secretsmanager:*` nên được xử lý tại region vận hành của chúng, hiện tại là `ap-southeast-1`.
 
 ---
 
-## 3. What Must Be Detected For CDO01, CDO02, and the Mentor
+## 3. Những gì phải phát hiện cho CDO01, CDO02 và mentor
 
-This is the core of the review. The point is not “which AWS service should be enabled,” but:
+Đây là phần cốt lõi của review. Trọng tâm không phải là "nên bật dịch vụ AWS nào", mà là:
 
-**Given that `CDO01`, `CDO02`, and `mentor` are all IAM users with `AdministratorAccess`, which behaviors must trigger detection if their accounts or keys are misused?**
+**Với giả định `CDO01`, `CDO02`, và `mentor` đều là IAM user có `AdministratorAccess`, những hành vi nào phải kích hoạt phát hiện nếu tài khoản hoặc key của họ bị lạm dụng?**
 
-The grouping below is behavior-based, not service-based.
+Các nhóm dưới đây được chia theo hành vi, không chia theo dịch vụ.
 
-### 3.1. Group 1 - Actions that blind the system
+### 3.1. Group 1 - Các hành động làm mù hệ thống
 
-This group must always alert at the highest level, regardless of whether the actor is `CDO01`, `CDO02`, or `mentor`.
+Nhóm này luôn phải cảnh báo ở mức cao nhất, bất kể actor là `CDO01`, `CDO02`, hay `mentor`.
 
-What must be detected:
+Những gì phải phát hiện:
 
-- disabling audit or log collection;
-- changing logging so it no longer captures the same evidence as before;
-- deleting logs;
-- shortening retention for audit logs;
-- deleting or weakening the storage location that holds audit evidence.
+- tắt audit hoặc thu thập log;
+- thay đổi logging theo hướng không còn giữ được cùng mức bằng chứng như trước;
+- xóa log;
+- giảm thời gian lưu giữ audit log;
+- xóa hoặc làm yếu nơi lưu trữ bằng chứng audit.
 
-API/actions to match directly:
+API/action cần match trực tiếp:
 
 - `cloudtrail:StopLogging`
 - `cloudtrail:DeleteTrail`
 - `cloudtrail:UpdateTrail`
 - `cloudtrail:PutEventSelectors`
-- `cloudtrail:StartLogging` when it follows an unexpected stop or occurs on a sensitive trail
+- `cloudtrail:StartLogging` khi nó xuất hiện sau một lần dừng bất thường hoặc xảy ra trên trail nhạy cảm
 - `logs:DeleteLogGroup`
 - `logs:PutRetentionPolicy`
-- plus any direct bucket or KMS policy change that affects the audit log storage path, if configured
+- cộng thêm mọi thay đổi trực tiếp lên bucket hoặc KMS policy có ảnh hưởng đến đường lưu trữ audit log, nếu có cấu hình
 
-Why this group matters:
+Vì sao nhóm này quan trọng:
 
-- Attackers often disable visibility before doing anything else.
-- Even a short logging gap can break the evidence chain.
-- In the current model, every admin user can do this, so this must always be treated as `critical`.
+- kẻ tấn công thường vô hiệu hóa khả năng quan sát trước khi làm việc khác;
+- chỉ một khoảng trống logging ngắn cũng có thể làm đứt chuỗi bằng chứng;
+- trong mô hình hiện tại, mọi admin user đều có thể làm việc này, nên nó luôn phải được coi là `critical`.
 
-Operational interpretation:
+Diễn giải vận hành:
 
-- If `CDO01` does this, alert.
-- If `CDO02` does this, alert.
-- If `mentor` does this, alert.
-- “They are an admin, so maybe they meant it” is not a valid reason to suppress detection.
+- nếu `CDO01` làm việc này, phải cảnh báo;
+- nếu `CDO02` làm việc này, phải cảnh báo;
+- nếu `mentor` làm việc này, phải cảnh báo;
+- "họ là admin nên có thể họ làm đúng ý" không phải là lý do hợp lệ để suppress detection.
 
-### 3.2. Group 2 - Actions that create a new way into the environment
+### 3.2. Group 2 - Các hành động tạo thêm một đường vào môi trường
 
-This is the next most important group. The core idea is **creating a new credential, a new principal, a new login path, or a new persistence point**.
+Đây là nhóm quan trọng tiếp theo. Ý chính là **tạo thêm credential, principal, đường đăng nhập, hoặc điểm bám trụ mới**.
 
-What must be detected:
+Những gì phải phát hiện:
 
-- creating a new access key;
-- creating a new IAM user;
-- creating a new role for human use;
-- creating a new login profile;
-- changing trust policy so another principal can assume a role;
-- attaching policy that increases a principal’s effective power;
-- creating a new policy version and making it the default.
+- tạo access key mới;
+- tạo IAM user mới;
+- tạo role mới cho con người sử dụng;
+- tạo login profile mới;
+- thay đổi trust policy để principal khác có thể assume role;
+- attach policy làm tăng quyền hiệu lực của principal;
+- tạo policy version mới và đặt nó làm default.
 
-API/actions to match directly:
+API/action cần match trực tiếp:
 
 - `iam:CreateAccessKey`
 - `iam:CreateUser`
@@ -124,37 +143,37 @@ API/actions to match directly:
 - `iam:CreatePolicyVersion`
 - `iam:SetDefaultPolicyVersion`
 
-Why this group matters:
+Vì sao nhóm này quan trọng:
 
-- In the current IAM-user-admin model, a new access key is effectively a new side door.
-- If an attacker gets one admin key, creating another credential is a common persistence step.
-- From an audit perspective, this is an immediate expansion of attack surface.
+- trong mô hình admin IAM user hiện tại, một access key mới về bản chất là một cửa phụ mới;
+- nếu kẻ tấn công lấy được một admin key, việc tạo thêm credential là bước persistence rất phổ biến;
+- về góc độ audit, đây là một lần mở rộng bề mặt tấn công ngay lập tức.
 
-Per-actor interpretation:
+Diễn giải theo actor:
 
-- `CDO01`: a new access key or role outside planned and reviewed change must alert.
-- `CDO02`: same.
-- `mentor`: this should alert even more strongly, because the mentor should not need to create new credentials to verify the mandate.
+- `CDO01`: access key hoặc role mới ngoài thay đổi đã được lên kế hoạch và review thì phải cảnh báo;
+- `CDO02`: tương tự;
+- `mentor`: việc này còn nên cảnh báo mạnh hơn, vì mentor không cần tạo credential mới để verify mandate.
 
-Important principle:
+Nguyên tắc quan trọng:
 
-- Detection should fire first.
-- Legitimacy is investigated after the alert, not before it.
+- detection phải nổ trước;
+- tính hợp lệ sẽ được điều tra sau khi cảnh báo phát ra, không phải trước đó.
 
-### 3.3. Group 3 - Actions that broaden administrative power beyond expected scope
+### 3.3. Group 3 - Các hành động mở rộng quyền quản trị vượt quá phạm vi mong đợi
 
-This group is not always about creating a new identity. It is about **making an existing identity more powerful than before**.
+Nhóm này không phải lúc nào cũng là tạo identity mới. Nó là việc **làm cho một identity đang có trở nên mạnh hơn trước**.
 
-What must be detected:
+Những gì phải phát hiện:
 
-- attaching a high-privilege policy to an existing user or role;
-- switching a policy to a broader default version;
-- changing trust relationships so additional principals can use a role;
-- adding a user to a privileged group;
-- renaming an IAM user in a way that obscures attribution or disguises a privileged identity;
-- turning a previously narrow access path into a broad one.
+- attach policy quyền cao cho user hoặc role đang tồn tại;
+- chuyển policy sang default version rộng quyền hơn;
+- thay đổi trust relationship để thêm principal có thể dùng role;
+- thêm user vào privileged group;
+- đổi tên IAM user theo cách làm mờ nguồn gốc hoặc ngụy trang một identity đặc quyền;
+- biến một đường truy cập hẹp thành một đường truy cập rộng.
 
-API/actions to match directly:
+API/action cần match trực tiếp:
 
 - `iam:AttachUserPolicy`
 - `iam:AttachRolePolicy`
@@ -165,98 +184,104 @@ API/actions to match directly:
 - `iam:UpdateAssumeRolePolicy`
 - `iam:AddUserToGroup`
 - `iam:UpdateUser`
-- plus any permission-boundary or access-path mutation API if the team later uses them
+- cộng thêm mọi API làm thay đổi permission-boundary hoặc access path nếu team dùng chúng về sau
 
-Why this group matters:
+Vì sao nhóm này quan trọng:
 
-- In an environment that already has admins, many privilege-expanding changes appear small while still being clear abuse indicators.
-- These are the exact changes that can be disguised as “just making operations easier.”
+- trong môi trường đã có sẵn admin, nhiều thay đổi mở rộng quyền nhìn có vẻ nhỏ nhưng vẫn là tín hiệu lạm dụng rất rõ;
+- đây chính là những thay đổi dễ bị ngụy trang thành "chỉ để vận hành thuận tiện hơn".
 
-Per-actor interpretation:
+Diễn giải theo actor:
 
-- `CDO01`: even if working on hardening, silent privilege expansion for people or automation must still alert.
-- `CDO02`: if extra privilege is added for emergency operations, it still needs an alert unless it was explicitly pre-approved and time-bounded.
-- `mentor`: there is no valid review-time reason for the mentor to broaden their own access or someone else’s.
+- `CDO01`: kể cả khi đang làm hardening, việc mở quyền âm thầm cho người hoặc automation vẫn phải cảnh báo;
+- `CDO02`: nếu thêm quyền để xử lý khẩn cấp, nó vẫn cần phát cảnh báo trừ khi đã được phê duyệt rõ ràng và có giới hạn thời gian;
+- `mentor`: không có lý do hợp lệ trong lúc review để mentor mở rộng quyền cho chính mình hoặc cho người khác.
 
-### 3.4. Group 4 - Actions that open the cluster or runtime to more access
+### 3.4. Group 4 - Các hành động mở thêm quyền vào cluster hoặc runtime
 
-For this repository, changes to EKS access are especially important because they bridge AWS control-plane authority into actual runtime control.
+Với repo này, thay đổi EKS access đặc biệt quan trọng vì nó nối quyền control-plane trên AWS sang quyền kiểm soát runtime thực tế.
 
-What must be detected:
+Những gì phải phát hiện:
 
-- adding cluster access for a principal;
-- modifying an access entry so an existing principal gets more access;
-- associating cluster admin level access;
-- creating a new access path into private operational runtime resources.
+- thêm cluster access cho một principal;
+- sửa access entry để principal đang có được thêm quyền;
+- gắn quyền ở mức cluster admin;
+- tạo đường truy cập mới vào các tài nguyên runtime vận hành riêng tư.
 
-API/actions to match directly:
+API/action cần match trực tiếp:
 
 - `eks:CreateAccessEntry`
 - `eks:UpdateAccessEntry`
 - `eks:DeleteAccessEntry`
 - `eks:AssociateAccessPolicy`
 - `eks:DisassociateAccessPolicy`
-- plus any direct API used later to widen private bastion or operational UI access paths
+- cộng thêm mọi API trực tiếp khác nếu sau này được dùng để mở rộng đường vào bastion riêng hoặc operational UI
 
-Why this group matters:
+Vì sao nhóm này quan trọng:
 
-- This is the step from “can touch AWS” to “can control workloads.”
-- If someone adds or changes EKS access outside Git/Terraform change management, that is a direct bypass.
+- đây là bước đi từ "chạm được AWS" sang "điều khiển được workload";
+- nếu ai đó thêm hoặc đổi EKS access nằm ngoài thay đổi Git/Terraform đã quản lý, đó là một đường bypass trực tiếp.
 
-Per-actor interpretation:
+Diễn giải theo actor:
 
-- `CDO01` and `CDO02` are already admins, so any further expansion of cluster access still matters and still should alert.
-- `mentor` should only have the review scope already granted; creating a new access path should be treated as abnormal immediately.
+- `CDO01` và `CDO02` vốn đã là admin, nên mọi mở rộng thêm vào cluster vẫn đáng quan tâm và vẫn phải cảnh báo;
+- `mentor` chỉ nên có đúng phạm vi review đã được cấp, nên mọi đường truy cập mới phải bị coi là bất thường ngay lập tức.
 
-### 3.5. Group 5 - Access to sensitive secrets by a human account
+### 3.5. Group 5 - Truy cập secret nhạy cảm bằng tài khoản con người
 
-Since the team still uses admin IAM users, any secret access by a human identity deserves review.
+Vì team vẫn đang dùng admin IAM user, mọi truy cập secret từ identity của con người đều đáng để review.
 
-What must be detected:
+Những gì phải phát hiện:
 
-- reading operationally sensitive secrets;
-- reading application secrets that are normally only needed by automation;
-- reading secrets outside a planned maintenance window or outside a known purpose.
+- đọc các secret nhạy cảm cho vận hành;
+- đọc secret của ứng dụng vốn bình thường chỉ automation mới cần;
+- đọc secret ngoài cửa sổ bảo trì đã lên kế hoạch hoặc ngoài mục đích đã biết.
 
-API/actions to match directly:
+API/action cần match trực tiếp:
 
 - `secretsmanager:GetSecretValue`
-- `secretsmanager:BatchGetSecretValue` if the account uses it
+- `secretsmanager:BatchGetSecretValue` nếu account có dùng
 
-Secrets that should be watched at minimum:
+Những secret tối thiểu nên theo dõi:
 
-- `techx-corp-tf3/flagd-sync-token` or the exact secret name in use
-- RDS / MSK / ElastiCache secrets if Mandate #8 moves them into Secrets Manager
+- `techx-corp-tf3/flagd-sync-token` hoặc đúng tên secret đang dùng
+- secret của RDS / MSK / ElastiCache nếu Mandate #8 đưa chúng vào Secrets Manager
 
-Why this group matters:
+Vì sao nhóm này quan trọng:
 
-- Secret reads are often a preparation step for larger actions.
-- If an admin key is compromised, attackers often pivot into secrets next.
-- For a human operator, reading secrets should be an exception, not the default path.
+- việc đọc secret thường là bước chuẩn bị cho các hành động lớn hơn;
+- nếu admin key bị compromise, kẻ tấn công thường pivot sang secret rất sớm;
+- với operator là con người, việc đọc secret nên là ngoại lệ chứ không phải đường đi mặc định.
 
-Per-actor interpretation:
+Diễn giải theo actor:
 
-- `CDO01`: there may be rare legitimate cases, but it still requires signal.
-- `CDO02`: same.
-- `mentor`: there is almost never a valid reason to read secrets while only verifying the mandate.
+- `CDO01`: có thể có vài trường hợp hợp lệ hiếm hoi, nhưng vẫn cần tín hiệu;
+- `CDO02`: tương tự;
+- `mentor`: gần như không có lý do hợp lệ để đọc secret khi chỉ đang verify mandate.
 
-Important note:
+Lưu ý quan trọng:
 
-- This detection must filter out known legitimate automation, otherwise it will be too noisy.
-- The audit target here is **human secret access**, not every secret access event.
+- detection này phải lọc bỏ automation hợp lệ đã biết, nếu không sẽ nhiễu ngay;
+- mục tiêu audit ở đây là **human secret access**, không phải mọi event truy cập secret;
+- đường triển khai dự kiến cho nhóm này là:
+  - `CloudTrail trail đang bật logging`
+  - rule `EventBridge` trên default bus với state `ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS`
+  - `Lambda`
+  - `SNS/email`
+- `CloudWatch Logs` không bắt buộc là một đường vận chuyển sự kiện riêng cho nhóm này trong vòng triển khai đầu tiên.
 
-### 3.6. Group 6 - Destructive actions that remove recovery paths
+### 3.6. Group 6 - Các hành động phá hủy làm mất đường khôi phục
 
-This group is not only “delete resource.” It is specifically about deleting what the team needs in order to recover, roll back, or continue investigating.
+Nhóm này không chỉ là "xóa tài nguyên". Nó là việc xóa những gì team cần để khôi phục, rollback, hoặc tiếp tục điều tra.
 
-What must be detected:
+Những gì phải phát hiện:
 
-- deleting the cluster, node groups, datastores, secrets, keys, or log buckets;
-- scheduling key deletion;
-- deleting test or canary resources used for verification;
-- deleting components that support rollback or post-incident analysis.
+- xóa cluster, node group, datastore, secret, key, hoặc log bucket;
+- lên lịch xóa key;
+- xóa tài nguyên test hoặc canary dùng cho verification;
+- xóa những thành phần hỗ trợ rollback hoặc phân tích sau sự cố.
 
-API/actions to match directly:
+API/action cần match trực tiếp:
 
 - `eks:DeleteCluster`
 - `eks:DeleteNodegroup`
@@ -269,57 +294,57 @@ API/actions to match directly:
 - `s3:DeleteBucket`
 - `cloudtrail:DeleteTrail`
 
-Why this group matters:
+Vì sao nhóm này quan trọng:
 
-- Some deletions do not cause immediate outage, but they remove the recovery path.
-- For an auditability mandate, losing rollback or evidence paths is itself a dangerous event.
+- có những lần xóa chưa gây outage ngay, nhưng lại làm mất đường khôi phục;
+- với một mandate về auditability, việc mất đường rollback hoặc mất nơi giữ bằng chứng tự nó đã là một sự kiện nguy hiểm.
 
-Per-actor interpretation:
+Diễn giải theo actor:
 
-- `CDO01`: deleting defensive controls or evidence stores must alert.
-- `CDO02`: deleting important data or runtime infrastructure must alert.
-- `mentor`: the mentor should not be deleting foundational resources during verification.
+- `CDO01`: xóa cơ chế phòng thủ hoặc nơi giữ bằng chứng phải cảnh báo;
+- `CDO02`: xóa dữ liệu quan trọng hoặc hạ tầng runtime phải cảnh báo;
+- `mentor`: mentor không nên xóa các tài nguyên nền tảng trong lúc verification.
 
-### 3.7. Summary for these three admin actors
+### 3.7. Tóm tắt cho ba actor admin này
 
-If this needs to be explained simply to the mentor or to the team:
+Nếu cần giải thích đơn giản cho mentor hoặc cho team:
 
-- `CDO01`, `CDO02`, and `mentor` are **all admins**, so “did the user have permission?” is not a useful detection criterion.
-- Detection therefore has to focus on **behavior**:
-  - blinding audit trails;
-  - creating new access paths;
-  - broadening privilege;
-  - broadening cluster or runtime access;
-  - reading secrets from a human account;
-  - destroying resources or recovery paths.
-- Every alert must include:
-  - who;
-  - what;
-  - when;
-  - from where;
-  - and how long detection took.
-
----
-
-## 4. What Should Not Be Done In The First Iteration
-
-- Do not deploy `Security Hub`, `GuardDuty`, `CloudTrail Lake`, or an `OpenSearch SIEM` just to pass this mandate.
-- Do not alert on all `Describe*`, `List*`, or `Get*` actions; that will create noise immediately.
-- Do not depend on Grafana or Prometheus inside the cluster for this control-plane audit detection path; if the cluster is affected, the detector may fail with it.
-- Do not claim “we can perfectly distinguish legitimate admin actions from malicious ones” while the team still uses admin IAM users with static keys.
+- `CDO01`, `CDO02`, và `mentor` đều là **admin**, nên tiêu chí "user có quyền hay không" không còn hữu ích cho phát hiện;
+- vì vậy detection phải tập trung vào **hành vi**:
+  - làm mù audit trail;
+  - tạo đường truy cập mới;
+  - mở rộng quyền;
+  - mở rộng quyền vào cluster hoặc runtime;
+  - đọc secret từ tài khoản con người;
+  - phá hủy tài nguyên hoặc đường khôi phục;
+- mọi cảnh báo phải có:
+  - ai;
+  - làm gì;
+  - khi nào;
+  - từ đâu;
+  - và mất bao lâu để phát hiện.
 
 ---
 
-## 5. What Every Alert Must Include
+## 4. Những gì không nên làm ở vòng đầu
 
-Each alert should contain at least:
+- không triển khai `Security Hub`, `GuardDuty`, `CloudTrail Lake`, hoặc `OpenSearch SIEM` chỉ để vượt qua mandate này;
+- không cảnh báo trên toàn bộ `Describe*`, `List*`, hoặc `Get*`, vì sẽ tạo nhiễu ngay lập tức;
+- không phụ thuộc vào Grafana hoặc Prometheus trong cluster cho đường phát hiện audit control-plane này; nếu cluster bị ảnh hưởng, detector có thể chết theo;
+- không tuyên bố rằng "ta có thể phân biệt hoàn hảo hành động admin hợp lệ với hành động độc hại" trong khi team vẫn đang dùng admin IAM user với static key.
+
+---
+
+## 5. Mọi cảnh báo phải chứa những gì
+
+Mỗi cảnh báo ít nhất nên có:
 
 - `severity`
 - `rule_name`
 - `event_name`
 - `actor`
   - `userIdentity.type`
-  - `userName` or `arn`
+  - `userName` hoặc `arn`
 - `when`
   - `eventTime`
   - `detectedAt`
@@ -329,168 +354,168 @@ Each alert should contain at least:
   - `awsRegion`
   - `userAgent`
 - `target`
-  - resource ARN or resource name if present
+  - ARN tài nguyên hoặc tên tài nguyên nếu có
 - `request_summary`
-  - a short, filtered summary of the important request parameters
+  - bản tóm tắt ngắn, đã lọc, của các request parameter quan trọng
 - `investigation_hint`
-  - for example: “check CloudTrail Event History for eventName=CreateAccessKey and actor=<user>”
+  - ví dụ: "kiểm tra CloudTrail Event History với eventName=CreateAccessKey và actor=<user>"
 
-Example email subject:
+Ví dụ subject của email:
 
 `[CRITICAL][Audit] CreateAccessKey by arn:aws:iam::197826770971:user/CDO02 from 203.x.x.x (TTD 47s)`
 
-The message body should stay short enough to be readable on a phone.
+Phần nội dung email nên đủ ngắn để đọc được trên điện thoại.
 
 ---
 
-## 6. How Time-To-Detect Should Be Measured
+## 6. Nên đo time-to-detect như thế nào
 
-### 6.1. Suggested commitment
+### 6.1. Cam kết được khuyến nghị
 
-Recommended public commitment:
+Cam kết công khai được khuyến nghị:
 
-- **Commitment to mentor**: the alert reaches a human in **<= 5 minutes**
-- **Internal goal**: median **< 90 seconds**, p95 **< 180 seconds**
+- **Cam kết với mentor**: cảnh báo tới tay một người trong vòng **<= 5 phút**
+- **Mục tiêu nội bộ**: median **< 90 giây**, p95 **< 180 giây**
 
-Why this is the right level:
+Vì sao mức này phù hợp:
 
-- It is realistic enough for AWS event latency variation.
-- It is strong enough to demonstrate active detection.
-- It avoids overcommitting to an unrealistic “under 30 seconds” target.
+- nó thực tế với độ dao động trễ của AWS event;
+- nó đủ mạnh để chứng minh đây là phát hiện chủ động;
+- nó tránh overcommit vào một mục tiêu không thực tế như "dưới 30 giây".
 
-### 6.2. How to calculate it
+### 6.2. Cách tính
 
-Inside the alerting Lambda:
+Trong Lambda cảnh báo:
 
-- extract `event_time = detail.eventTime` from the CloudTrail event;
-- compute `detected_at = now()`;
-- calculate `ttd_seconds = detected_at - event_time`.
+- lấy `event_time = detail.eventTime` từ CloudTrail event;
+- tính `detected_at = now()`;
+- tính `ttd_seconds = detected_at - event_time`.
 
-Then:
+Sau đó:
 
-- include `ttd_seconds` in the alert payload;
-- write structured JSON to CloudWatch Logs;
-- publish a custom metric such as `AuditDetectionLatencySeconds`.
+- đưa `ttd_seconds` vào payload cảnh báo;
+- ghi JSON có cấu trúc vào CloudWatch Logs;
+- publish custom metric như `AuditDetectionLatencySeconds`.
 
-### 6.3. How to prove it
+### 6.3. Cách chứng minh
 
-Before submission:
+Trước khi nộp:
 
-1. Run at least three real drills.
-2. Keep:
-   - the event timestamp from CloudTrail;
-   - the received email alert;
-   - the Lambda log containing `ttd_seconds`.
-3. Record a simple evidence table in the runbook:
+1. Chạy ít nhất ba lần diễn tập thật.
+2. Giữ lại:
+   - timestamp của event từ CloudTrail;
+   - email cảnh báo đã nhận;
+   - log Lambda có chứa `ttd_seconds`.
+3. Ghi một bảng bằng chứng đơn giản trong runbook:
    - event;
    - event time;
    - detected time;
    - `ttd_seconds`;
-   - committed threshold;
-   - pass or fail.
+   - ngưỡng đã cam kết;
+   - pass hay fail.
 
-Important point:
+Điểm quan trọng:
 
-- The mentor should not have to trust a spoken claim.
-- The alert itself should show TTD.
-- The logs and metric should be available for verification.
+- mentor không nên phải tin vào lời nói;
+- chính cảnh báo nên hiển thị TTD;
+- log và metric phải có sẵn để kiểm tra lại.
 
 ---
 
-## 7. Noise Control and Mentor Verification
+## 7. Kiểm soát nhiễu và cách mentor tự verify
 
-### 7.1. Noise control requirements
+### 7.1. Yêu cầu kiểm soát nhiễu
 
-To stay credible and avoid alert fatigue, the detector should apply a small set of explicit noise-control rules:
+Để hệ thống đủ đáng tin và tránh mệt mỏi vì cảnh báo, detector nên áp dụng một tập quy tắc giảm nhiễu nhỏ nhưng rõ ràng:
 
-- keep an allowlist of known automation principals, such as CI/CD roles and approved IRSA roles;
-- treat human secret access differently from automation secret access;
-- use time-bounded maintenance suppressions with at least:
+- duy trì allowlist cho các automation principal đã biết, như role CI/CD và các IRSA role đã được phê duyệt;
+- phân biệt human secret access với automation secret access;
+- dùng suppression có giới hạn thời gian cho các đợt bảo trì, và mỗi suppression tối thiểu phải có:
   - `actor`
   - `resource`
   - `start`
   - `end`
   - `reason`
-- make suppressions expire automatically instead of leaving them open-ended;
-- page only on the highest-risk groups by default:
-  - Group 1 - blinding audit
-  - Group 2 - creating new access paths
-  - Group 4 - broadening cluster or runtime access
-- keep Group 3 and Group 5 at review or high severity unless the target or actor makes them critical;
-- set Group 6 severity based on the target, with destructive actions against evidence, keys, or critical datastores treated as `critical`.
+- suppression phải tự hết hạn thay vì để mở vô thời hạn;
+- mặc định chỉ paging cho các nhóm rủi ro cao nhất:
+  - Group 1 - làm mù audit
+  - Group 2 - tạo đường truy cập mới
+  - Group 4 - mở rộng quyền vào cluster hoặc runtime
+- giữ Group 3 và Group 5 ở mức review hoặc high trừ khi actor hoặc target khiến chúng phải lên critical;
+- đặt độ nghiêm trọng của Group 6 theo target, trong đó các hành vi phá hủy nhắm vào nơi giữ bằng chứng, KMS key, hoặc datastore quan trọng phải được coi là `critical`.
 
-This is the minimum needed to satisfy the directive requirement that alerts remain trustworthy and are not muted as noise.
+Đây là mức tối thiểu cần có để đáp ứng yêu cầu của directive rằng cảnh báo phải đủ đáng tin và không bị tắt tiếng vì quá nhiễu.
 
-### 7.1.1. Minimum implementation
+### 7.1.1. Cách triển khai tối thiểu
 
-The recommended minimum implementation is intentionally small:
+Cách triển khai tối thiểu được khuyến nghị nên giữ nhỏ gọn:
 
-- keep one detector configuration file directly inside the Lambda package;
-- store:
+- giữ một file cấu hình detector ngay trong package của Lambda;
+- lưu:
   - `allowed_principals`
   - `human_principals`
   - `secret_reader_principals`
   - `suppressions`
-- make each suppression contain:
+- mỗi suppression phải chứa:
   - `actor`
   - `resource`
   - `start`
   - `end`
   - `reason`
-- make the detector evaluate each event in this order:
-  1. check whether the principal is an approved automation principal;
-  2. check whether a valid, unexpired suppression exists;
-  3. check whether the event is secret access by a human principal;
-  4. map the event into a severity based on the event group and target.
+- detector nên đánh giá mỗi event theo thứ tự:
+  1. kiểm tra principal có phải automation principal đã được phê duyệt hay không;
+  2. kiểm tra có suppression hợp lệ và chưa hết hạn hay không;
+  3. kiểm tra event có phải là secret access từ human principal hay không;
+  4. ánh xạ event sang severity dựa trên nhóm event và target.
 
-The recommended default severity mapping is:
+Ánh xạ severity mặc định được khuyến nghị:
 
 - Group 1, Group 2, Group 4 -> `critical`
 - Group 3, Group 5 -> `high`
-- Group 6 -> `high` by default, `critical` when the target is an evidence store, a KMS key, or a critical datastore
+- Group 6 -> `high` theo mặc định, và `critical` khi target là evidence store, KMS key, hoặc datastore quan trọng
 
-This is enough to answer the mentor's likely questions about CI/CD activity, approved automation, and planned maintenance without building a full alert-management product or adding extra configuration infrastructure.
+Mức này đủ để trả lời các câu hỏi thường gặp của mentor về hoạt động CI/CD, automation đã được phê duyệt, và bảo trì có kế hoạch mà không cần xây cả một hệ thống quản lý cảnh báo đầy đủ hay thêm hạ tầng cấu hình riêng.
 
-### 7.2. Mentor self-verification expectations
+### 7.2. Kỳ vọng để mentor tự verify
 
-The mentor must be able to perform one harmless but clearly dangerous action and verify the result without relying on verbal explanation.
+Mentor phải có thể thực hiện một hành động vô hại nhưng rõ ràng là nguy hiểm và tự xác minh kết quả mà không cần dựa vào giải thích bằng lời.
 
-The verification flow should therefore show:
+Vì vậy, luồng verification nên cho thấy:
 
-- the action performed by the mentor;
-- the resulting alert arriving within the committed threshold;
-- the alert contents:
-  - who
-  - what
-  - when
-  - from where
+- hành động mà mentor đã thực hiện;
+- cảnh báo tương ứng tới trong ngưỡng đã cam kết;
+- nội dung cảnh báo:
+  - ai
+  - làm gì
+  - khi nào
+  - từ đâu
   - time-to-detect
-- the end-to-end alert path:
-  - event source
-  - processing step
-  - recipient channel
+- đường đi đầu-cuối của cảnh báo:
+  - nguồn event
+  - bước xử lý
+  - kênh nhận
 
-Suitable self-verification actions include:
+Các hành động phù hợp để mentor tự verify gồm:
 
-- `iam:CreateAccessKey`
+- `iam:CreateAccessKey`, với lưu ý triển khai quan trọng là mentor có thể thực hiện thao tác này từ bất kỳ console region hoặc vị trí nào, nhưng rule phát hiện cho IAM event này nên được triển khai ở `us-east-1`
 - `eks:CreateAccessEntry`
-- `cloudtrail:StopLogging` followed by `cloudtrail:StartLogging` on an approved test target
+- `cloudtrail:StopLogging` rồi `cloudtrail:StartLogging` trên một target test đã được phê duyệt
 
-The important point is not the specific test action by itself, but that the mentor can independently see the alert, the routing path, and the measured detection time.
+Điểm quan trọng không nằm ở đúng một hành động test cụ thể, mà là mentor có thể tự nhìn thấy cảnh báo, đường định tuyến, và thời gian phát hiện đã đo được.
 
 ---
 
-## 8. Cost Position
+## 8. Góc nhìn về chi phí
 
-For the scoped design of management events + EventBridge + Lambda + SNS email:
+Với thiết kế đã khoanh vùng là management events + EventBridge + Lambda + SNS email:
 
-- the cost should be very small compared with the `$300/week` ceiling;
-- it is far more cost-effective than bringing in Security Hub, GuardDuty, or SIEM tooling just for this mandate.
+- chi phí sẽ rất nhỏ so với ngưỡng `$300/tuần`;
+- nó hiệu quả chi phí hơn nhiều so với việc đưa Security Hub, GuardDuty, hoặc SIEM vào chỉ cho mandate này.
 
-Important guardrails:
+Các guardrail quan trọng:
 
-- do not enable unnecessary data events;
-- only watch secret-access events for genuinely sensitive secrets;
-- do not keep CloudWatch retention infinite for Lambda and detector logs.
+- không bật data event không cần thiết;
+- chỉ theo dõi secret-access cho những secret thực sự nhạy cảm;
+- không giữ retention vô hạn cho Lambda log và detector log trên CloudWatch.
 
-A short retention period such as 14 to 30 days is likely enough unless there is a separate audit retention requirement.
+Thời gian retention ngắn như 14 đến 30 ngày thường là đủ, trừ khi có yêu cầu lưu trữ audit riêng.

@@ -15,13 +15,30 @@ cloudflare_allowed_emails = [
   "hiimtuu@gmail.com",
   "tutc.work@gmail.com",
   "trongtanaws@gmail.com",
-  # Mentors — SSO access tới Grafana/Jaeger/ArgoCD UI qua Cloudflare Zero Trust (REL-17).
+  # Mentors - SSO access to Grafana/Jaeger/ArgoCD UI via Cloudflare Zero Trust (REL-17).
   "nghia.huynh@techxcorp.com",
   "toan.le@techxcorp.com",
   "khanh.nguyen@techxcorp.com",
   "namhong.ta@techxcorp.com",
 ]
 
-# Mandate #8 — bật tầng datastore managed (RDS/ElastiCache/MSK).
-# Đặt = true để state khớp hạ tầng thật; nếu để default false, plan sau sẽ đòi XOÁ 3 store.
+# Mandate 8 - keep managed datastores enabled so plan matches live infra.
 enable_managed_datastores = true
+
+audit_detection_email_subscriptions = [
+  "nvtvlog234@gmail.com",
+]
+
+audit_detection_additional_human_principal_arns = [
+  "arn:aws:iam::197826770971:user/aio2-admin-team",
+  "arn:aws:iam::197826770971:user/cdo-2-admin-team",
+  "arn:aws:iam::197826770971:user/cdo-admin-team",
+  "arn:aws:iam::197826770971:user/hieu-AdminAccess",
+  "arn:aws:iam::197826770971:user/KietBE",
+  "arn:aws:iam::197826770971:user/mentor-mandate-reviewer",
+  "arn:aws:iam::197826770971:user/Thao",
+]
+
+audit_detection_additional_allowed_automation_principal_arns = [
+  "arn:aws:iam::197826770971:user/gitlab-ci-deployer",
+]

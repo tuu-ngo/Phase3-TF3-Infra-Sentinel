@@ -114,10 +114,8 @@ variable "cloudfront_staging_selector" {
   sensitive   = true
 }
 
-# REL-17 (docs/backlog/cdo02-reliability-cost-backlog.md) - SSO-based access to the
-# private EKS API via Cloudflare Zero Trust, as an addition to (not replacement of) the
-# SSM bastion. Defaults keep this entirely inert until someone deliberately opts in -
-# see docs/runbooks/cloudflare-zero-trust-access.md before setting enable = true.
+# REL-17: SSO-based access to the private EKS API via Cloudflare Zero Trust,
+# in addition to the SSM bastion. Defaults keep this inert until deliberately enabled.
 variable "enable_cloudflare_access" {
   description = "Provision the Cloudflare Tunnel + Access application for SSO-based EKS API access. Requires CLOUDFLARE_API_TOKEN env var and the other cloudflare_* variables set."
   type        = bool
@@ -160,15 +158,69 @@ variable "cloudflare_allowed_emails" {
   default     = []
 }
 
-# ---------- Mandate #8: managed datastores (RDS / ElastiCache / MSK) ----------
+# Mandate 8: managed datastores (RDS / ElastiCache / MSK)
 variable "enable_managed_datastores" {
-  description = "Bật tầng datastore managed (Mandate #8). false = không tạo gì (giữ in-cluster)."
+  description = "Enable the managed datastore layer for Mandate 8. false keeps the in-cluster path."
   type        = bool
   default     = false
 }
 
 variable "datastores_name_prefix" {
-  description = "Prefix ngắn cho tên tài nguyên/secret datastore (vd techx-tf3)."
+  description = "Short prefix for datastore resource and secret names, for example techx-tf3."
   type        = string
   default     = "techx-tf3"
+}
+
+variable "audit_detection_email_subscriptions" {
+  description = "Email recipients for Mandate 11 audit alerts."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_additional_human_principal_arns" {
+  description = "Extra human principal ARNs reviewed by the detector, for example mentor or admin users not already modeled in iam-production-access.tf."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_additional_allowed_automation_principal_arns" {
+  description = "Extra automation principal ARNs allowlisted by the detector."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_additional_secret_reader_principal_arns" {
+  description = "Extra automation principal ARNs that may read watched secrets without paging."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_additional_sensitive_secret_names" {
+  description = "Extra Secrets Manager names that should be watched for human reads."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_suppressions" {
+  description = "Time-bounded suppressions evaluated by the audit alert Lambda."
+  type = list(object({
+    actor    = string
+    resource = string
+    start    = string
+    end      = string
+    reason   = string
+  }))
+  default = []
+}
+
+variable "audit_detection_lambda_log_retention_days" {
+  description = "Retention for audit detection Lambda logs."
+  type        = number
+  default     = 14
+}
+
+variable "audit_detection_trail_s3_retention_days" {
+  description = "Retention for audit CloudTrail objects in S3."
+  type        = number
+  default     = 30
 }
