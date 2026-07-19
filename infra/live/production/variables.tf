@@ -114,8 +114,10 @@ variable "cloudfront_staging_selector" {
   sensitive   = true
 }
 
-# REL-17: SSO-based access to the private EKS API via Cloudflare Zero Trust,
-# in addition to the SSM bastion. Defaults keep this inert until deliberately enabled.
+# REL-17 (docs/backlog/cdo02-reliability-cost-backlog.md) - SSO-based access to the
+# private EKS API via Cloudflare Zero Trust, as an addition to (not replacement of) the
+# SSM bastion. Defaults keep this entirely inert until someone deliberately opts in -
+# see docs/runbooks/cloudflare-zero-trust-access.md before setting enable = true.
 variable "enable_cloudflare_access" {
   description = "Provision the Cloudflare Tunnel + Access application for SSO-based EKS API access. Requires CLOUDFLARE_API_TOKEN env var and the other cloudflare_* variables set."
   type        = bool
@@ -158,15 +160,15 @@ variable "cloudflare_allowed_emails" {
   default     = []
 }
 
-# Mandate 8: managed datastores (RDS / ElastiCache / MSK)
+# ---------- Mandate #8: managed datastores (RDS / ElastiCache / MSK) ----------
 variable "enable_managed_datastores" {
-  description = "Enable the managed datastore layer for Mandate 8. false keeps the in-cluster path."
+  description = "Bật tầng datastore managed (Mandate #8). false = không tạo gì (giữ in-cluster)."
   type        = bool
   default     = false
 }
 
 variable "datastores_name_prefix" {
-  description = "Short prefix for datastore resource and secret names, for example techx-tf3."
+  description = "Prefix ngắn cho tên tài nguyên/secret datastore (vd techx-tf3)."
   type        = string
   default     = "techx-tf3"
 }
