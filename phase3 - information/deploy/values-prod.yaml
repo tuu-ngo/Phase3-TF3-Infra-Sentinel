@@ -720,6 +720,13 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   accounting:
+    # Mandate #8 buoc 2 (cutover Postgres -> RDS): de FREEZE nguoi ghi duy nhat trong cua so
+    # dump/restore. Template bo field replicas khoi manifest khi managed externally -> ArgoCD
+    # KHONG con quan replicas -> "kubectl scale accounting=0" GIU DUOC (selfHeal khong revert,
+    # accounting khong co HPA). (replicas: 0 truc tiep KHONG dung vi template `default` coi 0 la rong.)
+    # Postgres read-only trong cua so; checkout van publish -> don don o Kafka; catalog/reviews van doc.
+    # REVERT PR nay SAU cutover de tra accounting ve git-managed replicas=1.
+    replicasManagedExternally: true
     imageOverride: # CDO02 fix Consumer.cs - xem comment imageOverride đầu components:
       digest: sha256:32aeb5e03cd55a4f6a9927b950d019393e39e480541877471e622f002c3107f7
       tag: e43df42-29655320898-accounting
