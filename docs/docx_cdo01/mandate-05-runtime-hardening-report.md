@@ -51,6 +51,8 @@ Trước khi bật `require-resource-requests` cho `argocd`/`kyverno`/`argo-roll
 | `m05-baseline-kafka-init-chown` | `kafka` init-container | Cần root để `chown` PVC trước khi broker (non-root) khởi động | CDO02 | 24/07/2026 |
 | `m05-baseline-aiops-engine-runtime` | `aiops-engine` | Ngoài GitOps repo này, chưa có securityContext hardening | AIO02 | 24/07/2026 |
 
+> **Cập nhật liên quan Mandate #8:** CDO02 đã bắt đầu chuyển Kafka sang MSK — bước 3 (producer `checkout` → MSK) đã code xong, hiện ở PR riêng `feat/mandate-08-kafka-producer-checkout`, **chưa merge `main`**. Đây mới là **producer-only**: consumer (`accounting`/`fraud-detection`) vẫn đọc từ Kafka in-cluster, và theo đúng nguyên tắc rollback của Mandate #8 (kho cũ giữ nguyên tới khi nghiệm thu + dọn dẹp), `kafka` StatefulSet cùng `init-kafka-data` (root) **vẫn đang chạy sống** trong `techx-tf3`. Exception `m05-baseline-kafka-init-chown` vì vậy **vẫn còn hiệu lực thật**, chưa thể gỡ — sẽ đóng khi Mandate #8 hoàn tất cutover consumer + dọn kho Kafka cũ.
+
 ## 4. Quy trình demo đã thực hiện (khớp video)
 
 4 manifest vi phạm, mỗi manifest đúng 1 lỗi, `kind: Deployment` (không dùng Pod trần — lý do ở mục 5):
@@ -166,7 +168,7 @@ Sau khi mở rộng toàn cluster, rule này chỉ đọc `securityContext.runAs
 
 ## 9. Đề xuất sẽ làm sau Mandate #5
 
-1. Dọn dứt điểm 2 exception còn lại trước review date 24/07: `aiops-engine` cần AIO02 tự thêm securityContext (hoặc chuyển vào GitOps tree); `kafka` cần đánh giá cơ chế ownership non-root (fsGroup/CSI) để bỏ hẳn root init.
+1. Dọn dứt điểm 2 exception còn lại trước review date 24/07: `aiops-engine` cần AIO02 tự thêm securityContext (hoặc chuyển vào GitOps tree); `kafka` — theo dõi tiến độ Mandate #8 (CDO02), exception sẽ tự đóng khi consumer cutover xong + Kafka in-cluster được dọn dẹp (không cần đánh giá ownership non-root nữa nếu Kafka cũ bị gỡ hẳn thay vì tiếp tục chạy).
 2. Ký chính thức ADR 0010 (hiện "Accepted - mentor acceptance pending").
 3. (Không gấp) PM-114 — Kyverno `verifyImages` Cosign tại admission-time, hiện Cosign mới verify off-cluster (mục 4.4 báo cáo nội bộ), chưa chặn tại admission.
 4. Dọn ReplicaSet rác còn sót từ test cũ (`m5-t20`, `techx-tf3`, không owner, 0 pod thật) — không ảnh hưởng policy nhưng nên dọn cho sạch PolicyReport.
