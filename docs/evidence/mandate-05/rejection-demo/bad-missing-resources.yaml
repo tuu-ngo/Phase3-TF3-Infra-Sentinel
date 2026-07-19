@@ -1,0 +1,34 @@
+# Mandate 5 rejection demo — vi phạm yêu cầu #3 (mọi workload phải có resource
+# request/limit). Cố ý dùng kind: Deployment, KHÔNG dùng Pod trần — Pod trần trong
+# techx-tf3 sẽ bị LimitRange "techx-limits" tự điền default hợp lệ trước khi Kyverno
+# kịp đánh giá (không phải bug, đây là hành vi K8s chuẩn: mutating admission chạy
+# trước validating webhook), nên sẽ KHÔNG bị chặn — không thể hiện đúng ý policy.
+# Deployment không bị LimitRange đụng vào -> Kyverno autogen-rule thấy đúng sự thật:
+# rỗng -> chặn đúng.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mandate5-demo-bad-missing-resources
+  namespace: techx-tf3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mandate5-demo-bad-missing-resources
+  template:
+    metadata:
+      labels:
+        app: mandate5-demo-bad-missing-resources
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:801b602b7ac4afc3887a27cb3a97b13ea10ce35bce64afe047e3dd2b42ae5f1d
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
