@@ -8,6 +8,12 @@ metadata:
 spec:
   validationFailureAction: Enforce
   background: true
+  # Cluster-wide (Mandate 5, 19/07): mọi rule dưới đây KHÔNG còn giới hạn
+  # `namespaces: [techx-tf3]` - áp cho mọi namespace. kube-system và kyverno
+  # KHÔNG cần loại trừ tường minh ở đây - webhook validate.kyverno.svc-fail
+  # đã có namespaceSelector loại trừ 2 namespace đó ở tầng webhook (request
+  # không bao giờ tới được Kyverno để đánh giá). Chi tiết + số liệu quét toàn
+  # cluster trước khi mở rộng: docs/mandate-05-gap-analysis-20260718.md mục 8.
   rules:
     - name: require-effective-non-root
       match:
@@ -23,8 +29,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -74,8 +78,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -102,8 +104,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -144,8 +144,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -181,8 +179,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -220,8 +216,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -255,8 +249,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -298,8 +290,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
