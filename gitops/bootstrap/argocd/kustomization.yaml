@@ -12,7 +12,13 @@ patches:
         path: /spec/template/spec/containers/0/resources
         value:
           requests: {cpu: 250m, memory: 256Mi}
-          limits: {cpu: 500m, memory: 512Mi}
+          # limits.memory tang 512Mi -> 1Gi (19/07, incident thuc te): 512Mi
+          # gay OOMKilled that ngay lan sync dau tien cua argocd-self (diff
+          # toan bo 59 resource + CRD Application/AppProject kha nang -
+          # xem docs/mandate-05-cluster-wide-scope-expansion.md phan incident
+          # cho chi tiet log/timeline). DUNG ha lai xuong 512Mi neu khong
+          # muon lap lai crash loop.
+          limits: {cpu: 500m, memory: 1Gi}
   - target:
       kind: Deployment
       name: argocd-server
