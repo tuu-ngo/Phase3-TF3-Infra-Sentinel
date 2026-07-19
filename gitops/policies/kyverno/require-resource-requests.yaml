@@ -15,15 +15,8 @@ spec:
           - resources:
               kinds:
                 - Pod
-              # Cluster-wide (Mandate 5, 19/07): bo namespaces: [techx-tf3].
-              # kube-system/kyverno van duoc webhook loai tru rieng (xem
-              # docs/mandate-05-cluster-wide-scope-expansion.md muc 1). argocd/
-              # argo-rollouts/external-secrets da duoc bo sung du 4 field
-              # truoc khi mo rong policy nay - argocd verify song 19/07 (10/10
-              # container/init du field); argo-rollouts/kyverno da sua trong
-              # Git (gitops/apps/{kyverno,argo-rollouts}-app.yaml), cho merge
-              # + ArgoCD sync la len du - kyverno rieng khong can vi da bi
-              # webhook loai tru.
+              namespaces:
+                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
