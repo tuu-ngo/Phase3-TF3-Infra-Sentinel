@@ -41,6 +41,14 @@ spec:
       jsonPointers:
         - /spec/replicas
     # HPA owns scale for these Deployments; Argo CD owns all remaining fields.
+    # Mandate #8 buoc 2: accounting them vao day de FREEZE duoc (scale=0 giu) trong cua so
+    # cutover Postgres->RDS. accounting KHONG co HPA -> khong ai keo len -> scale=0 giu vinh vien
+    # cho toi khi scale=1 lai. GO entry nay sau cutover de tra accounting ve ArgoCD-managed.
+    - group: apps
+      kind: Deployment
+      namespace: techx-tf3
+      name: accounting
+      jsonPointers: [/spec/replicas]
     - group: apps
       kind: Deployment
       namespace: techx-tf3
