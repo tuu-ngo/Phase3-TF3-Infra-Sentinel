@@ -56,10 +56,15 @@ module "datastores" {
   vpc_id             = module.network.vpc_id
   private_subnet_ids = module.network.private_subnet_ids
 
-  # Pod EKS đi ra qua cluster security group (VPC CNI gắn SG này lên node/pod ENI).
-  allowed_client_security_group_ids = [module.eks_platform.cluster_security_group_id]
-  bastion_security_group_id         = module.access.bastion_security_group_id
-  external_secrets_role_name        = module.eks_platform.external_secrets_role_name
+  # Pod EKS đi ra qua NODE security group (VPC CNI gắn SG này lên ENI của node/pod) — đây mới là
+  # SG traffic pod thực sự dùng. Cluster SG (aws_security_group.cluster) KHÔNG nằm trên node ENI nên
+  # allow mình nó thì pod timeout khi nối datastore. Giữ cả 2 cho đủ (cluster SG dùng cho control-plane).
+  allowed_client_security_group_ids = [
+    module.eks_platform.node_security_group_id,
+    module.eks_platform.cluster_security_group_id,
+  ]
+  bastion_security_group_id  = module.access.bastion_security_group_id
+  external_secrets_role_name = module.eks_platform.external_secrets_role_name
 
   # Thông số right-size + Multi-AZ mặc định trong module (ADR 0009). Override qua tfvars nếu cần.
 }

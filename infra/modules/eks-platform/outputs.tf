@@ -10,6 +10,13 @@ output "cluster_security_group_id" {
   value = module.eks.cluster_security_group_id
 }
 
+# SG gan len ENI cua node/pod (VPC CNI). Day moi la SG traffic pod thuc su di ra
+# -> managed datastore phai allow SG nay thi pod moi noi duoc (cluster SG o tren KHONG
+# nam tren node ENI). Xem infra/live/production/main.tf module "datastores".
+output "node_security_group_id" {
+  value = module.eks.node_security_group_id
+}
+
 output "oidc_provider_arn" {
   value = module.eks.oidc_provider_arn
 }
