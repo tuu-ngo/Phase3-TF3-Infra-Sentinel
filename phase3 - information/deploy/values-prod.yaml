@@ -391,6 +391,25 @@ components:
       limits:
         cpu: 500m
         memory: 64Mi
+    # Mandate #8 buoc 3 (cutover Kafka -> MSK, PRODUCER truoc - runbook §6 buoc 2): checkout day
+    # order sang MSK (SASL_SSL + SCRAM tu secret techx-tf3-kafka-scram). Rollout canary + AnalysisRun
+    # checkout-slo se ABORT neu checkout success rot. Consumer (accounting+fraud) van o kafka cu ->
+    # order xep o MSK cho, doi consumer sang sau (Earliest doc lai). Go sau nghiem thu (§8).
+    envOverrides:
+      - name: KAFKA_ADDR
+        value: b-1.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-2.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-3.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096
+      - name: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - name: KAFKA_SASL_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: username
+      - name: KAFKA_SASL_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: password
     readinessProbe:
       grpc:
         port: 8080
