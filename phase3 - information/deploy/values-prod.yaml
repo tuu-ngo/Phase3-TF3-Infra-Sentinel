@@ -323,20 +323,27 @@ components:
       limits:
         cpu: 500m
         memory: 160Mi
-    # Mandate #8 buoc 1 (cutover Valkey -> ElastiCache, runbook mandate-08-managed-cutover.md §4):
-    # BAT dual-write sang ElastiCache. DOC van tu valkey cu (VALKEY_ADDR khong doi) -> hanh vi
-    # khach KHONG doi. Loi o kho phu la best-effort (khong lam fail request) -> khong thanh SPOF moi.
-    # envOverrides = concat vao env goc (khong replace VALKEY_ADDR). Go o buoc §8 sau nghiem thu.
+    # Mandate #8 buoc 2 (cutover Valkey -> ElastiCache, runbook mandate-08-managed-cutover.md §4 buoc 4):
+    # LAT DOC sang ElastiCache: primary = ElastiCache (TLS + auth), dual-write DAO CHIEU -> ghi
+    # nguoc ve valkey-cart cu (plaintext) de GIU DUONG LUI (rollback zero-loss cho toi §8).
+    # CHI merge SAU khi da co proof hoi tu (miss=0) o buoc 1. envOverrides khop name -> override
+    # VALKEY_ADDR goc (valkey-cart:6379) thanh ElastiCache. Rolling restart maxUnavailable:0 -> 0 rot request.
     envOverrides:
-      - name: VALKEY_DUAL_WRITE_ADDR
+      # primary -> ElastiCache (doc + ghi chinh)
+      - name: VALKEY_ADDR
         value: master.techx-tf3-valkey.pkeslh.apse1.cache.amazonaws.com:6379
-      - name: VALKEY_DUAL_WRITE_TLS
+      - name: VALKEY_TLS
         value: "true"
-      - name: VALKEY_DUAL_WRITE_AUTH_TOKEN
+      - name: VALKEY_AUTH_TOKEN
         valueFrom:
           secretKeyRef:
             name: techx-tf3-valkey-auth
             key: auth_token
+      # dual-write DAO CHIEU -> valkey-cart cu (plaintext, khong auth) = duong lui
+      - name: VALKEY_DUAL_WRITE_ADDR
+        value: valkey-cart:6379
+      - name: VALKEY_DUAL_WRITE_TLS
+        value: "false"
   checkout:
     # Mandate 3: checkout is managed by Argo Rollouts, but the Rollout still reuses this
     # pod template through workloadRef. Keep the same graceful shutdown contract as the
