@@ -63,8 +63,8 @@ module "datastores" {
     module.eks_platform.node_security_group_id,
     module.eks_platform.cluster_security_group_id,
   ]
-  bastion_security_group_id         = module.access.bastion_security_group_id
-  external_secrets_role_name        = module.eks_platform.external_secrets_role_name
+  bastion_security_group_id  = module.access.bastion_security_group_id
+  external_secrets_role_name = module.eks_platform.external_secrets_role_name
 
   # Thông số right-size + Multi-AZ mặc định trong module (ADR 0009). Override qua tfvars nếu cần.
 }
