@@ -21,6 +21,16 @@ components:
       - name: AWS_REGION
         value: us-east-1
 
+      # Mandate #8 buoc 2 (cutover Postgres -> RDS, runbook §5 buoc 4): DB_CONNECTION_STRING -> RDS
+      # qua secret techx-tf3-postgres-conn (format libpq keyword, sslmode=require). product-reviews CHI DOC.
+      # DAT O DAY (khong o values-prod.yaml): file nay override sau -> envOverrides list nay la list cuoi
+      # cung, phai chua ca DB_CONNECTION_STRING neu khong Helm se clobber override tu values-prod.
+      - name: DB_CONNECTION_STRING
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-postgres-conn
+            key: libpq
+
       # Nếu cần rollback sang OpenAI/LiteLLM, thêm lại các biến sau:
       # - name: LLM_BASE_URL
       #   value: https://api.openai.com/v1

@@ -261,6 +261,14 @@ components:
       periodSeconds: 20
       timeoutSeconds: 2
       failureThreshold: 3
+    # Mandate #8 buoc 2 (cutover Postgres -> RDS, runbook §5 buoc 4): DB_CONNECTION_STRING -> RDS
+    # qua secret techx-tf3-postgres-conn (format Go DSN, sslmode=require). product-catalog CHI DOC.
+    envOverrides:
+      - name: DB_CONNECTION_STRING
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-postgres-conn
+            key: go-dsn
   cart:
     replicasManagedExternally: true
     # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
@@ -693,6 +701,9 @@ components:
       periodSeconds: 20
       timeoutSeconds: 2
       failureThreshold: 3
+    # Mandate #8 buoc 2: DB_CONNECTION_STRING cua product-reviews KHONG dat o day. values-aio-llm.yaml
+    # (file cuoi) cung set product-reviews.envOverrides cho Bedrock -> Helm REPLACE list nay. DB override
+    # phai nam chung list o values-aio-llm.yaml, neu khong se bi clobber. Xem file do.
   recommendation:
     replicasManagedExternally: true
     imageOverride: # CDO02 fix recommendation_server.py - xem comment imageOverride đầu components:
@@ -737,6 +748,15 @@ components:
       limits:
         cpu: 200m
         memory: 350Mi
+    # Mandate #8 buoc 2 (cutover Postgres -> RDS, runbook §5 buoc 4): DB_CONNECTION_STRING -> RDS
+    # qua secret techx-tf3-postgres-conn (format .NET/Npgsql, SSL Mode=Require). accounting la
+    # NGUOI GHI DUY NHAT -> merge PR nay o giua cua so cutover, SAU dump/restore + parity.
+    envOverrides:
+      - name: DB_CONNECTION_STRING
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-postgres-conn
+            key: dotnet
   email:
     imageOverride:
       digest: sha256:afdbc98c923cff6e7652d84bee0bea0e658dab0bad99299ae8a9e423969d82f4
