@@ -323,6 +323,20 @@ components:
       limits:
         cpu: 500m
         memory: 160Mi
+    # Mandate #8 buoc 1 (cutover Valkey -> ElastiCache, runbook mandate-08-managed-cutover.md §4):
+    # BAT dual-write sang ElastiCache. DOC van tu valkey cu (VALKEY_ADDR khong doi) -> hanh vi
+    # khach KHONG doi. Loi o kho phu la best-effort (khong lam fail request) -> khong thanh SPOF moi.
+    # envOverrides = concat vao env goc (khong replace VALKEY_ADDR). Go o buoc §8 sau nghiem thu.
+    envOverrides:
+      - name: VALKEY_DUAL_WRITE_ADDR
+        value: master.techx-tf3-valkey.pkeslh.apse1.cache.amazonaws.com:6379
+      - name: VALKEY_DUAL_WRITE_TLS
+        value: "true"
+      - name: VALKEY_DUAL_WRITE_AUTH_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-valkey-auth
+            key: auth_token
   checkout:
     # Mandate 3: checkout is managed by Argo Rollouts, but the Rollout still reuses this
     # pod template through workloadRef. Keep the same graceful shutdown contract as the
