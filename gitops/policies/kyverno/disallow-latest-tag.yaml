@@ -15,8 +15,12 @@ spec:
           - resources:
               kinds:
                 - Pod
-              namespaces:
-                - techx-tf3
+              # Cluster-wide (Mandate 5): áp cho mọi namespace, không riêng
+              # techx-tf3. kube-system và kyverno KHÔNG cần loại trừ ở đây -
+              # webhook validate.kyverno.svc-fail đã có namespaceSelector
+              # loại trừ 2 namespace này ở tầng webhook rồi (xem
+              # docs/mandate-05-gap-analysis-20260718.md mục 8.1), nên request
+              # từ 2 namespace đó không bao giờ tới được Kyverno để đánh giá.
               operations:
                 - CREATE
                 - UPDATE
