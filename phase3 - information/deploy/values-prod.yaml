@@ -261,6 +261,14 @@ components:
       periodSeconds: 20
       timeoutSeconds: 2
       failureThreshold: 3
+    # Mandate #8 buoc 2 (cutover Postgres -> RDS, runbook §5 buoc 4): DB_CONNECTION_STRING -> RDS
+    # qua secret techx-tf3-postgres-conn (format Go DSN, sslmode=require). product-catalog CHI DOC.
+    envOverrides:
+      - name: DB_CONNECTION_STRING
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-postgres-conn
+            key: go-dsn
   cart:
     replicasManagedExternally: true
     # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
@@ -314,8 +322,8 @@ components:
       failureThreshold: 3
     replicas: 2
     imageOverride: # CDO02 fix HealthCheckService.cs - xem comment imageOverride đầu components:
-      digest: sha256:bff18e3c5ded67d25be28c80c0ac56ad9bf3c00e790ce33aed9c91b278481bd6
-      tag: 43dcf62-29569108433-cart
+      digest: sha256:b6c7b60dec137dfe54f7fdc82b340421661aedbeed6ed34cd55f2ae29916508a
+      tag: 3252f28-29655310361-cart
     resources:
       requests:
         cpu: 100m
@@ -323,6 +331,27 @@ components:
       limits:
         cpu: 500m
         memory: 160Mi
+    # Mandate #8 buoc 2 (cutover Valkey -> ElastiCache, runbook mandate-08-managed-cutover.md §4 buoc 4):
+    # LAT DOC sang ElastiCache: primary = ElastiCache (TLS + auth), dual-write DAO CHIEU -> ghi
+    # nguoc ve valkey-cart cu (plaintext) de GIU DUONG LUI (rollback zero-loss cho toi §8).
+    # CHI merge SAU khi da co proof hoi tu (miss=0) o buoc 1. envOverrides khop name -> override
+    # VALKEY_ADDR goc (valkey-cart:6379) thanh ElastiCache. Rolling restart maxUnavailable:0 -> 0 rot request.
+    envOverrides:
+      # primary -> ElastiCache (doc + ghi chinh)
+      - name: VALKEY_ADDR
+        value: master.techx-tf3-valkey.pkeslh.apse1.cache.amazonaws.com:6379
+      - name: VALKEY_TLS
+        value: "true"
+      - name: VALKEY_AUTH_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-valkey-auth
+            key: auth_token
+      # dual-write DAO CHIEU -> valkey-cart cu (plaintext, khong auth) = duong lui
+      - name: VALKEY_DUAL_WRITE_ADDR
+        value: valkey-cart:6379
+      - name: VALKEY_DUAL_WRITE_TLS
+        value: "false"
   checkout:
     # Mandate 3: checkout is managed by Argo Rollouts, but the Rollout still reuses this
     # pod template through workloadRef. Keep the same graceful shutdown contract as the
@@ -334,8 +363,8 @@ components:
           seconds: 5
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
-      digest: sha256:0c1c6e063c2e6e2d26bade678520a1d15a04bf8085a1fc5287d7885332c1cb7f
-      tag: 43dcf62-29569108433-checkout
+      digest: sha256:993f61d6a44bdfbd20c77358c19dd3dcd706ecfde7f4bf5dd397e2ff0e22a008
+      tag: 3b59384-29655197650-checkout
     # Mandate 2 remediation: 2 pod stable từng bị xếp chung 1 node (xác nhận qua
     # kubectl trước load test) - checkout là service chịu tải chính, mất cả node đó
     # là mất cả 2 pod dù có PDB. hostname dùng ScheduleAnyway (soft) để không chặn
@@ -362,6 +391,25 @@ components:
       limits:
         cpu: 500m
         memory: 64Mi
+    # Mandate #8 buoc 3 (cutover Kafka -> MSK, PRODUCER truoc - runbook §6 buoc 2): checkout day
+    # order sang MSK (SASL_SSL + SCRAM tu secret techx-tf3-kafka-scram). Rollout canary + AnalysisRun
+    # checkout-slo se ABORT neu checkout success rot. Consumer (accounting+fraud) van o kafka cu ->
+    # order xep o MSK cho, doi consumer sang sau (Earliest doc lai). Go sau nghiem thu (§8).
+    envOverrides:
+      - name: KAFKA_ADDR
+        value: b-1.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-2.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-3.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096
+      - name: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - name: KAFKA_SASL_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: username
+      - name: KAFKA_SASL_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: password
     readinessProbe:
       grpc:
         port: 8080
@@ -672,6 +720,9 @@ components:
       periodSeconds: 20
       timeoutSeconds: 2
       failureThreshold: 3
+    # Mandate #8 buoc 2: DB_CONNECTION_STRING cua product-reviews KHONG dat o day. values-aio-llm.yaml
+    # (file cuoi) cung set product-reviews.envOverrides cho Bedrock -> Helm REPLACE list nay. DB override
+    # phai nam chung list o values-aio-llm.yaml, neu khong se bi clobber. Xem file do.
   recommendation:
     replicasManagedExternally: true
     imageOverride: # CDO02 fix recommendation_server.py - xem comment imageOverride đầu components:
@@ -699,9 +750,11 @@ components:
       timeoutSeconds: 2
       failureThreshold: 3
   accounting:
+    # Mandate #8: sau cutover Postgres->RDS, accounting tro ve ArgoCD-managed replicas=1 (freeze
+    # tam thoi qua replicasManagedExternally + ignoreDifferences da go). Van la nguoi ghi duy nhat.
     imageOverride: # CDO02 fix Consumer.cs - xem comment imageOverride đầu components:
-      digest: sha256:ddc93c804109526cdb40b117884084bc3fce004f3cf95bc040fa6034ea9fca4c
-      tag: 43dcf62-29569108433-accounting
+      digest: sha256:32aeb5e03cd55a4f6a9927b950d019393e39e480541877471e622f002c3107f7
+      tag: e43df42-29655320898-accounting
     resources:
       requests:
         cpu: 50m
@@ -709,6 +762,15 @@ components:
       limits:
         cpu: 200m
         memory: 350Mi
+    # Mandate #8 buoc 2 (cutover Postgres -> RDS, runbook §5 buoc 4): DB_CONNECTION_STRING -> RDS
+    # qua secret techx-tf3-postgres-conn (format .NET/Npgsql, SSL Mode=Require). accounting la
+    # NGUOI GHI DUY NHAT -> merge PR nay o giua cua so cutover, SAU dump/restore + parity.
+    envOverrides:
+      - name: DB_CONNECTION_STRING
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-postgres-conn
+            key: dotnet
   email:
     imageOverride:
       digest: sha256:afdbc98c923cff6e7652d84bee0bea0e658dab0bad99299ae8a9e423969d82f4
@@ -737,7 +799,7 @@ components:
         memory: 100Mi
   fraud-detection:
     imageOverride:
-      digest: sha256:c5f6771355bb9f68a7cac48a05ea894d97ef67465a70dbba6afc45481c9c14d5
+      digest: sha256:45fc3b08aa4a1ef057866565970aaac5672d4a0c6b6a7dd91c1ec0ff65517bb2
     resources:
       requests:
         cpu: 50m
@@ -1051,7 +1113,11 @@ components:
           - name: PHX_HOST
             value: localhost
         resources:
+          requests:
+            cpu: 100m
+            memory: 250Mi
           limits:
+            cpu: 200m
             memory: 250Mi
         securityContext:
           runAsUser: 65532

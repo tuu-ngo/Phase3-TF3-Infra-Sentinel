@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -18,6 +19,8 @@ VALUES = [
 ]
 EXCEPTIONS = REPO / "docs" / "evidence" / "mandate-05" / "exception-register.yaml"
 VERIFY = REPO / "scripts" / "ci" / "verify-runtime-hardening.py"
+RESOURCE_POLICY = REPO / "gitops" / "policies" / "kyverno" / "require-resource-requests.yaml"
+BASELINE_POLICY = REPO / "gitops" / "policies" / "kyverno" / "baseline-security-context.yaml"
 
 
 def render_chart_with_dependencies(chart_dir, values):
@@ -85,6 +88,125 @@ def test_authoritative_render_is_inventory_clean():
         data = json.loads(inventory.read_text(encoding="utf-8"))
         assert data["inventoryDelta"] == {"missing": [], "unexpected": []}
         assert data["summary"]["unresolvedFindingCount"] == 0
+
+
+def test_resource_policy_uses_structural_quantity_patterns():
+    policy = yaml.safe_load(RESOURCE_POLICY.read_text(encoding="utf-8"))
+    foreach = policy["spec"]["rules"][0]["validate"]["foreach"]
+
+    assert len(foreach) == 2
+    for validation in foreach:
+        assert "deny" not in validation
+        assert validation["pattern"] == {
+            "resources": {
+                "requests": {"cpu": "?*", "memory": "?*"},
+                "limits": {"cpu": "?*", "memory": "?*"},
+            }
+        }
+
+
+def test_baseline_policy_handles_missing_security_context_without_engine_errors():
+    policy = yaml.safe_load(BASELINE_POLICY.read_text(encoding="utf-8"))
+    rules = {rule["name"]: rule for rule in policy["spec"]["rules"]}
+
+    effective_non_root = rules["require-effective-non-root"]["validate"]["foreach"]
+    for validation in effective_non_root:
+        key = validation["deny"]["conditions"]["any"][0]["key"]
+        assert "to_string(lookup(" in key
+
+    for rule_name in (
+        "require-allow-privilege-escalation-false",
+        "drop-all-capabilities",
+    ):
+        for validation in rules[rule_name]["validate"]["foreach"]:
+            assert "pattern" in validation
+            assert "deny" not in validation
+
+    seccomp = rules["require-seccomp-profile-runtime-default"]["validate"]["foreach"]
+    for validation in seccomp:
+        key = validation["deny"]["conditions"]["any"][0]["key"]
+        assert key.index("element.securityContext") < key.index("request.object.spec.securityContext")
+
+
+def test_baseline_rules_validate_pod_controllers_directly():
+    policy = yaml.safe_load(BASELINE_POLICY.read_text(encoding="utf-8"))
+    rules = {rule["name"]: rule for rule in policy["spec"]["rules"]}
+    controller_kinds = {
+        "Deployment",
+        "StatefulSet",
+        "DaemonSet",
+        "Job",
+        "CronJob",
+        "ReplicaSet",
+        "ReplicationController",
+        "Rollout",
+    }
+    controller_rules = {
+        "require-effective-non-root",
+        "deny-pod-run-as-user-zero",
+        "deny-container-run-as-user-zero",
+        "deny-privileged-containers",
+        "require-allow-privilege-escalation-false",
+        "require-run-as-non-root",
+        "drop-all-capabilities",
+        "require-seccomp-profile-runtime-default",
+    }
+
+    assert set(rules) == controller_rules
+
+    for rule_name in controller_rules:
+        rule = rules[rule_name]
+        matched_kinds = {
+            kind
+            for match in rule["match"]["any"]
+            for kind in match["resources"]["kinds"]
+        }
+        assert matched_kinds == {"Pod", *controller_kinds}
+        assert "exclude" not in rule
+
+    effective = rules["require-effective-non-root"]
+    effective_preconditions = effective["preconditions"]["all"]
+    assert [condition["value"] for condition in effective_preconditions] == [
+        "kafka",
+        "aiops-engine",
+    ]
+    assert all(
+        "request.object.spec.jobTemplate.spec.template.metadata.labels" in condition["key"]
+        and "request.object.spec.template.metadata.labels" in condition["key"]
+        for condition in effective_preconditions
+    )
+    assert all(
+        validation["list"].startswith(
+            "request.object.spec.jobTemplate.spec.template.spec."
+        )
+        for validation in effective["validate"]["foreach"]
+    )
+
+    explicit = rules["require-run-as-non-root"]
+    assert explicit["preconditions"]["all"][0]["value"] == "aiops-engine"
+    assert explicit["validate"]["foreach"][0]["list"].startswith(
+        "request.object.spec.jobTemplate.spec.template.spec.containers"
+    )
+
+    for rule_name in (
+        "require-allow-privilege-escalation-false",
+        "drop-all-capabilities",
+    ):
+        rule = rules[rule_name]
+        assert [condition["value"] for condition in rule["preconditions"]["all"]] == [
+            "kafka",
+            "aiops-engine",
+        ]
+
+    seccomp = rules["require-seccomp-profile-runtime-default"]
+    assert seccomp["preconditions"]["all"][0]["value"] == "aiops-engine"
+    for validation in seccomp["validate"]["foreach"]:
+        assert validation["list"].startswith(
+            "request.object.spec.jobTemplate.spec.template.spec."
+        )
+        key = validation["deny"]["conditions"]["any"][0]["key"]
+        assert "request.object.spec.jobTemplate.spec.template.spec.securityContext" in key
+        assert "request.object.spec.template.spec.securityContext" in key
 
 
 def test_verifier_honors_container_run_as_non_root_override(tmp_path):

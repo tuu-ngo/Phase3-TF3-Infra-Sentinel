@@ -261,7 +261,14 @@ func main() {
 	svc.kafkaBrokerSvcAddr = os.Getenv("KAFKA_ADDR")
 
 	if svc.kafkaBrokerSvcAddr != "" {
-		svc.KafkaProducerClient, err = kafka.CreateKafkaProducer([]string{svc.kafkaBrokerSvcAddr}, logger)
+		// Mandate #8: cấu hình TLS + SASL/SCRAM cho MSK, đọc từ env. Mặc định rỗng =
+		// PLAINTEXT = hành vi cũ với Kafka in-cluster. Cutover chỉ cần đổi env, không rebuild.
+		secCfg := kafka.SecurityConfig{
+			Protocol: os.Getenv("KAFKA_SECURITY_PROTOCOL"),
+			Username: os.Getenv("KAFKA_SASL_USERNAME"),
+			Password: os.Getenv("KAFKA_SASL_PASSWORD"),
+		}
+		svc.KafkaProducerClient, err = kafka.CreateKafkaProducer([]string{svc.kafkaBrokerSvcAddr}, logger, secCfg)
 		if err != nil {
 			logger.Error(err.Error())
 		}

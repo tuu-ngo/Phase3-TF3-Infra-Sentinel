@@ -1,0 +1,96 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - base/install.yaml
+patches:
+  - target:
+      kind: StatefulSet
+      name: argocd-application-controller
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 250m, memory: 256Mi}
+          # limits.memory tang 512Mi -> 1Gi (19/07, incident thuc te): 512Mi
+          # gay OOMKilled that ngay lan sync dau tien cua argocd-self (diff
+          # toan bo 59 resource + CRD Application/AppProject kha nang -
+          # xem docs/mandate-05-cluster-wide-scope-expansion.md phan incident
+          # cho chi tiet log/timeline). DUNG ha lai xuong 512Mi neu khong
+          # muon lap lai crash loop.
+          limits: {cpu: 500m, memory: 1Gi}
+  - target:
+      kind: Deployment
+      name: argocd-server
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: 300m, memory: 256Mi}
+  - target:
+      kind: Deployment
+      name: argocd-repo-server
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 100m, memory: 256Mi}
+          limits: {cpu: 500m, memory: 512Mi}
+      # initContainer copyutil - phat hien bo sot khi quet lai cluster (xem
+      # comment o dex-server/redis o duoi)
+      - op: add
+        path: /spec/template/spec/initContainers/0/resources
+        value:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: 100m, memory: 64Mi}
+  - target:
+      kind: Deployment
+      name: argocd-applicationset-controller
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+  - target:
+      kind: Deployment
+      name: argocd-dex-server
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+      # initContainer copyutil (chua duoc dong o lan patch dau, phat hien khi
+      # quet lai cluster sau apply - script dau chi kiem tra spec.containers,
+      # bo sot spec.initContainers)
+      - op: add
+        path: /spec/template/spec/initContainers/0/resources
+        value:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: 100m, memory: 64Mi}
+  - target:
+      kind: Deployment
+      name: argocd-notifications-controller
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+  - target:
+      kind: Deployment
+      name: argocd-redis
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+      # initContainer secret-init - cung phat hien bo sot nhu copyutil o tren
+      - op: add
+        path: /spec/template/spec/initContainers/0/resources
+        value:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: 100m, memory: 64Mi}

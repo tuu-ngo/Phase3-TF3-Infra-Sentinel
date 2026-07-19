@@ -6,7 +6,7 @@ metadata:
     policies.kyverno.io/title: Disallow latest and implicit latest image references
     policies.kyverno.io/category: Mandate 5 Runtime Admission Enforcement
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-explicit-non-latest-image-reference
@@ -15,8 +15,9 @@ spec:
           - resources:
               kinds:
                 - Pod
-              namespaces:
-                - techx-tf3
+              # Cluster-wide (Mandate 5): kube-system/kyverno da bi webhook
+              # validate.kyverno.svc-fail loai tru rieng, khong can khai them
+              # o day. Xem docs/mandate-05-cluster-wide-scope-expansion.md.
               operations:
                 - CREATE
                 - UPDATE

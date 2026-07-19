@@ -21,49 +21,54 @@ the main implementation areas; the mandate additionally requires production
 remediation, admission enforcement, a real rejection demonstration and a
 signed end-to-end decision/evidence record.
 
-Strict progress against the three Jira DoD lists is currently:
+Strict progress against the three Jira DoD lists was rechecked after the
+one-policy-at-a-time Enforce cutover through PR #230:
 
 | Work item | Passed DoD | Progress | Main remaining gap |
 | --- | ---: | ---: | --- |
-| PM-92 Pod Security | 3/4 | 75% | 11 time-bounded runtime exceptions still need owner remediation or mentor approval. |
-| Kyverno audit policies | 4/5 | 80% | Policies remain in Audit and still need a fresh post-sync PolicyReport artifact. |
-| PM-101 Trivy/Cosign | 2/4 | 50% | Trivy evidence is partially recorded; full first-party Cosign verification is still missing. |
-| **Combined Jira DoD** | **9/13** | **69.2%** | Implementation exists, production acceptance does not. |
+| PM-92 Pod Security | 3/4 | 75% | 2 time-bounded runtime exceptions remain: Kafka init ownership and out-of-tree aiops-engine. |
+| Kyverno admission policies | 5/5 | 100% | All four policies are Enforce/Ready and live negative admission evidence is captured. |
+| PM-101 Trivy/Cosign | 3/4 | 75% | 20/20 live first-party digests verify with Cosign; retained Trivy/Cosign evidence still needs final packaging. |
+| **Combined Jira DoD** | **11/13** | **84.6%** | Enforce is complete; mentor acceptance and final supply-chain evidence packaging remain. |
 
 This percentage is planning progress, not a completion claim. Mandate 5 remains
-open until both final acceptance conditions are demonstrated:
+open until the remaining acceptance conditions are demonstrated:
 
-1. a violating manifest is rejected by admission; and
-2. the running cluster has no unexplained violation of an enforced rule.
+1. the mentor repeats the rejection demonstration;
+2. final PM-101 evidence is retained; and
+3. the two time-bounded exceptions receive final disposition.
 
 ## 2. Verified live baseline
 
-Snapshot updated for PR #194 on 2026-07-17. The branch-side checks render the
-production chart, validate the runtime inventory and run Kyverno CLI tests. A
-fresh live PolicyReport export must be captured again after the PR is synced by
-Argo CD.
+Snapshot updated after PR #230 on 2026-07-18. The checks render the production
+chart, validate the runtime inventory, run Kyverno CLI tests and reconcile live
+PolicyReports after Argo CD sync.
 
 | Control | Current result | Target before closure |
 | --- | ---: | ---: |
 | PSA labels | `audit=baseline`, `warn=baseline`, no `enforce` | Preserve during remediation; enforce only after clean audit. |
 | Kyverno controllers | 4/4 deployments available | 4/4 available throughout cutover. |
-| Kyverno policies | PR #194 defines 4 Audit policies: resources, baseline security context, no latest tags and first-party digest pinning. | Required policies switched to `Enforce` in controlled order. |
+| Kyverno policies | All four required policies are `Enforce` and `Ready=True`. | Preserve one-policy rollback boundaries and clean reconciliation. |
 | Baseline context: APE=false + drop ALL + seccomp | Branch render has zero unexplained findings after exception-register reconciliation. | 0 unexplained findings after live Argo CD sync. |
-| `runAsNonRoot` | Branch render has exact workload exceptions for stateful/observability/control-plane images. | All first-party app containers; no unexplained root workload. |
+| `runAsNonRoot` | Live and render checks leave only Kafka init and aiops-engine as explained exceptions. | All first-party app containers; no unexplained root workload. |
 | `readOnlyRootFilesystem` | 4/32 containers | Enable where write-path testing proves it safe; document stateful exceptions. |
 | Explicit CPU/memory requests and limits | Branch render has zero unresolved resource findings. | Live current-resource report has zero unexplained failures. |
 | Digest-pinned images | Branch render requires first-party ECR images to use exact digests. | Live workload inventory and PM-101 evidence map every required digest. |
 | Floating, non-`latest` image refs | Branch render rejects `:latest`; tag-only external images remain outside first-party digest policy. | 0 unsupported mutable refs, or explicit external-image exceptions. |
-| ECR Cosign signatures | Full first-party verification still incomplete. | Every agreed first-party application digest signed and verified. |
+| ECR Cosign signatures | 20/20 live first-party ECR digests verify with the GitHub OIDC workflow identity. | Retain the verification output in the final evidence pack. |
 | PM-101 Actions runs/artifacts | Trivy evidence exists, but signed-release evidence remains incomplete. | Full green run plus retained Trivy/Cosign artifacts. |
-| PolicyReport aggregate | Reconciliation tooling exists; attach a fresh live artifact after Argo CD sync. | Current-resource report has zero unexplained failures. |
-| Storefront smoke test | HTTP 200 | HTTP 200 before, during and after enforce. |
+| PolicyReport aggregate | Live reconciliation gate is clean: no active or unresolved failures. | Keep this clean after each Enforce PR. |
+| Storefront smoke test | HTTP 200 after final Enforce cutover | HTTP 200 before, during and after enforce. |
 
 The PolicyReport aggregate contains historical ReplicaSet results. It must not
 be presented as a current workload count without reconciling the report scope,
 UID and active controller revision.
 
 ## 3. Branch and merge safety
+
+Cutover update: the sequence below records the original PR #194 safety model.
+The current source revision is `677e74b`, with all four policies promoted by
+separate reviewed PRs.
 
 PR #194 is safe to merge when its required checks are green because all Kyverno
 policies remain in `Audit`. It does not switch admission to `Enforce`, does not
@@ -87,7 +92,7 @@ tooling.
 - Test application write paths before enabling `readOnlyRootFilesystem`.
 - For PostgreSQL, Kafka, Valkey, OpenSearch and observability workloads, record
   required writable paths and provide `emptyDir`/PVC mounts where appropriate.
-- Track the 11 current exceptions in `docs/evidence/mandate-05/exception-register.yaml`
+- Track the 2 current exceptions in `docs/evidence/mandate-05/exception-register.yaml`
   until each owner either remediates the workload or signs a time-bounded
   acceptance.
 - Verify every application, sidecar, init container and daemon container has
@@ -96,9 +101,10 @@ tooling.
 
 ### 4.2 Complete image immutability at runtime
 
-- Replace all 14 remaining tag-only workload references with exact digests.
-- Include Kafka, AIOps Engine, Cloudflared, Flagd, Grafana and its sidecars,
-  Jaeger, PostgreSQL, Prometheus, Valkey, OpenSearch and OTel Collector.
+- Keep the 20 first-party ECR images pinned by digest and reject any new
+  first-party tag-only reference before promotion.
+- External images remain fixed non-`latest` references and are covered by the
+  external-image review workflow rather than TF3 Cosign signatures.
 - Reconcile the external-image scan list with the images actually running. A
   scan of an inventory digest is not evidence for a different live tag.
 - Keep the Audit image policies from PR #194 in place and promote them only
@@ -322,19 +328,19 @@ The final ADR must state:
 
 ## 9. Definition of complete
 
-- [ ] No unexplained workload runs as root.
-- [ ] Every container type has explicit CPU/memory requests and limits.
+- [x] No unexplained workload runs as root.
+- [x] Every container type has explicit CPU/memory requests and limits.
 - [ ] Every runtime image is pinned by digest; no `latest` or tag-only ref.
 - [ ] Every agreed first-party app image has current Trivy and Cosign evidence.
 - [ ] External images have exact-digest exceptions and current scan evidence.
-- [ ] Required Kyverno policies are Enforce and Ready.
-- [ ] Current PolicyReport has zero unexplained violation.
+- [x] Required Kyverno policies are Enforce and Ready.
+- [x] Current PolicyReport has zero unexplained violation.
 - [ ] Mentor applies root/latest/missing-resources manifests and sees admission
       rejection.
-- [ ] ArgoCD remains Synced/Healthy and no critical workload is CrashLooping.
-- [ ] Storefront remains HTTP 200 and SLO is not degraded.
-- [ ] Operations endpoints remain private.
-- [ ] Flagd and fault-injection paths are unchanged.
+- [x] ArgoCD remains Synced/Healthy and no critical workload is CrashLooping.
+- [x] Storefront remains HTTP 200 and SLO is not degraded.
+- [x] Operations endpoints remain private.
+- [x] Flagd and fault-injection paths are unchanged.
 - [ ] Signed ADR, evidence pack and rollback plan are committed.
 
 Until every item above is complete, the TF must report Mandate 5 as in progress,

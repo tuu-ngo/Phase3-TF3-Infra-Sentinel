@@ -71,8 +71,9 @@ Nguyên tắc xếp lịch: **2 điểm nghẽn quyết định thứ tự** —
 | 1.3 | `accounting` + `fraud-detection`: `SecurityProtocol` qua env | mỗi cái vài dòng config |
 | 1.4 | ExternalSecret: render 3 format conn string PG (.NET / Go-URL / libpq) + token + SCRAM; `batch-associate-scram-secret` gắn secret vào MSK; **gỡ `otelu/otelp` khỏi `values.yaml`** | ⚠️ update `values.schema.json` cùng lúc + verify `helm template` trước commit (bài học ComparisonError) |
 | 1.5 | Build 4 image qua CI (digest-pinned, `imageOverride` ghi FULL `<sha>-<service>`) → deploy cờ tắt → verify hành vi y nguyên (checkout vẫn đặt hàng OK, cart vẫn hoạt động) | qua PR → main → ArgoCD |
+| 1.6 | **Sửa runbook cho Kyverno enforce (§3bis):** thay mọi `kubectl run --image=X` bằng manifest pod helper compliant (template §3bis.1); ghi sẵn 2 pod `msk-cli` + `netcheck`, test `--dry-run=server` PASS | không có bước này thì cutover kẹt giữa chừng |
 
-**Gate cuối ngày 1:** 3 store managed `available` + 4 service chạy image mới hành vi không đổi + secret sync vào cluster. Chưa đạt → ngày 2 KHÔNG cutover.
+**Gate cuối ngày 1:** 3 store managed `available` + 4 service chạy image mới hành vi không đổi + secret sync vào cluster + **pod `cart` mới `Running`+healthy dưới `readOnlyRootFilesystem:true` (thêm/xoá giỏ e2e OK)** + **pod helper compliant test PASS**. Chưa đạt → ngày 2 KHÔNG cutover.
 
 ### Ngày 2 — 18/07: cutover Valkey (dễ nhất — kiểm chứng toàn đường ống)
 
@@ -114,7 +115,8 @@ Nguyên tắc xếp lịch: **2 điểm nghẽn quyết định thứ tự** —
 | 4.1 | Gói bằng chứng: (a) `kubectl get pods` — app trỏ managed; (b) bảng parity trước/sau; (c) Grafana SLO checkout ≥99% suốt 3 cửa sổ cutover (kèm khung giờ); (d) `PubliclyAccessible=false` + test không nối được từ ngoài VPC (KHÔNG dùng nslookup làm bằng chứng); (e) TLS+auth on cả 3; (f) `values.yaml` không còn plaintext credential |
 | 4.2 | Mentor nghiệm thu cả 3 |
 | 4.3 | **Chỉ SAU nghiệm thu:** gỡ pod + PVC `postgresql`/`valkey-cart`/`kafka` (= điểm không quay lui) → chốt yêu cầu "không còn pod data tự host" |
-| 4.4 | Cập nhật CLAUDE.md + backlog (REL-08 đóng) + báo cáo mandate |
+| 4.4 | Gỡ exception `m05-baseline-kafka-init-chown` khỏi `docs/evidence/mandate-05/exception-register.yaml` (kafka đã gỡ — exception thừa; báo CDO01) |
+| 4.5 | Cập nhật CLAUDE.md + backlog (REL-08 đóng) + báo cáo mandate |
 
 **Buffer duy nhất:** tối 19/07. Nếu trượt tiến độ → ưu tiên giữ **Postgres** (durability giá trị nhất, theo ADR), Valkey đã xong từ ngày 2, Kafka dời nếu bắt buộc.
 
@@ -126,11 +128,86 @@ Nguyên tắc xếp lịch: **2 điểm nghẽn quyết định thứ tự** —
 - **Bất kỳ bước nào lệch runbook** → dừng lại hỏi, không improvise trên luồng ra tiền.
 - Sự cố BTC bơm giữa chừng (flagd) → xử lý sự cố trước theo nguyên tắc fallback/containment, cutover dời; **tuyệt đối không đụng flagd** để "dọn đường".
 
+## 3bis. Thích ứng với Mandate #5 — Kyverno admission ĐÃ Enforce (cập nhật 18/07)
+
+**Thay đổi hiện trạng so với lúc lập plan:** CDO01 hoàn tất Mandate #5 và **đã lật cả 4 ClusterPolicy
+sang `Enforce`** (cutover 18/07 — verify trực tiếp: cả 4 `Enforce`/`Ready=True`). Rủi ro "enforce lật
+giữa cửa sổ cutover" ở bản plan cũ **không còn là rủi ro tương lai — nó đã xảy ra**. Vì vậy M8 không
+điều phối *thời điểm* nữa, mà **vận hành dưới enforce ngay từ bước đầu**. 4 policy đang chặn thật:
+
+| Policy | Chặn gì | Ảnh hưởng M8 |
+|---|---|---|
+| `custom-baseline-security-context` | container root / thiếu `runAsNonRoot`+`drop ALL`+seccomp | **pod helper trong runbook bị từ chối** (đã test: `kubectl run curl/psql` → admission denied) |
+| `require-resource-requests` | thiếu request/limit | pod helper phải khai đủ 4 field (Pod trần được LimitRange điền sẵn, nhưng khai tường minh cho chắc) |
+| `disallow-latest-tag` | image `:latest` / không tag | mọi image helper phải pin tag cụ thể |
+| `require-first-party-image-digest` | image ECR `techx-corp` không `@sha256:` | image rebuild của M8 (checkout+SCRAM, cart+dual-write) **phải digest-pinned** |
+
+### 3bis.1 Ảnh hưởng cụ thể + đối sách (tất cả đã verify trên cluster 18/07)
+
+**(a) Pod helper trong runbook — điểm va chạm thật, ĐÃ có lời giải.** Runbook dùng `kubectl run` /
+`kubectl apply` pod tạm (curl smoke-test, kafka-CLI cho MSK, v.v.). Các pod này trước đây chạy root,
+image theo tag trôi, không resources → **giờ bị admission từ chối**. Đã kiểm chứng + tìm ra template
+compliant (test `--dry-run=server` PASS):
+
+```yaml
+# Template pod helper HỢP LỆ dưới enforce — dùng cho MỌI pod tạm trong cutover
+apiVersion: v1
+kind: Pod
+metadata: {name: <tên>, namespace: techx-tf3}
+spec:
+  restartPolicy: Never
+  containers:
+  - name: tool
+    image: <image>:<tag-cụ-thể>           # KHÔNG latest, KHÔNG bỏ trống tag
+    resources:
+      requests: {cpu: "10m", memory: "32Mi"}
+      limits:   {cpu: "100m", memory: "64Mi"}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      allowPrivilegeEscalation: false
+      capabilities: {drop: ["ALL"]}
+      seccompProfile: {type: RuntimeDefault}
+```
+
+- **Giảm nhu cầu pod helper ngay từ đầu:** thao tác **RDS/ElastiCache** đã chạy từ máy vận hành qua
+  SSM tunnel (psql/redis-cli trên laptop) — **Kyverno không đụng tới** (chỉ gác admission *vào*
+  cluster). Thao tác **Kafka cũ** dùng `kubectl exec deploy/kafka` (pod sẵn có, không tạo mới). Chỉ
+  **MSK** (smoke test produce/consume + tạo topic) và **curl smoke-test endpoint** là cần pod mới →
+  áp template trên.
+- **Việc phải làm ngày 1:** sửa runbook — thay mọi `kubectl run ... --image=X` bằng `kubectl apply`
+  manifest theo template compliant; ghi sẵn 2 pod: `msk-cli` (image Kafka pin tag, ví dụ
+  `bitnami/kafka:3.9.1`) và `netcheck` (curl pin tag). Test `--dry-run=server` từng cái trước cutover.
+
+**(b) Image rebuild của M8 phải qua pipeline digest-pin.** `checkout` (+SCRAM) và `cart` (+dual-write)
+rebuild → **bắt buộc đi qua CI PM-113** (`update-image-overrides.py` ghi `imageOverride.digest`), KHÔNG
+đặt tag tay. Đây vốn là quy ước sẵn có; giờ là **bắt buộc cứng** — deploy bằng tag sẽ bị
+`require-first-party-image-digest` chặn. securityContext của 2 service này đã non-root sẵn (từ #145) →
+code M8 chỉ thêm logic, **không đụng `USER` trong Dockerfile** để giữ nguyên non-root.
+
+**(c) `cart` giờ `readOnlyRootFilesystem: true` (do #145).** Nhánh dual-write ghi sang Valkey/ElastiCache
+qua network, **không** ghi filesystem → về nguyên tắc không vướng. **Nhưng phải verify sau khi swap image:**
+pod `cart` mới `Running` + healthy + thêm/xoá giỏ e2e OK (nếu client lib cần ghi temp → sẽ crash, khi
+đó thêm `emptyDir` mount thay vì tắt readOnlyRootFilesystem). Đưa vào gate cuối ngày 1.
+
+**(d) Kafka init-container còn exception root** (`m05-baseline-kafka-init-chown`, CDO01 ghi chủ sở hữu
+là CDO02). M8 gỡ pod kafka ở bước cuối → **sau nghiệm thu, gỡ luôn exception này** khỏi
+`exception-register.yaml` (thêm vào checklist WS5).
+
+### 3bis.2 Việc còn cần chốt với CDO01 (không chặn khởi động, nhưng nên xác nhận)
+
+- **Không còn cần điều phối thời điểm enforce** — đã enforce. Chỉ cần CDO01 xác nhận **không thêm đợt
+  hardening/rollout nào đụng 3 pod datastore** trong tuần cutover (postmortem 0007 đã cho thấy rollout
+  đụng Kafka = mất event — không được lặp lại giữa cutover).
+- Nếu M8 cần **exception tạm** cho pod helper đặc thù (hiếm — template compliant đã đủ), xin qua
+  `exception-register.yaml` có thời hạn, không tắt policy.
+
 ## 4. Ràng buộc tôn trọng (đối chiếu directive)
 
 - **Ngân sách:** +$202.16/mo ≈ $46.7/tuần (đơn giá verify qua Pricing API — chi tiết ADR §Cost); tổng ước ≈ $147/tuần < trần $300/tuần.
 - **Directive #1:** storefront public không đổi; 3 store private subnet, không public endpoint; SG mở tối thiểu.
 - **Luật flagd:** không đụng ở bất kỳ bước nào.
+- **Directive #5 (Kyverno enforce):** mọi pod/workload M8 tạo ra phải qua 4 policy (§3bis) — không xin tắt policy, dùng template compliant + digest-pin.
 - **GitOps:** mọi thay đổi app/values qua PR → `main` → ArgoCD (patch tay bị selfHeal revert); Terraform `plan -out` → `apply tfplan`, không auto-approve.
 
 ---

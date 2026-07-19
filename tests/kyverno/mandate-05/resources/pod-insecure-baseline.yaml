@@ -1,13 +1,14 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: mandate05-good-third-party
+  name: mandate05-insecure-baseline
   namespace: techx-tf3
   labels:
     app.kubernetes.io/name: mandate05-test
 spec:
   restartPolicy: Never
   securityContext:
+    runAsUser: 0
     runAsNonRoot: true
     seccompProfile:
       type: RuntimeDefault
@@ -15,10 +16,14 @@ spec:
     - name: app
       image: registry.k8s.io/pause:3.10
       securityContext:
-        runAsNonRoot: true
-        allowPrivilegeEscalation: false
+        runAsUser: 0
+        runAsNonRoot: false
+        privileged: true
+        allowPrivilegeEscalation: true
         capabilities:
-          drop: ["ALL"]
+          add: ["NET_RAW"]
+        seccompProfile:
+          type: Unconfined
       resources:
         requests:
           cpu: 5m

@@ -15,4 +15,13 @@ cloudflare_allowed_emails = [
   "hiimtuu@gmail.com",
   "tutc.work@gmail.com",
   "trongtanaws@gmail.com",
+  # Mentors — SSO access tới Grafana/Jaeger/ArgoCD UI qua Cloudflare Zero Trust (REL-17).
+  "nghia.huynh@techxcorp.com",
+  "toan.le@techxcorp.com",
+  "khanh.nguyen@techxcorp.com",
+  "namhong.ta@techxcorp.com",
 ]
+
+# Mandate #8 — bật tầng datastore managed (RDS/ElastiCache/MSK).
+# Đặt = true để state khớp hạ tầng thật; nếu để default false, plan sau sẽ đòi XOÁ 3 store.
+enable_managed_datastores = true
