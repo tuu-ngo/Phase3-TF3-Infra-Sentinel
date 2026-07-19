@@ -91,6 +91,46 @@ require-resource-requests: require-cpu-memory-requests-limits: '...'            
 kubectl get clusterpolicy -o custom-columns='NAME:.metadata.name,ACTION:.spec.validationFailureAction,READY:.status.conditions[?(@.type=="Ready")].status'
 # ca 4 policy: Enforce / True
 
+# Kiểm tra request memory trên toàn bộ cluster
+
+kubectl get pods -A -o json | jq -r '
+  .items[] |
+  select(.metadata.namespace != "kube-system") |
+  .metadata.name as $pod | .metadata.namespace as $ns |
+  .spec.containers[] |
+  select(.resources.requests.memory == null or .resources.requests.cpu == null or .resources.limits.memory == null or .resources.limits.cpu == null) |
+  "Pod: \($ns)/\($pod)\n  Container: \(.name)\n  req.cpu=\(.resources.requests.cpu // "<trống>")  req.mem=\(.resources.requests.memory // "<trống>")  lim.cpu=\(.resources.limits.cpu // "<trống>")  lim.mem=\(.resources.limits.memory // "<trống>")\n"
+'
+
+# Kiểm tra run as non root trên toàn bộ cluster
+
+kubectl get pods -A -o json | jq -r '
+  .items[] |
+  select(.metadata.namespace != "kube-system") |
+  .metadata.name as $pod |
+  .metadata.namespace as $ns |
+  .spec.securityContext.runAsNonRoot as $pod_runAsNonRoot |
+  (.spec.containers[]?, .spec.initContainers[]?) |
+  .securityContext.runAsNonRoot as $c_runAsNonRoot |
+  .securityContext.allowPrivilegeEscalation as $allowPriv |
+  select(
+    ($allowPriv != false) or
+    (($c_runAsNonRoot == null and $pod_runAsNonRoot != true) or $c_runAsNonRoot == false)
+  ) |
+  "Pod: \($ns)/\($pod)\n  Container: \(.name)\n  allowPrivilegeEscalation: \($allowPriv // "<trống>")\n  runAsNonRoot (Container): \($c_runAsNonRoot // "<trống>")\n  runAsNonRoot (Pod): \($pod_runAsNonRoot // "<trống>")\n"
+'
+
+# Kiểm tra latest tag có tồn tại trên container không trên toàn cluster 
+
+kubectl get pods -A -o json | jq -r '
+  .items[] | 
+  select(.metadata.namespace != "kube-system") | 
+  .metadata.name as $pod | .metadata.namespace as $ns |
+  (.spec.containers[]?, .spec.initContainers[]?) |
+  select(.image | endswith(":latest")) |
+  "Pod: \($ns)/\($pod)\n  Container: \(.name)\n  Image: \(.image)\n"
+'
+
 ```
 
 ## 6. Nghiệm thu
