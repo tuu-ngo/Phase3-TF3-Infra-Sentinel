@@ -1,0 +1,38 @@
+# Mandate 5 rejection demo — vi phạm yêu cầu #2 (không xài image trôi, cấm tag "latest").
+# Dùng nginx:latest -> vi phạm disallow-latest-tag / require-explicit-non-latest-image-reference.
+# securityContext/resources khai đủ để KHÔNG bị chặn bởi 3 policy còn lại — chỉ test đúng
+# 1 policy này.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mandate5-demo-bad-latest
+  namespace: techx-tf3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mandate5-demo-bad-latest
+  template:
+    metadata:
+      labels:
+        app: mandate5-demo-bad-latest
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: nginx:latest
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi

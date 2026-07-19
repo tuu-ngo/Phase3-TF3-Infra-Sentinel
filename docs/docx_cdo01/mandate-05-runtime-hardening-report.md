@@ -5,7 +5,7 @@
 **Ngày mở rộng Enforce ra toàn cluster + vá bug fallback pod-level:** 19-20/07/2026<br>
 **Nhóm thực hiện:** CDO01 (Security, chủ trì) phối hợp CDO02 (resource/reliability cho ArgoCD/Kyverno/argo-rollouts khi mở rộng phạm vi)<br>
 **Người xác nhận/chứng kiến (mentor):** _(điền)_<br>
-**Video demo:** _(dán link vào đây)_<br>
+**Video demo:** _[(link demo)](https://drive.google.com/file/d/1iyBhSUB8ITPyY9gBJ6d6cR2HDoka4vHz/view?usp=sharing)_<br>
 **Kết quả:** **PASS — 4 `ClusterPolicy` Kyverno đều `Enforce`/`Ready`, áp dụng toàn cluster (trừ `kube-system`/`kyverno`, loại trừ ở tầng webhook), chặn thật ngay lúc admission — không phải báo cáo sau.**
 
 ---

@@ -1,0 +1,40 @@
+# Mandate 5 rejection demo — vi phạm yêu cầu #2, phần "pin theo digest" (khác với
+# bad-latest-image.yaml chỉ test phần cấm tag "latest"). Dùng image ECR techx-corp
+# với TAG CỐ ĐỊNH (không phải :latest) thay vì @sha256 digest -> vi phạm
+# require-first-party-image-digest / require-techx-ecr-sha256-digest, nhưng KHÔNG vi phạm
+# disallow-latest-tag (tag không phải "latest") -> chứng minh 2 policy này chặn 2 lỗi khác
+# nhau, độc lập với nhau.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mandate5-demo-bad-digest
+  namespace: techx-tf3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mandate5-demo-bad-digest
+  template:
+    metadata:
+      labels:
+        app: mandate5-demo-bad-digest
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp:payment-v1
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
