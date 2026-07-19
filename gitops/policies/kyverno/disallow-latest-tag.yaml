@@ -15,8 +15,9 @@ spec:
           - resources:
               kinds:
                 - Pod
-              namespaces:
-                - techx-tf3
+              # Cluster-wide (Mandate 5): kube-system/kyverno da bi webhook
+              # validate.kyverno.svc-fail loai tru rieng, khong can khai them
+              # o day. Xem docs/mandate-05-cluster-wide-scope-expansion.md.
               operations:
                 - CREATE
                 - UPDATE

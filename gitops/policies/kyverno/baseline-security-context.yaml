@@ -23,8 +23,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -74,8 +72,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -102,8 +98,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -144,8 +138,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -181,8 +173,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -220,8 +210,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -237,7 +225,15 @@ spec:
             deny:
               conditions:
                 any:
-                  - key: "{{ element.securityContext.runAsNonRoot || `false` }}"
+                  # Fallback xuong cap Pod khi container khong tu khai rieng -
+                  # runAsNonRoot khai o Pod ke thua xuong moi container theo
+                  # dung chuan Kubernetes. Thieu fallback nay tung gay FAIL
+                  # NHAM (khong phai bug bao mat that) cho argo-rollouts,
+                  # argocd-redis, argocd-notifications-controller - ca 3 chi
+                  # khai runAsNonRoot o cap Pod. Xem
+                  # docs/mandate-05-require-run-as-non-root-pod-fallback-fix.md
+                  # de biet day du bang chung + lenh verify.
+                  - key: "{{ element.securityContext.runAsNonRoot || request.object.spec.jobTemplate.spec.template.spec.securityContext.runAsNonRoot || request.object.spec.template.spec.securityContext.runAsNonRoot || request.object.spec.securityContext.runAsNonRoot || `false` }}"
                     operator: NotEquals
                     value: true
 
@@ -255,8 +251,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
@@ -298,8 +292,6 @@ spec:
                 - ReplicaSet
                 - ReplicationController
                 - Rollout
-              namespaces:
-                - techx-tf3
               operations:
                 - CREATE
                 - UPDATE
