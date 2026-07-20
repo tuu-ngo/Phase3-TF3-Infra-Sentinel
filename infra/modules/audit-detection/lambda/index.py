@@ -44,7 +44,6 @@ GROUP_MAP = {
     "eks:AssociateAccessPolicy": 4,
     "eks:DisassociateAccessPolicy": 4,
     "secretsmanager:GetSecretValue": 5,
-    "secretsmanager:BatchGetSecretValue": 5,
     "eks:DeleteCluster": 6,
     "eks:DeleteNodegroup": 6,
     "rds:DeleteDBInstance": 6,
@@ -80,8 +79,8 @@ def handler(event, _context):
         return {"ignored": True, "reason": "suppressed", "actor": actor, "target": target, "event_key": event_key}
 
     if group == 5 and not should_alert_secret_read(actor, target):
-        LOGGER.info(json.dumps({"ignored": True, "reason": "non_human_or_unwatched_secret", "actor": actor, "target": target}))
-        return {"ignored": True, "reason": "non_human_or_unwatched_secret", "actor": actor, "target": target}
+        LOGGER.info(json.dumps({"ignored": True, "reason": "known_secret_reader_or_unwatched_secret", "actor": actor, "target": target}))
+        return {"ignored": True, "reason": "known_secret_reader_or_unwatched_secret", "actor": actor, "target": target}
 
     event_time = parse_time(detail.get("eventTime"))
     detected_at = datetime.now(timezone.utc)
@@ -174,11 +173,7 @@ def should_alert_secret_read(actor, target):
     if matches_any(actor, CONFIG.get("secret_reader_principals") or []):
         return False
 
-    human_principals = CONFIG.get("human_principals") or []
-    if not human_principals:
-        return True
-
-    return matches_any(actor, human_principals)
+    return True
 
 
 def is_allowed_automation(actor):

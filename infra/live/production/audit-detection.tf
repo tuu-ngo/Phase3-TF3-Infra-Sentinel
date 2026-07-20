@@ -8,7 +8,11 @@ locals {
   ))
 
   audit_detection_allowed_automation_principal_arns = distinct(concat(
-    [module.eks_platform.external_secrets_role_arn],
+    [
+      module.eks_platform.external_secrets_role_arn,
+      "arn:aws:iam::${data.aws_caller_identity.production_access.account_id}:role/techx-corp-tf3-gha-terraform-plan",
+      "arn:aws:iam::${data.aws_caller_identity.production_access.account_id}:role/techx-corp-tf3-gha-terraform-apply",
+    ],
     var.audit_detection_additional_allowed_automation_principal_arns,
   ))
 
@@ -17,10 +21,15 @@ locals {
     var.audit_detection_additional_secret_reader_principal_arns,
   ))
 
-  audit_detection_sensitive_secret_names = distinct(concat(
+  audit_detection_sensitive_secret_names = distinct(compact(concat(
     [module.eks_platform.flagd_sync_secret_name],
+    var.enable_managed_datastores ? [
+      "rds!db-",
+      "${var.datastores_name_prefix}/elasticache-auth",
+      "AmazonMSK_${var.datastores_name_prefix}/kafka-scram",
+    ] : [],
     var.audit_detection_additional_sensitive_secret_names,
-  ))
+  )))
 
   audit_detection_regional_event_rules = {
     g1-audit = {
@@ -55,7 +64,6 @@ locals {
       event_sources = ["secretsmanager.amazonaws.com"]
       event_names = [
         "GetSecretValue",
-        "BatchGetSecretValue",
       ]
     }
     g6-destroy = {
@@ -72,7 +80,6 @@ locals {
         "ScheduleKeyDeletion",
         "DeleteSecret",
         "DeleteBucket",
-        "DeleteTrail",
       ]
     }
   }
@@ -113,7 +120,9 @@ module "audit_detection_ap_southeast_1" {
 
   cluster_name                      = var.cluster_name
   deployment_label                  = var.region
-  include_global_service_events     = false
+  create_trail                      = true
+  include_global_service_events     = true
+  is_multi_region_trail             = true
   lambda_log_retention_days         = var.audit_detection_lambda_log_retention_days
   trail_s3_retention_days           = var.audit_detection_trail_s3_retention_days
   alert_email_subscriptions         = local.audit_detection_email_subscriptions
@@ -134,7 +143,9 @@ module "audit_detection_us_east_1" {
 
   cluster_name                      = var.cluster_name
   deployment_label                  = "us-east-1"
-  include_global_service_events     = true
+  create_trail                      = false
+  include_global_service_events     = false
+  is_multi_region_trail             = false
   lambda_log_retention_days         = var.audit_detection_lambda_log_retention_days
   trail_s3_retention_days           = var.audit_detection_trail_s3_retention_days
   alert_email_subscriptions         = local.audit_detection_email_subscriptions

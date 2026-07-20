@@ -1,9 +1,9 @@
 output "trail_name" {
-  value = aws_cloudtrail.audit.name
+  value = try(aws_cloudtrail.audit[0].name, null)
 }
 
 output "trail_bucket_name" {
-  value = aws_s3_bucket.trail_logs.bucket
+  value = try(aws_s3_bucket.trail_logs[0].bucket, null)
 }
 
 output "lambda_function_name" {

@@ -65,6 +65,18 @@ variable "include_global_service_events" {
   default     = false
 }
 
+variable "create_trail" {
+  description = "Whether this detector instance should create its own CloudTrail trail and S3 evidence bucket."
+  type        = bool
+  default     = true
+}
+
+variable "is_multi_region_trail" {
+  description = "Whether the CloudTrail trail should capture events from all enabled AWS Regions."
+  type        = bool
+  default     = false
+}
+
 variable "lambda_log_retention_days" {
   description = "Retention for Lambda execution logs."
   type        = number

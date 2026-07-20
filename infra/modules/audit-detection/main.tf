@@ -31,11 +31,15 @@ locals {
 }
 
 resource "aws_s3_bucket" "trail_logs" {
+  count = var.create_trail ? 1 : 0
+
   bucket = local.trail_bucket_name
 }
 
 resource "aws_s3_bucket_public_access_block" "trail_logs" {
-  bucket = aws_s3_bucket.trail_logs.id
+  count = var.create_trail ? 1 : 0
+
+  bucket = aws_s3_bucket.trail_logs[0].id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -44,7 +48,9 @@ resource "aws_s3_bucket_public_access_block" "trail_logs" {
 }
 
 resource "aws_s3_bucket_versioning" "trail_logs" {
-  bucket = aws_s3_bucket.trail_logs.id
+  count = var.create_trail ? 1 : 0
+
+  bucket = aws_s3_bucket.trail_logs[0].id
 
   versioning_configuration {
     status = "Enabled"
@@ -52,7 +58,9 @@ resource "aws_s3_bucket_versioning" "trail_logs" {
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "trail_logs" {
-  bucket = aws_s3_bucket.trail_logs.id
+  count = var.create_trail ? 1 : 0
+
+  bucket = aws_s3_bucket.trail_logs[0].id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -62,7 +70,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "trail_logs" {
 }
 
 resource "aws_s3_bucket_ownership_controls" "trail_logs" {
-  bucket = aws_s3_bucket.trail_logs.id
+  count = var.create_trail ? 1 : 0
+
+  bucket = aws_s3_bucket.trail_logs[0].id
 
   rule {
     object_ownership = "BucketOwnerPreferred"
@@ -70,7 +80,9 @@ resource "aws_s3_bucket_ownership_controls" "trail_logs" {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "trail_logs" {
-  bucket = aws_s3_bucket.trail_logs.id
+  count = var.create_trail ? 1 : 0
+
+  bucket = aws_s3_bucket.trail_logs[0].id
 
   rule {
     id     = "expire-audit-logs"
@@ -89,6 +101,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail_logs" {
 }
 
 data "aws_iam_policy_document" "trail_logs" {
+  count = var.create_trail ? 1 : 0
+
   statement {
     sid    = "AllowCloudTrailAclCheck"
     effect = "Allow"
@@ -99,7 +113,7 @@ data "aws_iam_policy_document" "trail_logs" {
     }
 
     actions   = ["s3:GetBucketAcl"]
-    resources = [aws_s3_bucket.trail_logs.arn]
+    resources = [aws_s3_bucket.trail_logs[0].arn]
 
     condition {
       test     = "StringEquals"
@@ -119,7 +133,7 @@ data "aws_iam_policy_document" "trail_logs" {
 
     actions = ["s3:PutObject"]
     resources = [
-      "${aws_s3_bucket.trail_logs.arn}/${local.trail_prefix}/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
+      "${aws_s3_bucket.trail_logs[0].arn}/${local.trail_prefix}/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
     ]
 
     condition {
@@ -146,8 +160,8 @@ data "aws_iam_policy_document" "trail_logs" {
 
     actions = ["s3:*"]
     resources = [
-      aws_s3_bucket.trail_logs.arn,
-      "${aws_s3_bucket.trail_logs.arn}/*",
+      aws_s3_bucket.trail_logs[0].arn,
+      "${aws_s3_bucket.trail_logs[0].arn}/*",
     ]
 
     condition {
@@ -159,16 +173,20 @@ data "aws_iam_policy_document" "trail_logs" {
 }
 
 resource "aws_s3_bucket_policy" "trail_logs" {
-  bucket = aws_s3_bucket.trail_logs.id
-  policy = data.aws_iam_policy_document.trail_logs.json
+  count = var.create_trail ? 1 : 0
+
+  bucket = aws_s3_bucket.trail_logs[0].id
+  policy = data.aws_iam_policy_document.trail_logs[0].json
 }
 
 resource "aws_cloudtrail" "audit" {
+  count = var.create_trail ? 1 : 0
+
   name                          = local.trail_name
-  s3_bucket_name                = aws_s3_bucket.trail_logs.id
+  s3_bucket_name                = aws_s3_bucket.trail_logs[0].id
   s3_key_prefix                 = local.trail_prefix
   include_global_service_events = var.include_global_service_events
-  is_multi_region_trail         = false
+  is_multi_region_trail         = var.is_multi_region_trail
   enable_logging                = true
   enable_log_file_validation    = true
 
@@ -195,6 +213,38 @@ resource "aws_sns_topic_subscription" "email" {
 resource "aws_cloudwatch_log_group" "audit_alert_router" {
   name              = "/aws/lambda/${local.lambda_name}"
   retention_in_days = var.lambda_log_retention_days
+}
+
+resource "aws_sqs_queue" "audit_alert_router_dlq" {
+  name                      = "${local.name_prefix}-lambda-dlq"
+  message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true
+}
+
+data "aws_iam_policy_document" "audit_alert_router_dlq" {
+  statement {
+    sid    = "AllowLambdaServiceToWriteDlq"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+
+    actions   = ["sqs:SendMessage"]
+    resources = [aws_sqs_queue.audit_alert_router_dlq.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_sqs_queue_policy" "audit_alert_router_dlq" {
+  queue_url = aws_sqs_queue.audit_alert_router_dlq.id
+  policy    = data.aws_iam_policy_document.audit_alert_router_dlq.json
 }
 
 data "aws_iam_policy_document" "lambda_assume_role" {
@@ -261,6 +311,10 @@ resource "aws_lambda_function" "audit_alert_router" {
   timeout          = 30
   memory_size      = 256
 
+  dead_letter_config {
+    target_arn = aws_sqs_queue.audit_alert_router_dlq.arn
+  }
+
   environment {
     variables = {
       ALERT_TOPIC_ARN      = aws_sns_topic.audit_alerts.arn
@@ -270,7 +324,10 @@ resource "aws_lambda_function" "audit_alert_router" {
     }
   }
 
-  depends_on = [aws_cloudwatch_log_group.audit_alert_router]
+  depends_on = [
+    aws_cloudwatch_log_group.audit_alert_router,
+    aws_sqs_queue_policy.audit_alert_router_dlq,
+  ]
 }
 
 resource "aws_cloudwatch_event_rule" "audit" {
