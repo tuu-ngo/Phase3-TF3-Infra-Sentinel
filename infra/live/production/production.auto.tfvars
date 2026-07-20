@@ -25,26 +25,3 @@ cloudflare_allowed_emails = [
 # Mandate #8 — bật tầng datastore managed (RDS/ElastiCache/MSK).
 # Đặt = true để state khớp hạ tầng thật; nếu để default false, plan sau sẽ đòi XOÁ 3 store.
 enable_managed_datastores = true
-
-audit_detection_email_subscriptions = [
-  "dophuc776@gmail.com",
-  "huutai.ngo2409@gmail.com",
-  "nguyenthimen190504@gmail.com",
-  "nvtvlog234@gmail.com",
-  "tranduc.357cc@gmail.com",
-  "haileab542@gmail.com"
-]
-
-audit_detection_additional_human_principal_arns = [
-  "arn:aws:iam::197826770971:user/aio2-admin-team",
-  "arn:aws:iam::197826770971:user/cdo-2-admin-team",
-  "arn:aws:iam::197826770971:user/cdo-admin-team",
-  "arn:aws:iam::197826770971:user/hieu-AdminAccess",
-  "arn:aws:iam::197826770971:user/KietBE",
-  "arn:aws:iam::197826770971:user/mentor-mandate-reviewer",
-  "arn:aws:iam::197826770971:user/Thao",
-]
-
-audit_detection_additional_allowed_automation_principal_arns = [
-  "arn:aws:iam::197826770971:user/gitlab-ci-deployer",
-]
