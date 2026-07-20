@@ -1,0 +1,67 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"product-reviews-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":5432,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"postgresql"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend"}}}],"ports":[{"port":3551,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"product-reviews"}},"policyTypes":["Ingress","Egress"]}}
+  creationTimestamp: "2026-07-20T14:55:22Z"
+  finalizers:
+  - networking.k8s.aws/resources
+  generation: 1
+  name: product-reviews-network-policy
+  namespace: techx-tf3
+  resourceVersion: "5419985"
+  uid: 75274f62-393a-4c7f-aab2-39e23d6f7a43
+spec:
+  egress:
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  - ports:
+    - port: 4317
+      protocol: TCP
+    - port: 4318
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: opentelemetry-collector
+          component: agent-collector
+  - ports:
+    - port: 5432
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: postgresql
+  - ports:
+    - port: 8013
+      protocol: TCP
+    - port: 8016
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: flagd
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: frontend-proxy
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: frontend-proxy
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: frontend
+    ports:
+    - port: 3551
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: product-reviews
+  policyTypes:
+  - Ingress
+  - Egress

@@ -1,0 +1,1366 @@
+apiVersion: v1
+items:
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"accounting-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":9092,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"kafka"}}}]},{"ports":[{"port":5432,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"postgresql"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"accounting"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:23Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: accounting-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5419995"
+    uid: 53f45f5d-62bc-4972-a866-84e259919c15
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 9092
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: kafka
+    - ports:
+      - port: 5432
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: postgresql
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: accounting
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"ad-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend"}}}],"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"ad"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:21Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: ad-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5419970"
+    uid: 5fa35158-4201-4e79-8a99-7f664000fbdc
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend-proxy
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: frontend-proxy
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend
+      ports:
+      - port: 8080
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: ad
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"aiops-engine-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":9090,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"prometheus"}}}]},{"ports":[{"port":9200,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opensearch"}}}]},{"ports":[{"port":16686,"protocol":"TCP"},{"port":16685,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"jaeger"}}}]},{"ports":[{"port":443,"protocol":"TCP"}],"to":[{"ipBlock":{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}]}],"ingress":[],"podSelector":{"matchLabels":{"app":"aiops-engine"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:24Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: aiops-engine-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5420032"
+    uid: f79bd2d2-f55e-48a5-9732-9397cf43a0ed
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 9090
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: prometheus
+    - ports:
+      - port: 9200
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opensearch
+    - ports:
+      - port: 16686
+        protocol: TCP
+      - port: 16685
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: jaeger
+    - ports:
+      - port: 443
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+    podSelector:
+      matchLabels:
+        app: aiops-engine
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"attacker-demo-deny-all","namespace":"techx-tf3"},"spec":{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"attacker-demo"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:24Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: attacker-demo-deny-all
+    namespace: techx-tf3
+    resourceVersion: "5420040"
+    uid: 3b896727-ba8e-4840-a8ea-6ab2b6f22e49
+  spec:
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: attacker-demo
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"cart-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":6379,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"valkey-cart"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"checkout"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"frontend-proxy"}}}],"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"cart"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:21Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: cart-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5419950"
+    uid: 9858bf48-dd33-42bd-bea0-a85e7c9d3154
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 6379
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: valkey-cart
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: checkout
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend-proxy
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: frontend-proxy
+      ports:
+      - port: 8080
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: cart
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"cloudflared-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":443,"protocol":"TCP"},{"port":443,"protocol":"UDP"},{"port":7844,"protocol":"TCP"},{"port":7844,"protocol":"UDP"}],"to":[{"ipBlock":{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}]},{"ports":[{"port":3000,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"grafana"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}}]}],"ingress":[],"podSelector":{"matchLabels":{"app.kubernetes.io/name":"cloudflared"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:24Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: cloudflared-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5420036"
+    uid: b1def932-d67a-4f8f-9eb2-85d57b1b02bf
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 443
+        protocol: TCP
+      - port: 443
+        protocol: UDP
+      - port: 7844
+        protocol: TCP
+      - port: 7844
+        protocol: UDP
+      to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+    - ports:
+      - port: 3000
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: grafana
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend-proxy
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: cloudflared
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"currency-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"checkout"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"frontend-proxy"}}}],"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"currency"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:21Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: currency-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5419954"
+    uid: 84e4c8d6-d5ea-4d45-bae8-957f82b99533
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: checkout
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend-proxy
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: frontend-proxy
+      ports:
+      - port: 8080
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: currency
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"mandate-17-exception":"email-egress-smtp-open — pending SES endpoint confirmation"},"name":"email-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]},{"ports":[{"port":587,"protocol":"TCP"},{"port":465,"protocol":"TCP"},{"port":25,"protocol":"TCP"}],"to":[{"ipBlock":{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"checkout"}}}],"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"email"}},"policyTypes":["Ingress","Egress"]}}
+      mandate-17-exception: email-egress-smtp-open — pending SES endpoint confirmation
+    creationTimestamp: "2026-07-20T14:55:22Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: email-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5419992"
+    uid: 61030788-e62c-4651-8f2e-64487696180b
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    - ports:
+      - port: 587
+        protocol: TCP
+      - port: 465
+        protocol: TCP
+      - port: 25
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: checkout
+      ports:
+      - port: 8080
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: email
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"flagd-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":443,"protocol":"TCP"}],"to":[{"ipBlock":{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/instance":"techx-corp"}}}],"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:24Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: flagd-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5420029"
+    uid: ae6306f2-6d54-47a2-b334-6150fe8e1b1a
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 443
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/instance: techx-corp
+      ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: flagd
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"fraud-detection-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":9092,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"kafka"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"fraud-detection"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:23Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: fraud-detection-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5420002"
+    uid: b0eef920-f646-4597-b1c4-0f5f19e6053c
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 9092
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: kafka
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: fraud-detection
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"frontend-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"frontend-proxy"}}}],"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:23Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: frontend-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5420006"
+    uid: 6ea7692f-ad84-4ac6-a4a8-637ed01d014e
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend-proxy
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: frontend-proxy
+      ports:
+      - port: 8080
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: frontend
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"frontend-proxy-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"cart"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"checkout"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"currency"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"ad"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"recommendation"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"shipping"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"product-catalog"}}}]},{"ports":[{"port":3551,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"product-reviews"}}}]},{"ports":[{"port":8081,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"image-provider"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"cloudflared"}}}],"ports":[{"port":8080,"protocol":"TCP"}]},{"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:23Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: frontend-proxy-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5420010"
+    uid: 65abe94b-d27b-4650-8447-cafdd6962394
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: cart
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: checkout
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: currency
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: ad
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: recommendation
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: shipping
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: product-catalog
+    - ports:
+      - port: 3551
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: product-reviews
+    - ports:
+      - port: 8081
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: image-provider
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: cloudflared
+      ports:
+      - port: 8080
+        protocol: TCP
+    - ports:
+      - port: 8080
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: frontend-proxy
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      argocd.argoproj.io/tracking-id: techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/grafana-network-policy
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/grafana-network-policy"},"name":"grafana-network-policy","namespace":"techx-tf3"},"spec":{"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"cloudflared"}}}],"ports":[{"port":3000,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/instance":"techx-corp","app.kubernetes.io/name":"grafana"}},"policyTypes":["Ingress"]}}
+    creationTimestamp: "2026-07-14T02:45:30Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 15
+    name: grafana-network-policy
+    namespace: techx-tf3
+    resourceVersion: "680560"
+    uid: c39b8895-ef18-4e8b-868c-62ec59e22c82
+  spec:
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: cloudflared
+      ports:
+      - port: 3000
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/instance: techx-corp
+        app.kubernetes.io/name: grafana
+    policyTypes:
+    - Ingress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"image-provider-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"frontend-proxy"}}}],"ports":[{"port":8081,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"image-provider"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:23Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: image-provider-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5420016"
+    uid: 430e9b11-0056-4ddd-b6ce-6fd1ae2a88df
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend-proxy
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: frontend-proxy
+      ports:
+      - port: 8081
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: image-provider
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      argocd.argoproj.io/tracking-id: techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/jaeger-access
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/jaeger-access"},"name":"jaeger-access","namespace":"techx-tf3"},"spec":{"ingress":[{"from":[{"podSelector":{}}],"ports":[{"port":14250,"protocol":"TCP"},{"port":14268,"protocol":"TCP"},{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"},{"port":6831,"protocol":"UDP"},{"port":6832,"protocol":"UDP"}]},{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"grafana"}}},{"podSelector":{"matchLabels":{"app":"aiops-engine"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"cloudflared"}}}],"ports":[{"port":16686,"protocol":"TCP"},{"port":16685,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/name":"jaeger"}},"policyTypes":["Ingress"]}}
+    creationTimestamp: "2026-07-16T04:43:19Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 3
+    name: jaeger-access
+    namespace: techx-tf3
+    resourceVersion: "1946829"
+    uid: 83fe8194-1fdc-4cd0-a1a1-3618ae8dac35
+  spec:
+    ingress:
+    - from:
+      - podSelector: {}
+      ports:
+      - port: 14250
+        protocol: TCP
+      - port: 14268
+        protocol: TCP
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      - port: 6831
+        protocol: UDP
+      - port: 6832
+        protocol: UDP
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: grafana
+      - podSelector:
+          matchLabels:
+            app: aiops-engine
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: cloudflared
+      ports:
+      - port: 16686
+        protocol: TCP
+      - port: 16685
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: jaeger
+    policyTypes:
+    - Ingress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      argocd.argoproj.io/tracking-id: techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/kafka-network-policy
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/kafka-network-policy"},"name":"kafka-network-policy","namespace":"techx-tf3"},"spec":{"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"checkout"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"accounting"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"fraud-detection"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}],"ports":[{"port":9092,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"kafka"}},"policyTypes":["Ingress"]}}
+    creationTimestamp: "2026-07-14T02:45:30Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: kafka-network-policy
+    namespace: techx-tf3
+    resourceVersion: "246753"
+    uid: c47c6b82-4457-4530-85fa-7faca584b5f3
+  spec:
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: checkout
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: accounting
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: fraud-detection
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+      ports:
+      - port: 9092
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: kafka
+    policyTypes:
+    - Ingress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"mandate-17-exception":"llm-egress-bedrock — verify VPC endpoint vs internet"},"name":"llm-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]},{"ports":[{"port":443,"protocol":"TCP"}],"to":[{"ipBlock":{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"frontend-proxy"}}}],"ports":[{"port":8000,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"llm"}},"policyTypes":["Ingress","Egress"]}}
+      mandate-17-exception: llm-egress-bedrock — verify VPC endpoint vs internet
+    creationTimestamp: "2026-07-20T14:55:24Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: llm-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5420022"
+    uid: bcda589e-74f2-4d1a-9afb-16594c05f5e6
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    - ports:
+      - port: 443
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend-proxy
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: frontend-proxy
+      ports:
+      - port: 8000
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: llm
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      argocd.argoproj.io/tracking-id: techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/loadgen-deny-ingress
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/loadgen-deny-ingress"},"name":"loadgen-deny-ingress","namespace":"techx-tf3"},"spec":{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"load-generator"}},"policyTypes":["Ingress"]}}
+    creationTimestamp: "2026-07-16T04:43:23Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: loadgen-deny-ingress
+    namespace: techx-tf3
+    resourceVersion: "1875837"
+    uid: b5b8d09c-25e4-4c92-9a6d-cf0e3f3dd6bc
+  spec:
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: load-generator
+    policyTypes:
+    - Ingress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      argocd.argoproj.io/tracking-id: techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/opensearch-access
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/opensearch-access"},"name":"opensearch-access","namespace":"techx-tf3"},"spec":{"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"fluent-bit"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"grafana"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"jaeger"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector"}}},{"podSelector":{"matchLabels":{"app":"aiops-engine"}}}],"ports":[{"port":9200,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opensearch"}},"policyTypes":["Ingress"]}}
+    creationTimestamp: "2026-07-16T04:43:21Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 2
+    name: opensearch-access
+    namespace: techx-tf3
+    resourceVersion: "1875834"
+    uid: 99ad60ae-840b-4d68-bfe5-a7e6765f507f
+  spec:
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: fluent-bit
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: grafana
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: jaeger
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+      - podSelector:
+          matchLabels:
+            app: aiops-engine
+      ports:
+      - port: 9200
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: opensearch
+    policyTypes:
+    - Ingress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"mandate-17-exception":"payment-egress-internet-open — pending endpoint confirmation"},"name":"payment-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]},{"ports":[{"port":443,"protocol":"TCP"}],"to":[{"ipBlock":{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"checkout"}}}],"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"payment"}},"policyTypes":["Ingress","Egress"]}}
+      mandate-17-exception: payment-egress-internet-open — pending endpoint confirmation
+    creationTimestamp: "2026-07-20T14:55:22Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: payment-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5419989"
+    uid: 0449cf4b-fcaf-489c-a4d5-7f9ef4587b72
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    - ports:
+      - port: 443
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: checkout
+      ports:
+      - port: 8080
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: payment
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      argocd.argoproj.io/tracking-id: techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/postgres-network-policy
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/postgres-network-policy"},"name":"postgres-network-policy","namespace":"techx-tf3"},"spec":{"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"product-catalog"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"product-reviews"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"accounting"}}}],"ports":[{"port":5432,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"postgresql"}},"policyTypes":["Ingress"]}}
+    creationTimestamp: "2026-07-13T12:49:46Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: postgres-network-policy
+    namespace: techx-tf3
+    resourceVersion: "243661"
+    uid: 7071ff1c-5f95-41d2-83e8-d6ba7ed7187f
+  spec:
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: product-catalog
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: product-reviews
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: accounting
+      ports:
+      - port: 5432
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: postgresql
+    policyTypes:
+    - Ingress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      argocd.argoproj.io/tracking-id: techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/prometheus-access
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/prometheus-access"},"name":"prometheus-access","namespace":"techx-tf3"},"spec":{"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"grafana"}}},{"podSelector":{"matchLabels":{"app":"aiops-engine"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"jaeger"}}},{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"argo-rollouts"}}}],"ports":[{"port":9090,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/name":"prometheus"}},"policyTypes":["Ingress"]}}
+    creationTimestamp: "2026-07-16T04:43:22Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 6
+    name: prometheus-access
+    namespace: techx-tf3
+    resourceVersion: "2601985"
+    uid: 29dd3a02-04a4-407b-951b-ea019309cb55
+  spec:
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: grafana
+      - podSelector:
+          matchLabels:
+            app: aiops-engine
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: jaeger
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: argo-rollouts
+      ports:
+      - port: 9090
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: prometheus
+    policyTypes:
+    - Ingress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"quote-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"shipping"}}}],"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"quote"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:21Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: quote-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5419963"
+    uid: f2bfa48c-1976-4740-8286-2d8270f3171f
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: shipping
+      ports:
+      - port: 8080
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: quote
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"shipping-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"quote"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"checkout"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"frontend-proxy"}}}],"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"shipping"}},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-07-20T14:55:21Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: shipping-network-policy
+    namespace: techx-tf3
+    resourceVersion: "5419959"
+    uid: 95db1027-473a-4df2-b833-c3fa8a928102
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+    - ports:
+      - port: 4317
+        protocol: TCP
+      - port: 4318
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: quote
+    - ports:
+      - port: 8013
+        protocol: TCP
+      - port: 8016
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: flagd
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: checkout
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: frontend-proxy
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: frontend-proxy
+      ports:
+      - port: 8080
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: shipping
+    policyTypes:
+    - Ingress
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      argocd.argoproj.io/tracking-id: techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/valkey-cart-network-policy
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"techx-infrastructure-app:networking.k8s.io/NetworkPolicy:techx-tf3/valkey-cart-network-policy"},"name":"valkey-cart-network-policy","namespace":"techx-tf3"},"spec":{"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"cart"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}],"ports":[{"port":6379,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"valkey-cart"}},"policyTypes":["Ingress"]}}
+    creationTimestamp: "2026-07-14T02:45:30Z"
+    finalizers:
+    - networking.k8s.aws/resources
+    generation: 1
+    name: valkey-cart-network-policy
+    namespace: techx-tf3
+    resourceVersion: "246754"
+    uid: 2d198510-9b8a-42c9-bdf2-66d70247b717
+  spec:
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: cart
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: opentelemetry-collector
+            component: agent-collector
+      ports:
+      - port: 6379
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/component: valkey-cart
+    policyTypes:
+    - Ingress
+kind: List
+metadata:
+  resourceVersion: ""

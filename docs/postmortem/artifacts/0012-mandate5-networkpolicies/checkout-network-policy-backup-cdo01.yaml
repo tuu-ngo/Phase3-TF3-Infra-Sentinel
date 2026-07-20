@@ -1,0 +1,112 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"checkout-network-policy","namespace":"techx-tf3"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]},{"ports":[{"port":4317,"protocol":"TCP"},{"port":4318,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"opentelemetry-collector","component":"agent-collector"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"cart"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"currency"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"payment"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"shipping"}}}]},{"ports":[{"port":8080,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"email"}}}]},{"ports":[{"port":9092,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"kafka"}}}]},{"ports":[{"port":8013,"protocol":"TCP"},{"port":8016,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"flagd"}}}]}],"ingress":[{"from":[{"podSelector":{"matchLabels":{"app.kubernetes.io/name":"frontend-proxy"}}},{"podSelector":{"matchLabels":{"app.kubernetes.io/component":"frontend-proxy"}}}],"ports":[{"port":8080,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app.kubernetes.io/component":"checkout"}},"policyTypes":["Ingress","Egress"]}}
+  creationTimestamp: "2026-07-20T14:55:20Z"
+  finalizers:
+  - networking.k8s.aws/resources
+  generation: 2
+  name: checkout-network-policy
+  namespace: techx-tf3
+  resourceVersion: "5428833"
+  uid: 7bee0d40-42b4-4935-a630-1b147aed1742
+spec:
+  egress:
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  - ports:
+    - port: 4317
+      protocol: TCP
+    - port: 4318
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: opentelemetry-collector
+          component: agent-collector
+  - ports:
+    - port: 8080
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: cart
+  - ports:
+    - port: 8080
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: currency
+  - ports:
+    - port: 8080
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: payment
+  - ports:
+    - port: 8080
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: shipping
+  - ports:
+    - port: 8080
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: email
+  - ports:
+    - port: 9092
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: kafka
+  - ports:
+    - port: 8013
+      protocol: TCP
+    - port: 8016
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: flagd
+  - ports:
+    - port: 8080
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: product-catalog
+  - ports:
+    - port: 9096
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: 10.0.0.0/16
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: frontend-proxy
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: frontend-proxy
+    ports:
+    - port: 8080
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: checkout
+  policyTypes:
+  - Ingress
+  - Egress
