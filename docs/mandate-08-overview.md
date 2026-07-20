@@ -206,7 +206,7 @@ từng bước xem [execution plan §2](mandate-08-execution-plan.md).
 | Writer thứ hai vào Postgres xuất hiện sau ngày audit | Thấp / Phá chứng minh parity | Re-audit bắt buộc ngay trước freeze (plan bước 3.1) |
 | Rút ngắn cửa sổ dual-write 60' vì sốt ruột | Con người / Mất giỏ thật | Ghi rõ BẮT BUỘC ở mọi tài liệu; hẹn giờ 70 phút |
 | CI pipeline mới trục trặc khi build 4 image | Trung bình / Trễ lịch | Build sớm ngày 1; đã có 1 run thật thành công (16/07) làm bằng chứng pipeline sống |
-| Mandate #5 (PR #145) merge đè vùng code/values + lật Kyverno enforce giữa tuần cutover | Chắc chắn merge tối 16/07 / Conflict + admission chặn rollout | Branch mandate #8 **sau khi** #145 vào main; xin exception 3 pod datastore (sắp gỡ); nếu enforce trước 18–19/07 → mọi pod helper trong runbook viết spec compliant (digest-pinned, limits, nonroot) |
+| Mandate #5 (PR #145) **đã merge + Kyverno 4 policy ĐÃ Enforce** (18/07) → pod helper runbook bị admission từ chối; image rebuild phải digest-pin; cart giờ `readOnlyRootFilesystem` | Đã xảy ra / Kẹt cutover nếu không thích ứng | **Vận hành dưới enforce ngay từ đầu** — pod helper dùng template compliant (đã test PASS), rebuild qua CI digest-pin, verify cart start clean; chi tiết + đối sách ở [execution plan §3bis](mandate-08-execution-plan.md). Không xin tắt policy. Còn cần: CDO01 xác nhận không rollout đụng 3 pod datastore trong tuần cutover |
 | BTC bơm sự cố flagd giữa cutover | Bất kỳ lúc nào / Nhiễu chẩn đoán | Dừng cutover, xử sự cố trước (fallback/containment), tuyệt đối không đụng flagd; cutover dời — deadline còn buffer |
 | Sự cố AWS (như CloudFront 16/07) | Thấp / Mất thời gian | Không nằm trong kiểm soát; buffer tối 19/07 |
 

@@ -17,12 +17,25 @@ spec:
     targetRevision: 2.41.0
     helm:
       values: |
+        podSecurityContext:
+          runAsNonRoot: true
+        containerSecurityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: true
+          seccompProfile:
+            type: RuntimeDefault
         controller:
+          # Mandate 5 (19/07): thêm limits.cpu - trước đó chỉ có
+          # requests.cpu/memory + limits.memory, thiếu đúng field này.
           resources:
             requests:
               cpu: 100m
               memory: 128Mi
             limits:
+              cpu: 300m
               memory: 256Mi
   destination:
     server: https://kubernetes.default.svc

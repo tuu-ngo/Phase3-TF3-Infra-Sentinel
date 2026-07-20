@@ -45,6 +45,22 @@ fun main() {
         exitProcess(1)
     }
     props[BOOTSTRAP_SERVERS_CONFIG] = bootstrapServers
+
+    // Mandate #8: TLS + SASL/SCRAM-SHA-512 for MSK, gated by env. No KAFKA_SECURITY_PROTOCOL set =
+    // plaintext with no auth = the previous in-cluster Kafka behavior (safe to deploy pre-cutover).
+    val securityProtocol = System.getenv("KAFKA_SECURITY_PROTOCOL")
+    if (!securityProtocol.isNullOrEmpty()) {
+        props["security.protocol"] = securityProtocol
+        if (securityProtocol.uppercase().startsWith("SASL")) {
+            val saslUser = System.getenv("KAFKA_SASL_USERNAME") ?: ""
+            val saslPassword = System.getenv("KAFKA_SASL_PASSWORD") ?: ""
+            props["sasl.mechanism"] = "SCRAM-SHA-512"
+            props["sasl.jaas.config"] =
+                "org.apache.kafka.common.security.scram.ScramLoginModule required " +
+                "username=\"$saslUser\" password=\"$saslPassword\";"
+        }
+    }
+
     val consumer = KafkaConsumer<String, ByteArray>(props).apply {
         subscribe(listOf(topic))
     }

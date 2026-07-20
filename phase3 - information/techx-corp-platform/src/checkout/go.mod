@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	github.com/IBM/sarama v1.46.3
 	github.com/google/uuid v1.6.0
+	github.com/xdg-go/scram v1.1.2 // Mandate #8: SCRAM-SHA-512 client cho MSK SASL
 	github.com/open-feature/go-sdk v1.17.0
 	github.com/open-feature/go-sdk-contrib/hooks/open-telemetry v0.3.6
 	github.com/open-feature/go-sdk-contrib/providers/flagd v0.3.2

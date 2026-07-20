@@ -6,7 +6,7 @@ metadata:
     policies.kyverno.io/title: Require CPU and memory requests and limits
     policies.kyverno.io/category: Mandate 5 Runtime Admission Enforcement
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-cpu-memory-requests-limits
@@ -15,49 +15,32 @@ spec:
           - resources:
               kinds:
                 - Pod
-              namespaces:
-                - techx-tf3
+              # Cluster-wide (Mandate 5): kube-system/kyverno da bi webhook
+              # validate.kyverno.svc-fail loai tru rieng. argocd/argo-rollouts
+              # da duoc bo sung du request/limit (xem
+              # docs/mandate-05-cluster-wide-scope-expansion.md) truoc khi mo
+              # rong lai lan nay.
               operations:
                 - CREATE
                 - UPDATE
-      exclude:
-        any:
-          - resources:
-              selector:
-                matchLabels:
-                  app.kubernetes.io/name: flagd
       validate:
         message: "All containers and initContainers must define requests.cpu, requests.memory, limits.cpu, and limits.memory."
         foreach:
           - list: "request.object.spec.containers"
-            deny:
-              conditions:
-                any:
-                  - key: "{{ element.resources.requests.cpu || '' }}"
-                    operator: Equals
-                    value: ""
-                  - key: "{{ element.resources.requests.memory || '' }}"
-                    operator: Equals
-                    value: ""
-                  - key: "{{ element.resources.limits.cpu || '' }}"
-                    operator: Equals
-                    value: ""
-                  - key: "{{ element.resources.limits.memory || '' }}"
-                    operator: Equals
-                    value: ""
+            pattern:
+              resources:
+                requests:
+                  cpu: "?*"
+                  memory: "?*"
+                limits:
+                  cpu: "?*"
+                  memory: "?*"
           - list: "request.object.spec.initContainers || `[]`"
-            deny:
-              conditions:
-                any:
-                  - key: "{{ element.resources.requests.cpu || '' }}"
-                    operator: Equals
-                    value: ""
-                  - key: "{{ element.resources.requests.memory || '' }}"
-                    operator: Equals
-                    value: ""
-                  - key: "{{ element.resources.limits.cpu || '' }}"
-                    operator: Equals
-                    value: ""
-                  - key: "{{ element.resources.limits.memory || '' }}"
-                    operator: Equals
-                    value: ""
+            pattern:
+              resources:
+                requests:
+                  cpu: "?*"
+                  memory: "?*"
+                limits:
+                  cpu: "?*"
+                  memory: "?*"

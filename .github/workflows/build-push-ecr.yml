@@ -32,9 +32,147 @@ env:
     product-catalog product-reviews quote recommendation shipping flagd-ui
 
 jobs:
-  build-scan:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.scope.outputs.mode }}
+      services: ${{ steps.scope.outputs.services }}
+      matrix: ${{ steps.scope.outputs.matrix }}
+      source_sha: ${{ steps.scope.outputs.source_sha }}
+      source_short_sha: ${{ steps.scope.outputs.source_short_sha }}
+      base_tag: ${{ steps.vars.outputs.tag }}
+      platforms: ${{ steps.vars.outputs.platforms }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve variables
+        id: vars
+        env:
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+          INPUT_PLATFORMS: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_IMAGE_TAG" ]; then
+            [[ "$INPUT_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || {
+              echo "FAIL: invalid image tag prefix" >&2; exit 1;
+            }
+            TAG_PREFIX="$INPUT_IMAGE_TAG"
+          else
+            TAG_PREFIX="$(git rev-parse --short=7 HEAD)"
+          fi
+          # Stable for the workflow run so rerun-failed-jobs can reuse signed
+          # evidence from successful matrix children. ECR immutability makes a
+          # full rerun fail closed instead of overwriting an existing image.
+          BASE_TAG="${TAG_PREFIX}-${GITHUB_RUN_ID}"
+          read -r -a ALL_SERVICE_ARRAY <<< "$ALL_SERVICES"
+          for service in "${ALL_SERVICE_ARRAY[@]}"; do
+            FULL_TAG="${BASE_TAG}-${service}"
+            [ "${#FULL_TAG}" -le 128 ] || {
+              echo "FAIL: final image tag exceeds 128 characters: $FULL_TAG" >&2; exit 1;
+            }
+          done
+          NORMALIZED_PLATFORMS="$(
+            printf '%s' "$INPUT_PLATFORMS" | tr ',' '\n' |
+              sed '/^[[:space:]]*$/d;s/^[[:space:]]*//;s/[[:space:]]*$//' |
+              sort -u | paste -sd, -
+          )"
+          [ -n "$NORMALIZED_PLATFORMS" ] || {
+            echo "FAIL: platforms must not be empty" >&2; exit 1;
+          }
+          while IFS= read -r platform; do
+            case "$platform" in
+              linux/amd64|linux/arm64) ;;
+              *) echo "FAIL: unsupported platform: $platform" >&2; exit 1 ;;
+            esac
+          done < <(printf '%s' "$NORMALIZED_PLATFORMS" | tr ',' '\n')
+          {
+            echo "tag=$BASE_TAG"
+            echo "platforms=$NORMALIZED_PLATFORMS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Detect which services changed
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$SOURCE_REF" != refs/heads/main ]; then
+            echo "FAIL: production image promotion may only be dispatched from main" >&2
+            exit 1
+          fi
+          SOURCE_SHORT_SHA="$(git rev-parse --short=7 "$SOURCE_SHA")"
+          read -r -a ALL_SERVICE_ARRAY <<< "$ALL_SERVICES"
+          ALL_SORTED="$(printf '%s\n' "${ALL_SERVICE_ARRAY[@]}" | sort -u | paste -sd' ' -)"
+          MODE=full
+          SERVICES="$ALL_SORTED"
+
+          if [ "$EVENT_NAME" != workflow_dispatch ] &&
+             [ -n "$EVENT_BEFORE" ] &&
+             [ "$EVENT_BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            CHANGED="$(git diff --name-only "$EVENT_BEFORE" "$SOURCE_SHA" -- \
+              "phase3 - information/techx-corp-platform")"
+            PREFIX="phase3 - information/techx-corp-platform/src/"
+            SERVICES=""
+            FULL=false
+            while IFS= read -r file; do
+              [ -n "$file" ] || continue
+              case "$file" in
+                "$PREFIX"*)
+                  service="${file#"$PREFIX"}"
+                  service="${service%%/*}"
+                  if grep -Fqw -- "$service" <<< "$ALL_SERVICES"; then
+                    SERVICES="$SERVICES $service"
+                  else
+                    FULL=true
+                  fi ;;
+                *) FULL=true ;;
+              esac
+            done <<< "$CHANGED"
+            if [ "$FULL" = true ]; then
+              MODE=full
+              SERVICES="$ALL_SORTED"
+            elif [ -z "${SERVICES// }" ]; then
+              MODE=none
+              SERVICES=""
+            else
+              read -r -a CHANGED_ARRAY <<< "$SERVICES"
+              MODE=scoped
+              SERVICES="$(printf '%s\n' "${CHANGED_ARRAY[@]}" | sort -u | paste -sd' ' -)"
+            fi
+          fi
+
+          if [ "$MODE" = none ]; then
+            MATRIX='[]'
+          else
+            read -r -a SERVICE_ARRAY <<< "$SERVICES"
+            MATRIX="$(printf '%s\n' "${SERVICE_ARRAY[@]}" | jq -R . | jq -sc .)"
+          fi
+          {
+            echo "source_sha=$SOURCE_SHA"
+            echo "source_short_sha=$SOURCE_SHORT_SHA"
+            echo "mode=$MODE"
+            echo "services=$SERVICES"
+            echo "matrix=$MATRIX"
+          } >> "$GITHUB_OUTPUT"
+
+  build-scan:
+    needs: prepare
+    if: needs.prepare.outputs.mode != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        service: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     permissions:
       id-token: write
       contents: read
@@ -74,9 +212,9 @@ jobs:
             TAG_PREFIX="$(git rev-parse --short=7 HEAD)"
           fi
 
-          # ECR tag immutability means a rerun must not reuse the same tag.
-          # run_id identifies the workflow run; run_attempt increments on rerun.
-          BASE_TAG="${TAG_PREFIX}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          # Keep tags stable across rerun-failed-jobs so successful service
+          # evidence can be reused. ECR immutability prevents overwrites.
+          BASE_TAG="${TAG_PREFIX}-${GITHUB_RUN_ID}"
 
           # Validate every final per-service tag before any build or push occurs.
           read -r -a ALL_SERVICE_ARRAY <<< "$ALL_SERVICES"
@@ -237,7 +375,7 @@ jobs:
           EOF
 
       - name: Smoke build checkout
-        if: steps.scope.outputs.mode == 'full'
+        if: steps.scope.outputs.mode == 'full' && matrix.service == 'checkout'
         run: |
           set -euo pipefail
           docker compose build checkout
@@ -251,26 +389,17 @@ jobs:
       - name: Build local image candidates for the Trivy gate
         if: steps.scope.outputs.mode != 'none'
         env:
-          BUILD_MODE: ${{ steps.scope.outputs.mode }}
-          SCOPED_SERVICES: ${{ steps.scope.outputs.services }}
+          SERVICE: ${{ matrix.service }}
         run: |
           set -euo pipefail
           set -a
           . ./.env.override
           set +a
 
-          SERVICES="$ALL_SERVICES"
-          if [ "$BUILD_MODE" = "scoped" ]; then
-            SERVICES="$SCOPED_SERVICES"
-          fi
-
-          read -r -a SERVICE_ARRAY <<< "$SERVICES"
-          for service in "${SERVICE_ARRAY[@]}"; do
-            echo "Building local linux/amd64 candidate: $service"
-            docker buildx bake -f docker-compose.yml "$service" \
-              --set "${service}.platform=linux/amd64" \
-              --set "${service}.output=type=docker"
-          done
+          echo "Building local linux/amd64 candidate: $SERVICE"
+          docker buildx bake -f docker-compose.yml "$SERVICE" \
+            --set "${SERVICE}.platform=linux/amd64" \
+            --set "${SERVICE}.output=type=docker"
 
       - name: Install Trivy
         if: steps.scope.outputs.mode != 'none'
@@ -282,90 +411,76 @@ jobs:
       - name: Scan local image candidates with Trivy (blocking pre-push gate)
         if: steps.scope.outputs.mode != 'none'
         env:
-          BUILD_MODE: ${{ steps.scope.outputs.mode }}
-          SCOPED_SERVICES: ${{ steps.scope.outputs.services }}
+          SERVICE: ${{ matrix.service }}
         run: |
           set -euo pipefail
           set -a
           . ./.env.override
           set +a
 
-          SERVICES="$ALL_SERVICES"
-          if [ "$BUILD_MODE" = "scoped" ]; then
-            SERVICES="$SCOPED_SERVICES"
-          fi
-
           REPORT_ROOT="$GITHUB_WORKSPACE/trivy-reports/pre-push"
           mkdir -p "$REPORT_ROOT"
+          IMAGE="${IMAGE_NAME}:${IMAGE_VERSION}-${SERVICE}"
+          REPORT="$REPORT_ROOT/${SERVICE}.json"
 
-          read -r -a SERVICE_ARRAY <<< "$SERVICES"
-          for service in "${SERVICE_ARRAY[@]}"; do
-            IMAGE="${IMAGE_NAME}:${IMAGE_VERSION}-${service}"
-            REPORT="$REPORT_ROOT/${service}.json"
+          echo "Writing pre-push vulnerability evidence for $IMAGE"
+          trivy image \
+            --scanners vuln \
+            --format json \
+            --output "$REPORT" \
+            --no-progress \
+            "$IMAGE"
 
-            echo "Writing pre-push vulnerability evidence for $IMAGE"
-            trivy image \
-              --scanners vuln \
-              --format json \
-              --output "$REPORT" \
-              --no-progress \
-              "$IMAGE"
-
-            echo "Enforcing zero ${TRIVY_SEVERITIES} findings for $IMAGE"
-            trivy image \
-              --scanners vuln \
-              --severity "$TRIVY_SEVERITIES" \
-              --exit-code 1 \
-              --no-progress \
-              "$IMAGE"
-          done
+          echo "Enforcing zero ${TRIVY_SEVERITIES} findings for $IMAGE"
+          trivy image \
+            --scanners vuln \
+            --severity "$TRIVY_SEVERITIES" \
+            --exit-code 1 \
+            --no-progress \
+            "$IMAGE"
 
       - name: Upload pre-push Trivy reports
         if: always() && steps.scope.outputs.mode != 'none'
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-pre-push-${{ github.run_id }}-${{ github.run_attempt }}
+          name: trivy-pre-push-${{ github.run_id }}-${{ matrix.service }}
           path: trivy-reports/pre-push/
           if-no-files-found: warn
+          overwrite: true
           retention-days: 90
 
       - name: Build and push all pre-scanned app images
         if: steps.scope.outputs.mode == 'full'
         env:
           BUILD_PLATFORMS: ${{ steps.vars.outputs.platforms }}
+          SERVICE: ${{ matrix.service }}
         run: |
           set -euo pipefail
           set -a
           . ./.env.override
           set +a
 
-          read -r -a SERVICES <<< "$ALL_SERVICES"
-
-          docker buildx bake -f docker-compose.yml --push \
-            --set "*.platform=$BUILD_PLATFORMS" \
-            "${SERVICES[@]}"
+          docker buildx bake -f docker-compose.yml --push "$SERVICE" \
+            --set "${SERVICE}.platform=$BUILD_PLATFORMS"
 
       - name: Build and push pre-scanned changed service images only
         if: steps.scope.outputs.mode == 'scoped'
         env:
           BUILD_PLATFORMS: ${{ steps.vars.outputs.platforms }}
-          SCOPED_SERVICES: ${{ steps.scope.outputs.services }}
+          SERVICE: ${{ matrix.service }}
         run: |
           set -euo pipefail
           set -a
           . ./.env.override
           set +a
 
-          read -r -a SERVICES <<< "$SCOPED_SERVICES"
-
-          docker buildx bake -f docker-compose.yml --push \
-            --set "*.platform=$BUILD_PLATFORMS" \
-            "${SERVICES[@]}"
+          docker buildx bake -f docker-compose.yml --push "$SERVICE" \
+            --set "${SERVICE}.platform=$BUILD_PLATFORMS"
 
       - name: Resolve pushed image metadata
         if: steps.scope.outputs.mode != 'none'
         env:
-          EXPECTED_SERVICES: ${{ steps.scope.outputs.services }}
+          EXPECTED_SERVICES: ${{ matrix.service }}
           BASE_TAG: ${{ steps.vars.outputs.tag }}
           BUILD_MODE: ${{ steps.scope.outputs.mode }}
           BUILD_PLATFORMS: ${{ steps.vars.outputs.platforms }}
@@ -552,9 +667,10 @@ jobs:
         if: always() && steps.scope.outputs.mode != 'none'
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-post-push-${{ github.run_id }}-${{ github.run_attempt }}
+          name: trivy-post-push-${{ github.run_id }}-${{ matrix.service }}
           path: trivy-reports/post-push/
           if-no-files-found: warn
+          overwrite: true
           retention-days: 90
 
       - name: Install Cosign
@@ -623,27 +739,139 @@ jobs:
         if: always() && steps.scope.outputs.mode != 'none'
         uses: actions/upload-artifact@v4
         with:
-          name: signed-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          name: signed-release-evidence-${{ github.run_id }}-${{ matrix.service }}
           path: release-evidence/
           if-no-files-found: warn
+          overwrite: true
           retention-days: 90
 
       - name: Upload approved image manifest
         if: success() && steps.scope.outputs.mode != 'none'
-        # Contract marker for workflow_image_bump tests:
-        # approved-images-${{ github.run_id }}-${{ github.run_attempt }}
         uses: actions/upload-artifact@v4
         with:
-          name: approved-images-${{ github.run_id }}-${{ steps.artifact.outputs.run_attempt }}
+          name: approved-image-${{ github.run_id }}-${{ matrix.service }}
           path: phase3 - information/techx-corp-platform/approved-images.json
           retention-days: 7
           if-no-files-found: error
+          overwrite: true
+
+  aggregate:
+    needs: [prepare, build-scan]
+    if: ${{ needs.prepare.outputs.mode != 'none' && needs.build-scan.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      artifact_attempt: ${{ steps.artifact.outputs.run_attempt }}
+    steps:
+      - name: Download per-service approved manifests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: approved-image-${{ github.run_id }}-*
+          path: service-manifests
+
+      - name: Aggregate and validate exact service evidence
+        env:
+          EXPECTED_SERVICES: ${{ needs.prepare.outputs.services }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          SOURCE_SHORT_SHA: ${{ needs.prepare.outputs.source_short_sha }}
+          BUILD_MODE: ${{ needs.prepare.outputs.mode }}
+          BASE_TAG: ${{ needs.prepare.outputs.base_tag }}
+          BUILD_PLATFORMS: ${{ needs.prepare.outputs.platforms }}
+        run: |
+          set -euo pipefail
+          mapfile -t manifests < <(find service-manifests -type f -name approved-images.json | sort)
+          [ "${#manifests[@]}" -gt 0 ] || {
+            echo "FAIL: missing or unexpected service evidence" >&2
+            exit 1
+          }
+          jq -s '.' "${manifests[@]}" > per-service-manifests.json
+          read -r -a expected_array <<< "$EXPECTED_SERVICES"
+          expected_json="$(printf '%s\n' "${expected_array[@]}" | jq -R . | jq -s sort)"
+          actual_json="$(jq '[.[].services[0].name] | sort' per-service-manifests.json)"
+          [ "$actual_json" = "$expected_json" ] || {
+            echo "FAIL: missing or unexpected service evidence" >&2
+            exit 1
+          }
+          duplicates="$(jq '[.[].services[0].name] | length - (unique | length)' per-service-manifests.json)"
+          [ "$duplicates" -eq 0 ] || {
+            echo "FAIL: duplicate service evidence" >&2
+            exit 1
+          }
+          jq -e \
+            --arg repository "$ECR_REPOSITORY" \
+            --arg registry "$ECR_REGISTRY" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg source_short_sha "$SOURCE_SHORT_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg mode "$BUILD_MODE" \
+            --arg base_tag "$BASE_TAG" \
+            --arg platforms "$BUILD_PLATFORMS" \
+            'all(.[];
+              .schemaVersion == 1 and
+              .repository == $repository and
+              .registry == $registry and
+              .sourceSha == $source_sha and
+              .sourceShortSha == $source_short_sha and
+              .workflowRunId == $run_id and
+              .mode == $mode and
+              .baseTag == $base_tag and
+              .platforms == $platforms and
+              (.services | length) == 1 and
+              all(.services[];
+                .tag == ($base_tag + "-" + .name) and
+                (.digest | test("^sha256:[0-9a-f]{64}$")) and
+                (.manifestMediaType | IN(
+                  "application/vnd.oci.image.index.v1+json",
+                  "application/vnd.docker.distribution.manifest.list.v2+json",
+                  "application/vnd.oci.image.manifest.v1+json",
+                  "application/vnd.docker.distribution.manifest.v2+json"
+                ))
+              )
+            )' per-service-manifests.json > /dev/null
+          jq -n \
+            --arg repository "$ECR_REPOSITORY" \
+            --arg registry "$ECR_REGISTRY" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg source_short_sha "$SOURCE_SHORT_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg mode "$BUILD_MODE" \
+            --arg base_tag "$BASE_TAG" \
+            --arg platforms "$BUILD_PLATFORMS" \
+            --slurpfile manifests per-service-manifests.json \
+            '{
+              schemaVersion: 1,
+              repository: $repository,
+              registry: $registry,
+              sourceSha: $source_sha,
+              sourceShortSha: $source_short_sha,
+              workflowRunId: $run_id,
+              workflowRunAttempt: $run_attempt,
+              mode: $mode,
+              baseTag: $base_tag,
+              platforms: $platforms,
+              services: ($manifests[0] | map(.services[0]) | sort_by(.name))
+            }' > approved-images.json
+
+      - name: Capture aggregate artifact attempt
+        id: artifact
+        run: echo "run_attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload aggregate approved image manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: approved-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: approved-images.json
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true
 
   open-image-bump-pr:
-    needs: build-scan
+    needs: [prepare, aggregate]
     if: >-
-      ${{ needs.build-scan.result == 'success'
-          && needs.build-scan.outputs.mode != 'none' }}
+      ${{ needs.aggregate.result == 'success'
+          && needs.prepare.outputs.mode != 'none' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -653,7 +881,7 @@ jobs:
       - name: Checkout approved source commit
         uses: actions/checkout@v6
         with:
-          ref: ${{ needs.build-scan.outputs.source_sha }}
+          ref: ${{ needs.prepare.outputs.source_sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -677,7 +905,7 @@ jobs:
       - name: Download approved image manifest
         uses: actions/download-artifact@v4
         with:
-          name: approved-images-${{ github.run_id }}-${{ needs.build-scan.outputs.artifact_attempt }}
+          name: approved-images-${{ github.run_id }}-${{ needs.aggregate.outputs.artifact_attempt }}
           path: .
 
       - name: Confirm approved image manifest exists
@@ -688,14 +916,14 @@ jobs:
 
       - name: Update values-prod.yaml
         env:
-          EXPECTED_SOURCE_SHA: ${{ needs.build-scan.outputs.source_sha }}
-          EXPECTED_SOURCE_SHORT_SHA: ${{ needs.build-scan.outputs.source_short_sha }}
+          EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          EXPECTED_SOURCE_SHORT_SHA: ${{ needs.prepare.outputs.source_short_sha }}
           EXPECTED_RUN_ID: ${{ github.run_id }}
           EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
-          EXPECTED_MODE: ${{ needs.build-scan.outputs.mode }}
-          EXPECTED_BASE_TAG: ${{ needs.build-scan.outputs.base_tag }}
-          EXPECTED_PLATFORMS: ${{ needs.build-scan.outputs.platforms }}
-          EXPECTED_SERVICES: ${{ needs.build-scan.outputs.services }}
+          EXPECTED_MODE: ${{ needs.prepare.outputs.mode }}
+          EXPECTED_BASE_TAG: ${{ needs.prepare.outputs.base_tag }}
+          EXPECTED_PLATFORMS: ${{ needs.prepare.outputs.platforms }}
+          EXPECTED_SERVICES: ${{ needs.prepare.outputs.services }}
         run: |
           set -euo pipefail
 
@@ -768,10 +996,10 @@ jobs:
         if: env.no_changes != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SOURCE_SHA: ${{ needs.build-scan.outputs.source_sha }}
-          SOURCE_SHORT_SHA: ${{ needs.build-scan.outputs.source_short_sha }}
-          BUILD_MODE: ${{ needs.build-scan.outputs.mode }}
-          BUILD_PLATFORMS: ${{ needs.build-scan.outputs.platforms }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          SOURCE_SHORT_SHA: ${{ needs.prepare.outputs.source_short_sha }}
+          BUILD_MODE: ${{ needs.prepare.outputs.mode }}
+          BUILD_PLATFORMS: ${{ needs.prepare.outputs.platforms }}
           WORKFLOW_RUN_ID: ${{ github.run_id }}
           WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
           REPOSITORY: ${{ github.repository }}
