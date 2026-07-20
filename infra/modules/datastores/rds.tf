@@ -21,6 +21,12 @@ resource "aws_db_parameter_group" "postgres" {
   parameter {
     name  = "rds.force_ssl"
     value = "1"
+    # rds.force_ssl la STATIC parameter (chi co hieu luc sau reboot) -> AWS luon luu
+    # apply_method = "pending-reboot". Neu bo trong, provider mac dinh "immediate" ->
+    # drift vinh vien (config immediate vs AWS pending-reboot) moi lan plan. Khai bao
+    # pending-reboot cho khop thuc te AWS. Khong reboot DB, khong doi value (van = 1,
+    # force_ssl van enforce). Chi la metadata cach apply.
+    apply_method = "pending-reboot"
   }
 
   tags = local.common_tags
