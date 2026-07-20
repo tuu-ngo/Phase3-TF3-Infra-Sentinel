@@ -773,6 +773,24 @@ components:
           secretKeyRef:
             name: techx-tf3-postgres-conn
             key: dotnet
+      # Mandate #8 buoc 3/3 (cutover Kafka -> MSK, runbook §6 buoc 4): CONSUMER SAU producer.
+      # accounting doc tu MSK (Confluent.Kafka nhan CSV bootstrap natively -> khong bug multi-broker
+      # nhu checkout). AutoOffsetReset=Earliest -> an sach backlog order da produce vao MSK tu luc
+      # cutover producer. Lam khi kafka cu da LAG=0.
+      - name: KAFKA_ADDR
+        value: b-1.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-2.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-3.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096
+      - name: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - name: KAFKA_SASL_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: username
+      - name: KAFKA_SASL_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: password
   email:
     imageOverride:
       digest: sha256:afdbc98c923cff6e7652d84bee0bea0e658dab0bad99299ae8a9e423969d82f4
@@ -802,6 +820,24 @@ components:
   fraud-detection:
     imageOverride:
       digest: sha256:45fc3b08aa4a1ef057866565970aaac5672d4a0c6b6a7dd91c1ec0ff65517bb2
+    # Mandate #8 buoc 3/3 (cutover Kafka -> MSK, runbook §6 buoc 4): CONSUMER SAU producer.
+    # fraud-detection doc tu MSK (Kafka client Java nhan CSV bootstrap.servers natively -> khong bug
+    # multi-broker). AutoOffsetReset=Earliest -> an sach backlog tu luc cutover producer.
+    envOverrides:
+      - name: KAFKA_ADDR
+        value: b-1.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-2.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-3.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096
+      - name: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - name: KAFKA_SASL_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: username
+      - name: KAFKA_SASL_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: password
     resources:
       requests:
         cpu: 50m
