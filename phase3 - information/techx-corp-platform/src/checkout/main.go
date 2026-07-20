@@ -64,6 +64,13 @@ import (
 //go:generate protoc --go_out=./ --go-grpc_out=./ --proto_path=../../pb ../../pb/demo.proto
 
 var logger *slog.Logger
+
+// stderrLog viết thẳng ra STDERR (kubectl logs). logger chính (otelslog) đẩy log
+// qua OTel Collector -> OpenSearch, KHÔNG hiện trong `kubectl logs` và phụ thuộc
+// telemetry pipeline khoẻ. Trong sự cố cutover MSK (postmortem 0010) đúng lúc cần
+// đọc lỗi sarama thì không thấy gì. stderrLog để lỗi bootstrap/produce Kafka luôn
+// đọc được trực tiếp từ pod, không lệ thuộc pipeline.
+var stderrLog *slog.Logger
 var tracer trace.Tracer
 var resource *sdkresource.Resource
 var initResourcesOnce sync.Once
@@ -211,6 +218,10 @@ func main() {
 	logger = otelslog.NewLogger("checkout")
 	slog.SetDefault(logger)
 
+	// Logger STDERR song song để lỗi Kafka/MSK đọc được qua `kubectl logs` ngay cả
+	// khi telemetry pipeline (OTel Collector/OpenSearch) không sẵn sàng.
+	stderrLog = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
 	err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(time.Second))
 	if err != nil {
 		logger.Error((err.Error()))
@@ -268,9 +279,20 @@ func main() {
 			Username: os.Getenv("KAFKA_SASL_USERNAME"),
 			Password: os.Getenv("KAFKA_SASL_PASSWORD"),
 		}
-		svc.KafkaProducerClient, err = kafka.CreateKafkaProducer([]string{svc.kafkaBrokerSvcAddr}, logger, secCfg)
+		// Truyền stderrLog để chẩn đoán kết nối của sarama (metadata/SASL/TLS) rơi vào
+		// `kubectl logs`, không chỉ OTel. Đây chính là log đã biến mất trong sự cố 0010.
+		svc.KafkaProducerClient, err = kafka.CreateKafkaProducer([]string{svc.kafkaBrokerSvcAddr}, stderrLog, secCfg)
 		if err != nil {
-			logger.Error(err.Error())
+			// FAIL FAST. checkout không được nhận đơn nếu không phát được order event
+			// (REL-09: order là dữ liệu tài chính, không được charge mà mất bản ghi).
+			// Trước đây lỗi này bị nuốt -> producer nil -> PlaceOrder panic khi có
+			// traffic thật -> outage (postmortem 0010). Thoát ngay để pod KHÔNG BAO GIỜ
+			// Ready: Argo Rollouts dừng canary thay vì promote pod sẽ panic. Config sai =
+			// rollout đứng an toàn, không phải sự cố khách hàng.
+			stderrLog.Error(fmt.Sprintf("FATAL: khong tao duoc Kafka producer cho %q (protocol=%q): %v",
+				svc.kafkaBrokerSvcAddr, secCfg.Protocol, err))
+			logger.Error(fmt.Sprintf("FATAL: khong tao duoc Kafka producer: %v", err))
+			os.Exit(1)
 		}
 	}
 
@@ -668,6 +690,15 @@ func (cs *checkout) shipOrder(ctx context.Context, address *pb.Address, items []
 }
 
 func (cs *checkout) sendToPostProcessor(ctx context.Context, result *pb.OrderResult) {
+	// Phòng thủ nhiều lớp: bootstrap đã fail-fast (xem main) nên producer không thể
+	// nil ở production. Vẫn guard để nếu có bug logic khiến producer nil thì degrade
+	// thành log lỗi ồn ào thay vì panic giữa đơn hàng (nguyên nhân outage 0010).
+	if cs.KafkaProducerClient == nil {
+		stderrLog.Error("order event KHONG duoc phat: Kafka producer nil")
+		logger.Error("order event KHONG duoc phat: Kafka producer nil")
+		return
+	}
+
 	message, err := proto.Marshal(result)
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to marshal message to protobuf: %+v", err))
@@ -698,6 +729,8 @@ func (cs *checkout) sendToPostProcessor(ctx context.Context, result *pb.OrderRes
 		)
 		span.SetStatus(otelcodes.Error, err.Error())
 		logger.Error(fmt.Sprintf("Failed to write message: %v", err))
+		// Không nuốt: tee ra stderr để lỗi produce hiện trong `kubectl logs` khi cutover.
+		stderrLog.Error(fmt.Sprintf("Failed to write order event to Kafka: %v", err))
 	} else {
 		span.SetAttributes(
 			attribute.Bool("messaging.kafka.producer.success", true),
