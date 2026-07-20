@@ -410,7 +410,27 @@ kubectl -n "$NS" scale deploy/accounting --replicas=1   # đã trỏ lại postg
 
 Tận dụng `AutoOffsetReset=Earliest` → **không cần dual-consume**.
 
+> **⚠️ BÀI HỌC POSTMORTEM 0010 — làm bước 6.0 TRƯỚC, đừng bỏ.** Cutover producer lần đầu (19/07)
+> gây outage checkout ~14 phút vì `CreateKafkaProducer` (sarama→MSK) fail lúc startup mà code
+> **không fail-fast**. Root cause thật: code nhét cả chuỗi CSV nhiều broker của MSK vào 1 phần tử
+> slice → sarama `net.Dial` lỗi `too many colons in address`. Đã fix (PR #271 tách broker + PR #269
+> fail-fast/stderr). **canary Argo Rollouts KHÔNG validate được đường client** ở weight thấp (gRPC
+> connection pinning) → **phải** verify client bằng pod cô lập trước khi đổi env thật.
+
 ```sh
+# 0. PRE-FLIGHT CLIENT VERIFY (BẮT BUỘC) — chứng minh sarama producer của checkout nối được MSK
+#    bằng 1 pod checkout CÔ LẬP (env MSK, label KHÔNG khớp checkout Service → không nhận traffic).
+#    Deps gRPC để dummy (mustCreateClient lazy). Image = checkout ĐÃ FIX (fail-fast+stderr+split broker).
+#    Đọc stderr: PHẢI thấy "SASL authentication succeeded" + "registered new broker #1/#2/#3" +
+#    "successful init producer id" và TUYỆT ĐỐI KHÔNG có "FATAL" / "too many colons".
+#    Nếu FATAL → DỪNG, đọc lỗi sarama, fix code, rebuild — KHÔNG đổi env production.
+#    (manifest mẫu: scratchpad checkout-msk-diag.yaml — set đủ *_ADDR dummy + KAFKA_ADDR=$MSK_BOOTSTRAP
+#     + KAFKA_SECURITY_PROTOCOL=SASL_SSL + SASL user/pass từ secret techx-tf3-kafka-scram,
+#     securityContext M5-compliant, restartPolicy: Never.)
+kubectl -n "$NS" logs checkout-msk-diag | grep -iE "SASL|broker|producer id|FATAL|too many colons"
+kubectl -n "$NS" delete pod checkout-msk-diag        # dọn sau khi xanh
+#    Xác nhận pod cô lập KHÔNG làm bẩn topic: MSK orders offset vẫn 0 (InitProducerId không ghi topic).
+
 # 1. Tạo topic `orders` trên MSK — RF=3, min.insync.replicas=2
 #    (dùng helper mskcli ở §0 — MSK KHÔNG tunnel được, phải chạy từ pod trong cluster)
 mskcli kafka-topics.sh --create --topic orders --partitions 3 --replication-factor 3 \
