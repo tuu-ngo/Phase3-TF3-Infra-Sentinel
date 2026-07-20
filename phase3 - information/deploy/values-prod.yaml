@@ -363,8 +363,8 @@ components:
           seconds: 5
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
-      digest: sha256:993f61d6a44bdfbd20c77358c19dd3dcd706ecfde7f4bf5dd397e2ff0e22a008
-      tag: 3b59384-29655197650-checkout
+      digest: sha256:92d744413614df30c671790c99025478febe1d91fdaf7ce29642e29f04053cb6
+      tag: 64b263b-29719591938-checkout
     # Mandate 2 remediation: 2 pod stable từng bị xếp chung 1 node (xác nhận qua
     # kubectl trước load test) - checkout là service chịu tải chính, mất cả node đó
     # là mất cả 2 pod dù có PDB. hostname dùng ScheduleAnyway (soft) để không chặn
