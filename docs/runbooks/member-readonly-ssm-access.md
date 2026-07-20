@@ -143,6 +143,8 @@ Kiem tra:
 kubectl get pods -n techx-tf3
 kubectl auth can-i get pods -n techx-tf3
 kubectl auth can-i patch deployments -n techx-tf3
+kubectl auth can-i create pods/portforward -n techx-tf3
+kubectl auth can-i create pods/portforward -n argocd
 ```
 
 Readonly dung ky vong:
@@ -151,7 +153,28 @@ Readonly dung ky vong:
 yes
 yes
 no
+yes
+yes
 ```
+
+## Mo UI observability
+
+Moi lenh port-forward can mot terminal rieng va phai giu terminal do chay.
+SSM tunnel toi EKS API o tren van phai dang mo.
+
+```bash
+# Grafana: http://localhost:3000
+kubectl -n techx-tf3 port-forward svc/grafana 3000:80
+
+# Jaeger: http://localhost:16686/jaeger/ui/
+kubectl -n techx-tf3 port-forward svc/jaeger 16686:16686
+
+# ArgoCD: https://localhost:18443
+kubectl -n argocd port-forward svc/argocd-server 18443:443
+```
+
+Port-forward chi mo tren loopback cua may member. No khong tao Ingress,
+LoadBalancer, NodePort, hay cong public.
 
 ## Loi hay gap
 
