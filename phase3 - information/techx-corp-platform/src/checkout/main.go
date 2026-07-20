@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -279,9 +280,21 @@ func main() {
 			Username: os.Getenv("KAFKA_SASL_USERNAME"),
 			Password: os.Getenv("KAFKA_SASL_PASSWORD"),
 		}
+		// NGUYÊN NHÂN GỐC sự cố 0010: KAFKA_ADDR có thể chứa NHIỀU broker phân tách bằng
+		// dấu phẩy (MSK trả 3 bootstrap broker). Phải tách thành từng phần tử. Trước đây
+		// nhét cả chuỗi CSV vào một phần tử ([]string{addr}) -> sarama net.Dial nguyên
+		// chuỗi "b-1:9096,b-2:9096,b-3:9096" -> lỗi "too many colons in address",
+		// không bao giờ tới bước TLS/SASL. Kafka in-cluster cũ chỉ có 1 broker nên bug
+		// này bị ẩn hoàn toàn cho tới khi lên MSK.
+		brokers := make([]string, 0, 3)
+		for _, b := range strings.Split(svc.kafkaBrokerSvcAddr, ",") {
+			if b = strings.TrimSpace(b); b != "" {
+				brokers = append(brokers, b)
+			}
+		}
 		// Truyền stderrLog để chẩn đoán kết nối của sarama (metadata/SASL/TLS) rơi vào
 		// `kubectl logs`, không chỉ OTel. Đây chính là log đã biến mất trong sự cố 0010.
-		svc.KafkaProducerClient, err = kafka.CreateKafkaProducer([]string{svc.kafkaBrokerSvcAddr}, stderrLog, secCfg)
+		svc.KafkaProducerClient, err = kafka.CreateKafkaProducer(brokers, stderrLog, secCfg)
 		if err != nil {
 			// FAIL FAST. checkout không được nhận đơn nếu không phát được order event
 			// (REL-09: order là dữ liệu tài chính, không được charge mà mất bản ghi).
