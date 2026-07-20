@@ -1,30 +1,32 @@
 # Đánh giá Bảo mật — NetworkPolicy & RBAC Gap Analysis
+
 # Mandate 17: Khoanh Blast-Radius (Yêu cầu #3 & #4)
 
 ## Người phụ trách
+
 CDO02 (Platform Team)
 
 ## Thông tin đánh giá
 
-| Trường | Giá trị |
-|---|---|
-| Ngày đánh giá | 2026-07-20 |
-| Cluster | techx-corp-tf3 |
-| Region | ap-southeast-1 |
-| Namespace | techx-tf3 |
-| Người thực hiện | CDO02 |
-| Phương pháp | Live cluster verify qua SSM tunnel — `kubectl`, Python socket, `kubectl auth can-i` impersonation |
-| Baseline so sánh | `docs/evidence/10-security-baseline-rbac.md` (2026-07-16) |
+| Trường           | Giá trị                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| Ngày đánh giá    | 2026-07-20                                                                                        |
+| Cluster          | techx-corp-tf3                                                                                    |
+| Region           | ap-southeast-1                                                                                    |
+| Namespace        | techx-tf3                                                                                         |
+| Người thực hiện  | CDO01                                                                                             |
+| Phương pháp      | Live cluster verify qua SSM tunnel — `kubectl`, Python socket, `kubectl auth can-i` impersonation |
+| Baseline so sánh | `docs/evidence/10-security-baseline-rbac.md` (2026-07-16)                                         |
 
 ---
 
 ## Tóm tắt điều hành
 
-| ID | Mức độ | Mô tả | Thay đổi so với 16/07 |
-|---|---|---|---|
-| SEC-01 | CAO (HIGH) | Grafana SA đọc được `secrets` toàn cluster (kể cả `kube-system`) | ❌ Chưa fix |
-| SEC-02 | TRUNG BÌNH (MEDIUM) | 22 business deployment mount SA token mặc định, không cần thiết | ❌ Chưa fix |
-| SEC-03 | CAO (HIGH) | 18+ business service không có NetworkPolicy — lateral movement tự do, egress internet mở | ❌ Chưa fix |
+| ID     | Mức độ              | Mô tả                                                                                    | Thay đổi so với 16/07 |
+| ------ | ------------------- | ---------------------------------------------------------------------------------------- | --------------------- |
+| SEC-01 | CAO (HIGH)          | Grafana SA đọc được `secrets` toàn cluster (kể cả `kube-system`)                         | ❌ Chưa fix           |
+| SEC-02 | TRUNG BÌNH (MEDIUM) | 22 business deployment mount SA token mặc định, không cần thiết                          | ❌ Chưa fix           |
+| SEC-03 | CAO (HIGH)          | 18+ business service không có NetworkPolicy — lateral movement tự do, egress internet mở | ❌ Chưa fix           |
 
 **Kết luận:** Không có bất kỳ thay đổi bảo mật nào từ 16/07 đến 20/07. Cả ba gap đều còn nguyên.
 
@@ -58,9 +60,9 @@ valkey-cart-network-policy   app.kubernetes.io/component=valkey-cart            
 ```
 
 **Nhận xét:** 8 NetworkPolicy, 100% thuộc observability/datastore layer. Không có NetworkPolicy nào bảo vệ bất kỳ business service nào trong số:
-`accounting`, `ad`, `cart`, `checkout`, `cloudflared`, `currency`, `email`, `flagd`, `fraud-detection`, `frontend`, `frontend-proxy`, `image-provider`, `kafka`(*), `llm`, `payment`, `product-catalog`, `product-reviews`, `quote`, `recommendation`, `shipping`.
+`accounting`, `ad`, `cart`, `checkout`, `cloudflared`, `currency`, `email`, `flagd`, `fraud-detection`, `frontend`, `frontend-proxy`, `image-provider`, `kafka`(\*), `llm`, `payment`, `product-catalog`, `product-reviews`, `quote`, `recommendation`, `shipping`.
 
-(*) Kafka có NP nhưng chỉ giới hạn Ingress vào port 9092 — Egress của Kafka ra ngoài vẫn không bị kiểm soát.
+(\*) Kafka có NP nhưng chỉ giới hạn Ingress vào port 9092 — Egress của Kafka ra ngoài vẫn không bị kiểm soát.
 
 ---
 
@@ -75,11 +77,13 @@ yes   ← [TRƯỚC] SEC-01 VẪN MỞ tính đến 2026-07-20
 ```
 
 **Nhận xét:** Không thay đổi so với baseline ngày 16/07. `grafana-clusterrole` vẫn là ClusterRole với rule:
+
 ```yaml
 - apiGroups: [""]
   resources: [configmaps, secrets]
   verbs: [get, watch, list]
 ```
+
 Binding thông qua ClusterRoleBinding `grafana-clusterrolebinding` → SA `techx-tf3/grafana` có thể đọc mọi Secret ở mọi namespace.
 
 ---
@@ -195,14 +199,14 @@ TimeoutError: timed out
 
 **Kết luận bằng chứng "TRƯỚC":**
 
-| Kết nối | Kết quả | Kỳ vọng sau fix |
-|---|---|---|
-| `load-generator` → `payment:8080` | ✅ **THÀNH CÔNG** (gap) | ❌ Bị chặn |
-| `load-generator` → `checkout:8080` | ✅ **THÀNH CÔNG** (gap) | ❌ Bị chặn |
-| `load-generator` → `ad:8080` | ✅ **THÀNH CÔNG** (gap) | ❌ Bị chặn |
-| `load-generator` → internet | ✅ **THÀNH CÔNG** (gap) | ❌ Bị chặn |
-| `load-generator` → `postgresql:5432` | ❌ Timeout (NP đúng) | ❌ Vẫn bị chặn |
-| `load-generator` → `valkey-cart:6379` | ❌ Timeout (NP đúng) | ❌ Vẫn bị chặn |
+| Kết nối                               | Kết quả                 | Kỳ vọng sau fix |
+| ------------------------------------- | ----------------------- | --------------- |
+| `load-generator` → `payment:8080`     | ✅ **THÀNH CÔNG** (gap) | ❌ Bị chặn      |
+| `load-generator` → `checkout:8080`    | ✅ **THÀNH CÔNG** (gap) | ❌ Bị chặn      |
+| `load-generator` → `ad:8080`          | ✅ **THÀNH CÔNG** (gap) | ❌ Bị chặn      |
+| `load-generator` → internet           | ✅ **THÀNH CÔNG** (gap) | ❌ Bị chặn      |
+| `load-generator` → `postgresql:5432`  | ❌ Timeout (NP đúng)    | ❌ Vẫn bị chặn  |
+| `load-generator` → `valkey-cart:6379` | ❌ Timeout (NP đúng)    | ❌ Vẫn bị chặn  |
 
 ---
 
@@ -215,12 +219,14 @@ TimeoutError: timed out
 **Mô tả:** ServiceAccount `grafana` (namespace `techx-tf3`) được bind với ClusterRole `grafana-clusterrole` thông qua ClusterRoleBinding cluster-wide. Rule trong ClusterRole cấp `get/watch/list` lên resource `secrets` không giới hạn namespace. Đây là hành vi mặc định của upstream Grafana Helm chart (`grafana/grafana`), không được override khi deploy.
 
 **Blast radius nếu Grafana pod bị compromise:**
+
 1. Lấy SA token từ `/var/run/secrets/kubernetes.io/serviceaccount/token`
 2. Gọi K8s API từ bên ngoài: `curl -k https://<API>/api/v1/secrets -H "Authorization: Bearer $TOKEN"`
 3. Đọc toàn bộ 11+ secrets bao gồm `aws-load-balancer-tls`, `sh.helm.release.v1.techx-corp.v*` (chứa Helm values, có thể có flagd sync token)
 4. **Vi phạm cơ chế flagd = DISQUALIFY theo RULES.md**
 
 **Fix đề xuất (task tiếp theo):**
+
 - Xóa `secrets` khỏi `resources` trong `grafana-clusterrole`
 - Hoặc downgrade từ ClusterRole → Role giới hạn trong namespace `techx-tf3`
 
@@ -233,10 +239,12 @@ TimeoutError: timed out
 **CWE:** CWE-272: Least Privilege Violation
 
 **Mô tả:** 22/22 business deployment không set `automountServiceAccountToken: false`. SA `techx-corp` hiện không có quyền K8s (xác nhận 16/07 còn đúng), nhưng token vẫn tồn tại trong mọi pod và có thể bị dùng làm credential nếu:
+
 - SA `techx-corp` bị grant thêm quyền sau này (configuration drift)
 - Attacker dùng token để recon API server endpoints
 
 **Fix đề xuất (task tiếp theo):**
+
 - Set `automountServiceAccountToken: false` mặc định cho toàn bộ Deployment trong Helm chart
 - Chỉ override `true` cho service thực sự cần gọi K8s API
 
@@ -251,6 +259,7 @@ TimeoutError: timed out
 **CWE:** CWE-284: Improper Access Control
 
 **Mô tả:** 18+ business service không có bất kỳ NetworkPolicy nào. Một pod business bị compromise có thể:
+
 1. Quét tất cả port nội bộ (`nmap`/socket scan)
 2. Kết nối TCP/HTTP tới bất kỳ service nào (payment, checkout, product-catalog, postgresql qua otel bypass, ...)
 3. Gọi ra internet — exfiltrate dữ liệu, download malware, C2 callback
@@ -258,6 +267,7 @@ TimeoutError: timed out
 **Bằng chứng thực tế:** load-generator kết nối thành công tới payment:8080, checkout:8080, ad:8080, và gọi ra internet — tất cả trong 2026-07-20 14:28 UTC.
 
 **Fix đề xuất (task tiếp theo):**
+
 - Thêm NetworkPolicy cho từng business service theo đúng luồng giao tiếp thực tế
 - Chặn egress mặc định (default-deny egress + whitelist DNS + otel-collector + các service được phép)
 
@@ -267,14 +277,14 @@ TimeoutError: timed out
 
 ## Trạng thái so sánh — "TRƯỚC" vs "SAU" (placeholder)
 
-| Kiểm tra | TRƯỚC (20/07/2026) | SAU (chờ fix) |
-|---|---|---|
-| `kubectl get networkpolicy -n techx-tf3 \| wc -l` | 8 | _TBD_ |
-| `kubectl auth can-i list secrets --as=grafana -n kube-system` | `yes` | `no` |
-| `automountServiceAccountToken` trên checkout deploy | NOT SET (=true) | `false` |
-| TCP từ `load-generator` → `payment:8080` | ✅ OPEN | ❌ Timeout |
-| TCP từ `load-generator` → `checkout:8080` | ✅ OPEN | ❌ Timeout |
-| Egress từ `load-generator` → `ifconfig.me` | ✅ OPEN (13.213.127.91) | ❌ Timeout |
+| Kiểm tra                                                      | TRƯỚC (20/07/2026)      | SAU (chờ fix) |
+| ------------------------------------------------------------- | ----------------------- | ------------- |
+| `kubectl get networkpolicy -n techx-tf3 \| wc -l`             | 8                       | _TBD_         |
+| `kubectl auth can-i list secrets --as=grafana -n kube-system` | `yes`                   | `no`          |
+| `automountServiceAccountToken` trên checkout deploy           | NOT SET (=true)         | `false`       |
+| TCP từ `load-generator` → `payment:8080`                      | ✅ OPEN                 | ❌ Timeout    |
+| TCP từ `load-generator` → `checkout:8080`                     | ✅ OPEN                 | ❌ Timeout    |
+| Egress từ `load-generator` → `ifconfig.me`                    | ✅ OPEN (13.213.127.91) | ❌ Timeout    |
 
 ---
 
