@@ -123,3 +123,30 @@ subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: Group
     name: tf3-production-readers
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tf3-production-readonly-observability
+  namespace: argocd
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tf3-production-readonly-observability
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tf3-production-readonly-observability
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: tf3-production-readers
