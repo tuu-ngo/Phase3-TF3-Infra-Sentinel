@@ -27,7 +27,12 @@ cloudflare_allowed_emails = [
 enable_managed_datastores = true
 
 audit_detection_email_subscriptions = [
+  "dophuc776@gmail.com",
+  "huutai.ngo2409@gmail.com",
+  "nguyenthimen190504@gmail.com",
   "nvtvlog234@gmail.com",
+  "tranduc.357cc@gmail.com",
+  "haileab542@gmail.com"
 ]
 
 audit_detection_additional_human_principal_arns = [

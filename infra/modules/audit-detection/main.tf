@@ -33,7 +33,8 @@ locals {
 resource "aws_s3_bucket" "trail_logs" {
   count = var.create_trail ? 1 : 0
 
-  bucket = local.trail_bucket_name
+  bucket              = local.trail_bucket_name
+  object_lock_enabled = true
 }
 
 resource "aws_s3_bucket_public_access_block" "trail_logs" {
@@ -55,6 +56,21 @@ resource "aws_s3_bucket_versioning" "trail_logs" {
   versioning_configuration {
     status = "Enabled"
   }
+}
+
+resource "aws_s3_bucket_object_lock_configuration" "trail_logs" {
+  count = var.create_trail ? 1 : 0
+
+  bucket = aws_s3_bucket.trail_logs[0].id
+
+  rule {
+    default_retention {
+      mode = "GOVERNANCE"
+      days = 14
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.trail_logs]
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "trail_logs" {

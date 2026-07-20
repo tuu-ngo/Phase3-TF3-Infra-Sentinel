@@ -29,6 +29,9 @@ GROUP_MAP = {
     "iam:CreateUser": 2,
     "iam:CreateRole": 2,
     "iam:CreateLoginProfile": 2,
+    # Group 3 bắt các hành động mở rộng quyền IAM. Kể cả khi actor là CI/CD
+    # hoặc Terraform automation role, event vẫn phải alert hoặc có suppression
+    # có thời hạn cho change đã được duyệt.
     "iam:UpdateAssumeRolePolicy": 3,
     "iam:AttachUserPolicy": 3,
     "iam:AttachRolePolicy": 3,
@@ -43,6 +46,10 @@ GROUP_MAP = {
     "eks:DeleteAccessEntry": 4,
     "eks:AssociateAccessPolicy": 4,
     "eks:DisassociateAccessPolicy": 4,
+    # Group 5 bắt các lần đọc secret nhạy cảm từ người dùng hoặc principal lạ.
+    # Automation hợp lệ được lọc riêng bằng secret_reader_principals, không dùng
+    # allowlist automation rộng để tránh che mất truy cập secret bất thường.
+    "secretsmanager:BatchGetSecretValue": 5,
     "secretsmanager:GetSecretValue": 5,
     "eks:DeleteCluster": 6,
     "eks:DeleteNodegroup": 6,
