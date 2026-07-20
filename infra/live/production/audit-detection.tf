@@ -63,6 +63,7 @@ locals {
       sources       = ["aws.secretsmanager"]
       event_sources = ["secretsmanager.amazonaws.com"]
       event_names = [
+        "BatchGetSecretValue",
         "GetSecretValue",
       ]
     }
