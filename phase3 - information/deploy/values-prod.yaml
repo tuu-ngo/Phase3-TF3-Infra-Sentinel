@@ -365,6 +365,27 @@ components:
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
       digest: sha256:efb7eff627bf064ee66c8f77a76d0e1ce222b96fe98fe6c6a94b5af25b13ae33
       tag: 33d062e-29720289535-checkout
+    # Mandate #8 buoc 3/3 (cutover Kafka -> MSK, runbook §6 buoc 2): PRODUCER TRUOC.
+    # checkout doi KAFKA_ADDR -> MSK bootstrap (nhieu broker, phan tach dau phay - da fix
+    # split o main.go PR #271) + SASL_SSL + SCRAM tu secret techx-tf3-kafka-scram.
+    # An toan hon 0010: image efb7eff co fail-fast (PR #269) -> neu noi MSK loi, pod KHONG
+    # Ready -> canary dung khung, KHONG outage. Consumer (accounting + fraud-detection) doi
+    # sang MSK o PR SAU, chi khi kafka cu LAG=0 (Earliest -> an sach backlog tu day).
+    envOverrides:
+      - name: KAFKA_ADDR
+        value: b-1.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-2.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-3.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096
+      - name: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - name: KAFKA_SASL_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: username
+      - name: KAFKA_SASL_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: techx-tf3-kafka-scram
+            key: password
     # Mandate 2 remediation: 2 pod stable từng bị xếp chung 1 node (xác nhận qua
     # kubectl trước load test) - checkout là service chịu tải chính, mất cả node đó
     # là mất cả 2 pod dù có PDB. hostname dùng ScheduleAnyway (soft) để không chặn
