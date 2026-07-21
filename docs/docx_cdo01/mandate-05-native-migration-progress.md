@@ -1,13 +1,19 @@
 # Mandate 05 Native Migration — Progress Log
 
 ## Trạng thái tổng quan
-- PM-168: đang làm — code xong, đã dry-run verify sạch, **đã commit local** (`818b139`, nhánh `pm113-flagd-ui-kafka-digest-pin`), **chưa push/PR**, chưa verify Warn/Audit thật trên cluster (cần merge qua GitOps trước).
+- PM-168: đang làm — code xong, dry-run sạch, **đã push + mở PR #291** (https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/291), nhánh `pm113-flagd-ui-kafka-digest-pin`. Chờ merge + Argo sync để verify Warn/Audit thật.
 - PM-169: chưa bắt đầu — bị block bởi 2 exception kafka/aiops-engine (xem execution guide mục 4), cần bàn hướng trước khi code.
 - PM-170: chưa bắt đầu — phụ thuộc PM-168 + PM-169 xong trước.
 
 ## Nhật ký (mới nhất lên trên)
 
-### 2026-07-21 (phiên hiện tại)
+### 2026-07-21 13:36 — PM-168 push + PR
+- User tự push nhánh `pm113-flagd-ui-kafka-digest-pin` (commit `818b139`, `7bc3290`) và mở PR #291:
+  https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/291
+- Jira PM-168: comment cập nhật link PR + checklist verify sẽ chạy sau khi merge.
+- Bắt đầu chuyển sang bàn hướng xử lý exception `kafka`/`aiops-engine` cho PM-169 (xem execution guide mục 4 — 3 hướng đề xuất: fsGroup cho kafka, fix AIO02 cho aiops-engine, hoặc tách namespace).
+
+### 2026-07-21 (phiên hiện tại, trước push)
 - **Đã làm (PM-168, chưa commit):**
   - Tạo `gitops/apps/native-admission-policies-app.yaml` (Argo child Application, path `gitops/policies/native`, sync-wave 20, giống pattern `kyverno-policies-app.yaml`).
   - Tạo `gitops/policies/native/mandate-05-runtime-policy.yaml` — 2 `ValidatingAdmissionPolicy` (`mandate05-native-resource-requirements`, `mandate05-native-image-reference`) + 2 `ValidatingAdmissionPolicyBinding`, copy nguyên CEL đã review từ plan gốc Task 1, `matchConstraints.resourceRules` chỉ `resources: ["pods"]` đúng yêu cầu, `validationActions: ["Warn", "Audit"]`.
