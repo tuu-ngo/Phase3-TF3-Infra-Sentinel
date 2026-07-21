@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mandate05-native-bad-first-party-tag
+  namespace: techx-tf3
+  labels:
+    app.kubernetes.io/name: mandate05-native-bad-first-party-tag
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp:payment-v1
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi

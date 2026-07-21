@@ -5,10 +5,10 @@ metadata:
   namespace: techx-tf3
 spec:
   limits:
-    - default:
-        cpu: "200m"
-        memory: "150Mi"
-      defaultRequest:
-        cpu: "100m"
-        memory: "50Mi"
-      type: Container
+    - type: Container
+      min:
+        cpu: "5m"
+        memory: "8Mi"
+      max:
+        cpu: "4"
+        memory: "4Gi"

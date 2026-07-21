@@ -58,3 +58,94 @@ admission evidence is recorded in
 Mandate acceptance still requires the mentor rejection demonstration, final
 PM-101 artifact packaging and final disposition of the two time-bounded
 exceptions.
+
+## Update 2026-07-21 — Native admission migration (PM-166/168/169/170)
+
+Mentor rejected the Mandate 05 acceptance on the grounds that Kyverno is a
+third-party admission tool, not a Kubernetes-native mechanism. This update
+does not replace the decision above; it adds a native enforcement layer on
+top of it and demotes Kyverno to a non-blocking role for the four rules it
+previously enforced.
+
+**Additional decisions:**
+
+1. Replace Kyverno as the *blocking* mechanism for resource declarations and
+   image-reference rules with native `ValidatingAdmissionPolicy`/CEL,
+   matching `resources: ["pods"]` only (every controller-created object
+   still results in a Pod admission request, so this avoids re-implementing
+   Kyverno's per-kind autogen and the `Rollout` CRD coverage gap it once hit
+   in PR #232).
+2. Replace Kyverno's baseline security-context rule with Pod Security
+   Admission `restricted` at the namespace level — this is more native than
+   VAP itself (built into the API server, no CRD). PSA has no per-workload
+   exception mechanism, unlike Kyverno's label-based `preconditions`; see
+   Exceptions update below.
+3. Kyverno is **not removed**. It keeps running, `Enforce`, unchanged, for
+   two reasons: it still owns `verifyImages`/Cosign signature verification
+   (PM-114/127/128, not something CEL can express — CEL cannot make an
+   outbound network call at admission time) and background PolicyReport
+   reconciliation (VAP is admission-time-only, it does not rescan existing
+   resources). Removing the Kyverno controller is tracked separately as
+   PM-172 and has not been authorized.
+4. Cutover discipline for the two new native VAP bindings (image-reference,
+   resource-requirements): observed dry-run gate before merge (5
+   intentionally-violating fixtures under
+   `docs/evidence/mandate-05/native-rejection-demo/`, all 18 live workloads
+   checked for no false positive), landed in a single PR (#291) that carries
+   both the `Warn/Audit` introduction and the promotion to `Deny` — by
+   explicit user direction, there is no separately-observed live audit-bake
+   window on the cluster this time (unlike the original Kyverno Enforce
+   cutover, which staged each policy individually with a live health gate
+   between Audit and Enforce). The pre-merge dry-run gate stands in for that
+   step.
+5. Pod Security Admission promotion (`audit`/`warn=restricted` →
+   `enforce=restricted`) is staged separately and deliberately incomplete:
+   namespace labels moved to `audit`/`warn=restricted` only.
+   `enforce=restricted` is intentionally **not** set yet — see Exceptions
+   update below.
+
+**Exceptions — status update, native PSA has no equivalent to Kyverno's
+label-based bypass:**
+
+- `kafka` (`m05-baseline-kafka-init-chown`): in-cluster Kafka is retired per
+  Mandate #8 (Kafka → MSK migration, confirmed complete by CDO02); the
+  workload no longer serves production traffic and is pending deletion. No
+  non-root remediation was attempted for it (a `fsGroup`-based approach was
+  judged technically plausible — `values-prod.yaml` already sets
+  `podSecurityContext.fsGroup: 1000` for kafka for an unrelated EBS
+  permission issue — but not pursued, since the workload is being
+  decommissioned rather than hardened). This exception is expected to close
+  naturally once the in-cluster Kafka resources are deleted as part of
+  Mandate #8 cleanup, not through a security fix.
+- `aiops-engine` (`m05-baseline-aiops-engine-runtime`): confirmed to have no
+  manifest anywhere in this GitOps repository — it is `kubectl apply`d
+  directly by AIO02, outside ArgoCD. CDO01 has no file in this repo to edit
+  to remediate it. Deferred to the workload owner; not blocking the rest of
+  this migration.
+- Because both exceptions remain live and unresolved at the runtime level
+  (even though for well-understood reasons), PSA `enforce=restricted` stays
+  off. This is a deliberate, documented gate, not an oversight — enabling it
+  now would admission-reject any recreate/restart of either workload while
+  it still runs with a root/privileged security context.
+- **Third, previously-unregistered gap found via live `--dry-run=server`
+  test (2026-07-21):** the DaemonSet `otel-collector-agent` — the shared
+  OpenTelemetry Collector running on every node, used by all 18 services —
+  also violates `restricted` (6 `hostPort` container ports plus a
+  `hostPath` volume, neither allowed under `restricted`). This is now the
+  primary blocker for `enforce=restricted`, not just the two registered
+  exceptions: its blast radius is cluster-wide (any node replacement,
+  drain, or DaemonSet rollout strands that node's collector), larger than
+  either single-workload exception. Remediation has not been scoped yet.
+  Full detail: `docs/evidence/mandate-05/native-migration-20260721.md`.
+
+**Rollback additions:**
+
+- Native image/resource policy rollback: change the affected
+  `ValidatingAdmissionPolicyBinding.spec.validationActions` from `["Deny"]`
+  back to `["Warn", "Audit"]`, or revert PR #291 through GitOps.
+- LimitRange/ResourceQuota rollback: revert the `default`/`defaultRequest`
+  removal and the quota increase through GitOps if headroom or debug-pod
+  friction becomes a problem.
+- PSA rollback: not applicable yet — `enforce` was never turned on.
+- Kyverno retirement rollback: not applicable — Kyverno was never removed by
+  this update.
