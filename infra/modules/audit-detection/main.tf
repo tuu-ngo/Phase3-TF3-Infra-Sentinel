@@ -302,6 +302,15 @@ data "aws_iam_policy_document" "audit_alert_router" {
   }
 
   statement {
+    sid    = "WriteLambdaDlq"
+    effect = "Allow"
+    actions = [
+      "sqs:SendMessage",
+    ]
+    resources = [aws_sqs_queue.audit_alert_router_dlq.arn]
+  }
+
+  statement {
     sid    = "PublishLatencyMetric"
     effect = "Allow"
     actions = [
