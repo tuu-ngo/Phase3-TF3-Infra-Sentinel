@@ -31,7 +31,7 @@ còn sử dụng image tag mà không kèm @sha256.
 ### 0.1 Quyết định PM bổ sung
 
 1. **PR approval policy:** tối thiểu một latest review `APPROVED` hay bắt buộc `reviewDecision == APPROVED`; approver có phải khác author không.
-2. **SBOM contract PM-127:** SPDX JSON/CycloneDX, predicate type, attach release-index hay platform digest, certificate identity/issuer, lệnh verify chuẩn.
+2. **SBOM contract từ PM-127:** format CycloneDX JSON; Cosign predicate type `cyclonedx`; exact identity `https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/.github/workflows/build-push-ecr.yml@refs/heads/main`; issuer `https://token.actions.githubusercontent.com`; một SBOM cho mỗi published platform; attestation subject là immutable release digest; final provenance cấm `--allow-pending-sbom`. Giữ trạng thái `BLOCKED` cho tới khi PM chính thức approve contract này.
 3. **Evidence retention:** fix ngắn hạn manifest approved lên 90 ngày; durable design bằng OCI/SLSA attestation hoặc S3 Object Lock.
 
 Approval/SBOM policy phải chốt trước final Phase 4; Docker scope phải chốt trước Phase 2.
@@ -185,11 +185,35 @@ popd >/dev/null
 
 Merge Dockerfile vào `main` dự kiến tự trigger push build do path filter. Theo dõi run đó trước; chỉ `workflow_dispatch` nếu push run không chạy, bị cancel, aggregate thiếu đúng 20 target, hoặc cần rehearsal riêng. Không chạy đồng thời hai run gây build/push trùng chi phí.
 
+Không dùng workflow run mới nhất làm trust anchor. Chọn run theo exact source SHA:
+
 ```bash
-gh run list -R tuu-ngo/Phase3-TF3-Infra-Sentinel --workflow build-push-ecr.yml --limit 1
+REPO="tuu-ngo/Phase3-TF3-Infra-Sentinel"
+MERGE_SHA="<commit-trên-main-cần-kiểm>"
+
+RUN_JSON="$(
+  gh run list \
+    -R "$REPO" \
+    --workflow build-push-ecr.yml \
+    --branch main \
+    --commit "$MERGE_SHA" \
+    --json databaseId,headSha,event,status,conclusion,url \
+    --limit 10
+)"
+
+MATCH_COUNT="$(
+  jq --arg sha "$MERGE_SHA" \
+    '[.[] | select(.headSha == $sha)] | length' \
+    <<<"$RUN_JSON"
+)"
+
+[ "$MATCH_COUNT" -eq 1 ] || {
+  echo "FAIL: expected exactly one matching run, found $MATCH_COUNT" >&2
+  exit 1
+}
 ```
 
-Lưu `run_id`, link run, aggregate manifest; xác nhận Trivy/Cosign pass và đủ chính xác 20 service, không suy diễn từ mode `full`/`scoped`.
+Run được chọn vẫn phải có `headSha == MERGE_SHA`, `conclusion == success`, đúng workflow path, event `push` hoặc một `workflow_dispatch` được phê duyệt, và aggregate artifact khớp run ID + run attempt. Lưu run ID/link/aggregate manifest; xác nhận Trivy/Cosign pass và đúng 20 service, không suy diễn từ mode `full`/`scoped`.
 
 ## Phase 4 — `scripts/ci/trace-provenance.sh`
 

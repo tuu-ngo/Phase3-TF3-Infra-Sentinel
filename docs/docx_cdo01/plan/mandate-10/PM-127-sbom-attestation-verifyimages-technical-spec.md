@@ -31,7 +31,8 @@ Mọi ô `Pass` trong test matrix dưới đây là **expected acceptance result
 
 - Có 7 workflow YAML ở snapshot hiện tại; final DoD vẫn phải discover động toàn bộ workflow/reusable workflow.
 - Có 28 Dockerfile khi tính 20 production target, OpenSearch, 6 genproto và Cypress; Docker scope vẫn cần quyết định PM như PM-129 quy định.
-- Production Helm value stack trong `build-push-ecr.yml` render thành công 22,420 dòng với `values.yaml`, `values-flagd-sync.yaml` và `values-prod.yaml`.
+- Authoritative production Helm render sử dụng đúng bốn values file: `values.yaml`, `values-flagd-sync.yaml`, `values-prod.yaml` và `values-aio-llm.yaml` theo Argo CD Application.
+- Sau khi đồng bộ main, render đủ bốn values tạo `/tmp/techx-prod.yaml` gồm 22,445 dòng và 30 image reference duy nhất. Inventory/allow-list phải được sinh lại từ output này; không giữ số của render ba values cũ. Local `helm dependency build` cần cấu hình đủ năm Helm repository trước khi được dùng làm evidence, dù chart vendored hiện vẫn template được.
 - `gitops/infrastructure/limit-range.yaml` đã bị xóa trên main. Resource/image-reference enforcement hiện có thêm native `ValidatingAdmissionPolicy` + binding `Deny`; các Kyverno policy digest/latest/resource/security-context vẫn phải được đối chiếu Git và live state trước cutover.
 - Render vẫn có external image tag; inventory/allow-list và digest policy cho external images phải được kiểm theo contract, không suy ra từ việc Helm render pass.
 
@@ -136,7 +137,7 @@ actions/upload-artifact@v4
 sigstore/cosign-installer@v4.1.2
 ```
 
-Task hiện tại đóng hai mảnh SBOM + PM-127. Không được tuyên bố toàn bộ Mandate 10 hoàn tất nếu action/base-image pinning và required-check evidence chưa được đóng ở task khác.
+Task PM-127 đóng hai mảnh: SBOM attestation và admission signature verification bằng Kyverno `verifyImages`. Không được tuyên bố toàn bộ Mandate 10 hoàn tất nếu action/base-image pinning và required-check evidence chưa được đóng ở task khác.
 
 ---
 
