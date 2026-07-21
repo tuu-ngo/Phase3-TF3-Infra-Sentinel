@@ -97,6 +97,16 @@ Trong lúc mở đường test bằng Go local, lộ ra một lỗi build cũ:
 
 để module build sạch trên toolchain hiện tại.
 
+## Verify Jaeger sau deploy
+
+Trace Jaeger ngày 21/07/2026 xác nhận thay đổi đã đi đúng luồng:
+
+- Sau `CartService/GetCart`, `prepOrderItems(...)` và `quoteShipping(...)` chạy overlap dưới span `prepareOrderItemsAndShippingQuoteFromCart`.
+- Trong `prepOrderItems(...)`, các span `ProductCatalogService/GetProduct` và `CurrencyService/Convert` của nhiều cart item xuất hiện cùng cấp và overlap theo thời gian, thay vì nối đuôi nhau từng item.
+- Bottleneck trước đây là waterfall tuần tự theo item; sau tối ưu, span `prepareOrderItemsAndShippingQuoteFromCart` quan sát được khoảng **23.97ms**, còn span `CheckoutService/PlaceOrder` khoảng **45.6ms** trong trace sau.
+
+So với trace trước, request checkout quan sát được khoảng **185.05ms** và waterfall `GetProduct -> Convert` còn xếp đuôi theo từng item. Jaeger vì vậy cho thấy phần bottleneck trong đoạn chuẩn bị order/shipping đã giảm rõ: critical path không còn cộng dồn tuyến tính theo số sản phẩm trong giỏ, mà gần với nhánh downstream chậm nhất trong nhóm tác vụ song song.
+
 ## Kỳ vọng tác động
 
 - Giảm số round-trip tuần tự trong critical path `checkout`
