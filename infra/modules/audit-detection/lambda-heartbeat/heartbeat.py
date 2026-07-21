@@ -281,6 +281,45 @@ def _check_subscriptions(client, topic_arn, expected_endpoints, label):
     return failures
 
 
+def _check_router_integrity(client, function_arn, expected, label):
+    """So cấu hình router thật với trạng thái đã được Terraform duyệt.
+
+    State=Active là chưa đủ: router có thể bị thay code thành no-op mà vẫn
+    Active, khi đó alert bị nuốt hoàn toàn trong im lặng. detectorConfig nằm
+    trong danh sách vì đó là nơi chứa critical_group_numbers — sửa nó là cách
+    gỡ bypass allowlist mà không cần đụng tới code.
+    """
+    failures = []
+    config = client.get_function_configuration(FunctionName=function_arn)
+
+    if config.get("State") != "Active" or config.get("LastUpdateStatus") not in (None, "Successful"):
+        failures.append(f"{label} Lambda is not healthy")
+
+    if not expected:
+        failures.append(f"{label} has no approved baseline in ROUTER_EXPECTED_JSON")
+        return failures
+
+    checks = (
+        ("code", config.get("CodeSha256"), expected.get("codeSha256")),
+        ("handler", config.get("Handler"), expected.get("handler")),
+        ("role", config.get("Role"), expected.get("roleArn")),
+        (
+            "detector config",
+            (config.get("Environment") or {}).get("Variables", {}).get("DETECTOR_CONFIG_JSON"),
+            expected.get("detectorConfig"),
+        ),
+    )
+    for field, actual, wanted in checks:
+        if wanted and actual != wanted:
+            failures.append(f"{label} {field} differs from the approved deployment")
+
+    concurrency = client.get_function_concurrency(FunctionName=function_arn)
+    if "ReservedConcurrentExecutions" in concurrency:
+        failures.append(f"{label} Lambda has unexpected reserved concurrency")
+
+    return failures
+
+
 def _publish_independently(destinations, subject, message):
     delivered = []
     failures = []
@@ -310,6 +349,7 @@ def handler(event, _context):
     global_rules = json.loads(os.environ["GLOBAL_RULES_JSON"])
     primary_router_arn = os.environ["PRIMARY_ROUTER_ARN"]
     global_router_arn = os.environ["GLOBAL_ROUTER_ARN"]
+    router_expected = json.loads(os.environ["ROUTER_EXPECTED_JSON"])
     schedule_rule_name = os.environ["HEARTBEAT_SCHEDULE_RULE_NAME"]
     heartbeat_function_arn = os.environ["HEARTBEAT_FUNCTION_ARN"]
     alarm_names = json.loads(os.environ["HEARTBEAT_ALARM_NAMES_JSON"])
@@ -468,12 +508,12 @@ def handler(event, _context):
         (lambda_global, global_router_arn, "global router"),
     ):
         try:
-            config = client.get_function_configuration(FunctionName=function_arn)
-            if config.get("State") != "Active" or config.get("LastUpdateStatus") not in (None, "Successful"):
-                failures.append(f"{label} Lambda is not healthy")
-            concurrency = client.get_function_concurrency(FunctionName=function_arn)
-            if "ReservedConcurrentExecutions" in concurrency:
-                failures.append(f"{label} Lambda has unexpected reserved concurrency")
+            failures.extend(_check_router_integrity(
+                client,
+                function_arn,
+                router_expected.get(function_arn),
+                label,
+            ))
         except Exception as exc:
             failures.append(f"{label} Lambda check failed: {type(exc).__name__}: {exc}")
 

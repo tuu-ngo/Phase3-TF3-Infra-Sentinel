@@ -169,12 +169,13 @@ module "audit_detection_ap_southeast_1" {
   is_multi_region_trail             = true
   lambda_log_retention_days         = var.audit_detection_lambda_log_retention_days
   trail_s3_retention_days           = var.audit_detection_trail_s3_retention_days
-
   # Mandate 12 — chỉ instance tạo trail mới nhận các input này.
-  trail_object_lock_mode = var.audit_detection_trail_object_lock_mode
-  trail_object_lock_days = var.audit_detection_trail_object_lock_days
-  s3_data_event_arns     = var.audit_detection_s3_data_event_arns
-
+  # require_s3_data_event_coverage = true: plan FAIL nếu chưa điền ARN đã duyệt,
+  # thay vì apply một trail không ghi GetObject.
+  trail_object_lock_mode            = var.audit_detection_trail_object_lock_mode
+  trail_object_lock_days            = var.audit_detection_trail_object_lock_days
+  s3_data_event_arns                = var.audit_detection_s3_data_event_arns
+  require_s3_data_event_coverage    = true
   alert_email_subscriptions         = local.audit_detection_email_subscriptions
   event_rules                       = local.audit_detection_regional_event_rules
   allowed_automation_principal_arns = local.audit_detection_allowed_automation_principal_arns

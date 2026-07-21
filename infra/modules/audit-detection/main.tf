@@ -309,6 +309,15 @@ resource "aws_cloudtrail" "audit" {
       ])
       error_message = "s3_data_event_arns must not include the audit archive bucket or any of its prefixes."
     }
+
+    # Selector data events chỉ được tạo khi danh sách khác rỗng. Nếu rỗng mà vẫn
+    # apply thì trail không ghi GetObject và Mandate 12 trượt đòn "làm hụt" —
+    # nhưng plan lại xanh, nên sai sót đó im lặng. Precondition biến nó thành
+    # lỗi plan thay vì một gate chỉ nằm trong tài liệu.
+    precondition {
+      condition     = !var.require_s3_data_event_coverage || length(var.s3_data_event_arns) > 0
+      error_message = "Mandate 12: audit_detection_s3_data_event_arns is empty. Fill the data-owner approved S3 ARNs (each ending with /) before planning production."
+    }
   }
 
   depends_on = [aws_s3_bucket_policy.trail_logs]

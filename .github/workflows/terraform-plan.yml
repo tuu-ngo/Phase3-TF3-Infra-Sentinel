@@ -36,7 +36,13 @@ concurrency:
 jobs:
   plan:
     name: Plan production
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    # PR từ fork không được lấy OIDC token để assume plan role. GitHub vốn đã
+    # không cấp id-token: write cho fork PR, nhưng chặn tường minh ở đây để
+    # không phải phụ thuộc vào hành vi ngầm của nền tảng.
+    if: >-
+      (github.event_name == 'pull_request'
+       && github.event.pull_request.head.repo.full_name == github.repository)
+      || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}

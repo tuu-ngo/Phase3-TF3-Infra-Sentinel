@@ -37,3 +37,12 @@ variable "s3_data_event_arns" {
     error_message = "Each S3 Object ARN must be valid and end with /."
   }
 }
+
+# Default false để module vẫn dùng lại được ở instance không tạo trail hoặc
+# chưa cần data events. Production truyền true: khi đó plan FAIL nếu danh sách
+# rỗng, thay vì apply âm thầm một trail không ghi GetObject.
+variable "require_s3_data_event_coverage" {
+  description = "Bắt plan thất bại nếu s3_data_event_arns rỗng. Mandate 12 yêu cầu true ở production."
+  type        = bool
+  default     = false
+}

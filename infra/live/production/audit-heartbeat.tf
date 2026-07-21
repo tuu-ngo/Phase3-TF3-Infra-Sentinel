@@ -9,7 +9,7 @@ locals {
   m12_heartbeat_name                = "${var.cluster_name}-m12-audit-heartbeat"
   m12_heartbeat_schedule_name       = "${var.cluster_name}-m12-audit-heartbeat-schedule"
   m12_heartbeat_fallback_topic_name = "${var.cluster_name}-m12-audit-heartbeat-fallback"
-  m12_heartbeat_alarm_names         = [
+  m12_heartbeat_alarm_names = [
     "${var.cluster_name}-m12-audit-heartbeat-missing",
     "${var.cluster_name}-m12-audit-heartbeat-errors",
   ]
@@ -65,6 +65,25 @@ locals {
   ]
 
   m12_heartbeat_alarm_source_arn_pattern = "arn:aws:cloudwatch:${var.region}:${data.aws_caller_identity.m12_current.account_id}:alarm:${var.cluster_name}-m12-audit-heartbeat-*"
+
+  # Trạng thái router đã được duyệt. CI boundary buộc phải cho phép
+  # lambda:UpdateFunctionCode (Terraform cần nó để deploy router), nên chặn ở
+  # tầng IAM là không khả thi — phát hiện là lớp bù. Heartbeat so bốn field này
+  # với Lambda thật; lệch một field là FAIL.
+  m12_router_expected = {
+    (local.m12_primary_router_arn) = {
+      codeSha256     = module.audit_detection_ap_southeast_1.lambda_source_code_hash
+      handler        = module.audit_detection_ap_southeast_1.lambda_handler
+      roleArn        = module.audit_detection_ap_southeast_1.lambda_role_arn
+      detectorConfig = module.audit_detection_ap_southeast_1.lambda_detector_config
+    }
+    (local.m12_global_router_arn) = {
+      codeSha256     = module.audit_detection_us_east_1.lambda_source_code_hash
+      handler        = module.audit_detection_us_east_1.lambda_handler
+      roleArn        = module.audit_detection_us_east_1.lambda_role_arn
+      detectorConfig = module.audit_detection_us_east_1.lambda_detector_config
+    }
+  }
 
   m12_primary_rules = {
     for key, rule in local.audit_detection_regional_event_rules :
@@ -294,6 +313,7 @@ resource "aws_lambda_function" "m12_audit_heartbeat" {
       GLOBAL_RULES_JSON                    = jsonencode(local.m12_global_rules)
       PRIMARY_ROUTER_ARN                   = local.m12_primary_router_arn
       GLOBAL_ROUTER_ARN                    = local.m12_global_router_arn
+      ROUTER_EXPECTED_JSON                 = jsonencode(local.m12_router_expected)
       HEARTBEAT_SCHEDULE_RULE_NAME         = local.m12_heartbeat_schedule_name
       HEARTBEAT_FUNCTION_ARN               = local.m12_heartbeat_function_arn
       HEARTBEAT_ALARM_NAMES_JSON           = jsonencode(local.m12_heartbeat_alarm_names)

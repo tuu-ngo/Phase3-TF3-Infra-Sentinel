@@ -168,7 +168,6 @@ data "aws_iam_policy_document" "ci_audit_boundary" {
   }
 
   # Subscribe và SetTopicAttributes vẫn được phép (thêm người nhận, sửa config).
-  # Gỡ người nhận là thao tác hiếm và nhạy cảm — đi qua đường human-approved.
   statement {
     sid    = "DenyAuditAlertTopicTeardown"
     effect = "Deny"
@@ -176,10 +175,29 @@ data "aws_iam_policy_document" "ci_audit_boundary" {
     actions = [
       "sns:DeleteTopic",
       "sns:RemovePermission",
-      "sns:Unsubscribe",
     ]
 
     resources = local.m12_topic_arns
+  }
+
+  # SNS KHÔNG có resource type cho subscription: sns:Unsubscribe và
+  # sns:SetSubscriptionAttributes chỉ authorize được với Resource "*". Deny scope
+  # theo topic ARN sẽ không bao giờ match, tức là vô hiệu.
+  #
+  # Deny toàn cục ở đây không gây thiệt hại phụ: toàn repo chỉ có hai
+  # aws_sns_topic_subscription và cả hai đều thuộc audit plane. Hệ quả là CI
+  # không gỡ được người nhận alert của BẤT KỲ topic nào — gỡ recipient trở thành
+  # thao tác human-approved, đúng ý đồ. Thêm recipient (sns:Subscribe) vẫn chạy.
+  statement {
+    sid    = "DenySubscriptionTeardownAccountWide"
+    effect = "Deny"
+
+    actions = [
+      "sns:Unsubscribe",
+      "sns:SetSubscriptionAttributes",
+    ]
+
+    resources = ["*"]
   }
 
   # PutFunctionConcurrency = 0 làm router ngừng xử lý mà không xoá gì —
