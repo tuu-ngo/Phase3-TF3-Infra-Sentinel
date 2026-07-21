@@ -21,3 +21,7 @@ cloudflare_allowed_emails = [
   "khanh.nguyen@techxcorp.com",
   "namhong.ta@techxcorp.com",
 ]
+
+# Mandate #8 — bật tầng datastore managed (RDS/ElastiCache/MSK).
+# Đặt = true để state khớp hạ tầng thật; nếu để default false, plan sau sẽ đòi XOÁ 3 store.
+enable_managed_datastores = true

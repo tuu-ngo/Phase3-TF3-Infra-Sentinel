@@ -41,7 +41,20 @@ public class ValkeyCartStore : ICartStore
         {
             HistogramBucketBoundaries = [ 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10 ]
         });
+    // Mandate #8: dual-write observability. Operator watches errors -> 0 before flipping reads.
+    private static readonly Counter<long> dualWriteTotalCounter = CartMeter.CreateCounter<long>(
+        "app.cart.dual_write.total");
+    private static readonly Counter<long> dualWriteErrorCounter = CartMeter.CreateCounter<long>(
+        "app.cart.dual_write.errors");
     private readonly ConfigurationOptions _redisConnectionOptions;
+
+    // Mandate #8: temporary dual-write to a second store (ElastiCache during cutover). Empty = off.
+    private readonly bool _dualWriteEnabled;
+    private readonly string _dualWriteAddress;
+    private readonly ConfigurationOptions _dualWriteConnectionOptions;
+    private volatile ConnectionMultiplexer _dualWriteRedis;
+    private volatile bool _isDualWriteConnectionOpened;
+    private readonly object _dualWriteLocker = new();
 
     public ValkeyCartStore(ILogger<ValkeyCartStore> logger, string valkeyAddress)
     {
@@ -49,15 +62,45 @@ public class ValkeyCartStore : ICartStore
         // Serialize empty cart into byte array.
         var cart = new Oteldemo.Cart();
         _emptyCartBytes = cart.ToByteArray();
-        _connectionString = $"{valkeyAddress},ssl=false,allowAdmin=true,abortConnect=false";
 
-        _redisConnectionOptions = ConfigurationOptions.Parse(_connectionString);
+        // Mandate #8: TLS + AUTH token from env. Defaults (off / empty) reproduce the previous
+        // behavior exactly (ssl=false, no password) so deploying this change is a no-op until cutover.
+        bool useTls = string.Equals(Environment.GetEnvironmentVariable("VALKEY_TLS"), "true", StringComparison.OrdinalIgnoreCase);
+        string authToken = Environment.GetEnvironmentVariable("VALKEY_AUTH_TOKEN") ?? string.Empty;
 
-        // Try to reconnect multiple times if the first retry fails.
-        _redisConnectionOptions.ConnectRetry = RedisRetryNumber;
-        _redisConnectionOptions.ReconnectRetryPolicy = new ExponentialRetry(1000);
+        // Connection string kept only for the debug log below - never includes the password.
+        _connectionString = $"{valkeyAddress},ssl={(useTls ? "true" : "false")},allowAdmin=true,abortConnect=false";
+        _redisConnectionOptions = BuildConnectionOptions(valkeyAddress, useTls, authToken, RedisRetryNumber);
 
-        _redisConnectionOptions.KeepAlive = 180;
+        // Mandate #8: temporary dual-write to a second store during cutover. Empty = disabled.
+        // Target has its own TLS/auth (phase 1: ElastiCache with TLS; phase 2: old valkey plaintext).
+        _dualWriteAddress = Environment.GetEnvironmentVariable("VALKEY_DUAL_WRITE_ADDR") ?? string.Empty;
+        _dualWriteEnabled = !string.IsNullOrEmpty(_dualWriteAddress);
+        if (_dualWriteEnabled)
+        {
+            bool dwTls = string.Equals(Environment.GetEnvironmentVariable("VALKEY_DUAL_WRITE_TLS"), "true", StringComparison.OrdinalIgnoreCase);
+            string dwToken = Environment.GetEnvironmentVariable("VALKEY_DUAL_WRITE_AUTH_TOKEN") ?? string.Empty;
+            // Fail fast (ConnectRetry=1) so a slow/down secondary never inflates customer latency.
+            _dualWriteConnectionOptions = BuildConnectionOptions(_dualWriteAddress, dwTls, dwToken, 1);
+            _dualWriteConnectionOptions.ConnectTimeout = 2000;
+            _dualWriteConnectionOptions.AsyncTimeout = 1000;
+        }
+    }
+
+    // Mandate #8: build StackExchange.Redis options with optional TLS + AUTH token.
+    // Preserves the original retry/keepalive tuning. Defaults keep ssl off and no password.
+    private static ConfigurationOptions BuildConnectionOptions(string address, bool useTls, string authToken, int connectRetry)
+    {
+        var options = ConfigurationOptions.Parse($"{address},allowAdmin=true,abortConnect=false");
+        options.Ssl = useTls;
+        if (!string.IsNullOrEmpty(authToken))
+        {
+            options.Password = authToken;
+        }
+        options.ConnectRetry = connectRetry;
+        options.ReconnectRetryPolicy = new ExponentialRetry(1000);
+        options.KeepAlive = 180;
+        return options;
     }
 
     public ConnectionMultiplexer GetConnection()
@@ -129,6 +172,44 @@ public class ValkeyCartStore : ICartStore
         }
     }
 
+    // Mandate #8: mirror a write to the dual-write target (best-effort, bounded latency).
+    // Never throws - a failure here must not break the customer path. Errors are logged and
+    // counted so the operator can confirm convergence (errors -> 0) before flipping reads.
+    private async Task DualWriteAsync(string userId, HashEntry[] entries)
+    {
+        if (!_dualWriteEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!_isDualWriteConnectionOpened)
+            {
+                lock (_dualWriteLocker)
+                {
+                    if (!_isDualWriteConnectionOpened)
+                    {
+                        _dualWriteRedis = ConnectionMultiplexer.Connect(_dualWriteConnectionOptions);
+                        _isDualWriteConnectionOpened = _dualWriteRedis != null && _dualWriteRedis.IsConnected;
+                    }
+                }
+            }
+
+            var db = _dualWriteRedis.GetDatabase();
+            await db.HashSetAsync(userId, entries);
+            // Same 60-minute TTL as the primary so the convergence-window proof holds on both stores.
+            await db.KeyExpireAsync(userId, TimeSpan.FromMinutes(60));
+            dualWriteTotalCounter.Add(1);
+        }
+        catch (Exception ex)
+        {
+            _isDualWriteConnectionOpened = false;
+            dualWriteErrorCounter.Add(1);
+            _logger.LogError(ex, "Dual-write to {address} failed for user {userId}", _dualWriteAddress, userId);
+        }
+    }
+
     public async Task AddItemAsync(string userId, string productId, int quantity)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -170,8 +251,12 @@ public class ValkeyCartStore : ICartStore
                 }
             }
 
-            await db.HashSetAsync(userId, new[]{ new HashEntry(CartFieldName, cart.ToByteArray()) });
+            var cartEntries = new[]{ new HashEntry(CartFieldName, cart.ToByteArray()) };
+            await db.HashSetAsync(userId, cartEntries);
             await db.KeyExpireAsync(userId, TimeSpan.FromMinutes(60));
+
+            // Mandate #8: mirror to the dual-write target after the primary write succeeds.
+            await DualWriteAsync(userId, cartEntries);
         }
         catch (Exception ex)
         {
@@ -195,8 +280,12 @@ public class ValkeyCartStore : ICartStore
             var db = _redis.GetDatabase();
 
             // Update the cache with empty cart for given user
-            await db.HashSetAsync(userId, new[] { new HashEntry(CartFieldName, _emptyCartBytes) });
+            var emptyEntries = new[] { new HashEntry(CartFieldName, _emptyCartBytes) };
+            await db.HashSetAsync(userId, emptyEntries);
             await db.KeyExpireAsync(userId, TimeSpan.FromMinutes(60));
+
+            // Mandate #8: mirror the empty-cart write to the dual-write target.
+            await DualWriteAsync(userId, emptyEntries);
         }
         catch (Exception ex)
         {

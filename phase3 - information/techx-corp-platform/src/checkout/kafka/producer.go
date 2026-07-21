@@ -3,6 +3,7 @@
 package kafka
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"time"
@@ -14,6 +15,24 @@ var (
 	Topic           = "orders"
 	ProtocolVersion = sarama.V3_0_0_0
 )
+
+// SecurityConfig gom cấu hình TLS + SASL/SCRAM cho Kafka, đọc từ env (xem main.go).
+// Mandate #8: MSK yêu cầu SASL_SSL + SCRAM-SHA-512. Mặc định rỗng = PLAINTEXT =
+// hành vi hiện tại với Kafka in-cluster (không TLS, không auth) → deploy an toàn trước cutover.
+type SecurityConfig struct {
+	// Protocol: "", "PLAINTEXT" (mặc định) | "SASL_SSL" | "SASL_PLAINTEXT" | "SSL".
+	Protocol string
+	Username string
+	Password string
+}
+
+func (s SecurityConfig) useSASL() bool {
+	return s.Protocol == "SASL_SSL" || s.Protocol == "SASL_PLAINTEXT"
+}
+
+func (s SecurityConfig) useTLS() bool {
+	return s.Protocol == "SASL_SSL" || s.Protocol == "SSL"
+}
 
 type saramaLogger struct {
 	logger *slog.Logger
@@ -29,13 +48,30 @@ func (l *saramaLogger) Print(v ...interface{}) {
 	l.logger.Info(fmt.Sprint(v...))
 }
 
-func CreateKafkaProducer(brokers []string, logger *slog.Logger) (sarama.SyncProducer, error) {
+func CreateKafkaProducer(brokers []string, logger *slog.Logger, secCfg SecurityConfig) (sarama.SyncProducer, error) {
 	// Set the logger for sarama to use.
 	sarama.Logger = &saramaLogger{logger: logger}
 
 	saramaConfig := sarama.NewConfig()
 	saramaConfig.Producer.Return.Successes = true
 	saramaConfig.Producer.Return.Errors = true
+
+	// Mandate #8: bật TLS + SASL/SCRAM-SHA-512 khi env yêu cầu (MSK). Mặc định tắt = hành vi cũ.
+	if secCfg.useTLS() {
+		saramaConfig.Net.TLS.Enable = true
+		// MSK dùng cert từ CA công cộng (Amazon Trust Services) → root CA hệ thống của
+		// image builder là đủ, không cần mount custom CA bundle.
+		saramaConfig.Net.TLS.Config = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	if secCfg.useSASL() {
+		saramaConfig.Net.SASL.Enable = true
+		saramaConfig.Net.SASL.User = secCfg.Username
+		saramaConfig.Net.SASL.Password = secCfg.Password
+		saramaConfig.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+		saramaConfig.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient {
+			return &XDGSCRAMClient{HashGeneratorFcn: SHA512}
+		}
+	}
 
 	// REL-09: order events are financial data - do NOT fire-and-forget.
 	// The previous RequiredAcks=NoResponse silently swallowed failed messages,

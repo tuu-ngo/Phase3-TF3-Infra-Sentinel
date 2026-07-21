@@ -159,3 +159,16 @@ variable "cloudflare_allowed_emails" {
   type        = list(string)
   default     = []
 }
+
+# ---------- Mandate #8: managed datastores (RDS / ElastiCache / MSK) ----------
+variable "enable_managed_datastores" {
+  description = "Bật tầng datastore managed (Mandate #8). false = không tạo gì (giữ in-cluster)."
+  type        = bool
+  default     = false
+}
+
+variable "datastores_name_prefix" {
+  description = "Prefix ngắn cho tên tài nguyên/secret datastore (vd techx-tf3)."
+  type        = string
+  default     = "techx-tf3"
+}
