@@ -6,9 +6,14 @@
   - `kafka` (`m05-baseline-kafka-init-chown`): **không cần fix.** CDO02 xác nhận Mandate 8 (Kafka→MSK) đã xong, in-cluster Kafka không còn phục vụ traffic thật, chỉ chưa xoá. Bỏ qua fsGroup/non-root remediation — exception tự đóng khi workload bị dọn (theo dõi ở Mandate 8, không phải việc của task này).
   - `aiops-engine` (`m05-baseline-aiops-engine-runtime`): **chưa giải quyết được, để user tự xử lý sau.** AIO02 chưa đưa manifest để quản qua ArgoCD, CDO01 không có gì trong tay để sửa (deployment kubectl-apply tay ngoài GitOps). Không block phần còn lại của native migration.
   - → Do 2 exception trên vẫn còn tồn tại thật ở runtime (dù có lý do), **PSA `enforce=restricted` CHƯA được bật** — đúng gate DoD PM-169/PM-170 ("audit/warn trước, enforce chỉ sau khi có hướng rõ ràng"). Cân nhắc bật enforce sau khi kafka cũ bị xoá hẳn (Mandate 8 cleanup) dù aiops-engine vẫn còn treo — cần bàn lại với user lúc đó.
-- PM-170: chưa bắt đầu — Task 4 (VAP Deny) phụ thuộc PR #291 merge trước; Task 5 (PSA enforce) phụ thuộc gate exception ở trên.
+- PM-170: đang làm — **Task 4 xong** (2 Binding VAP đổi `["Warn","Audit"]` → `["Deny"]`, commit `fd5b6f9`, dry-run sạch). **Quyết định của user (21/07):** gộp cả 6 task vào chung PR #291, không tách audit-bake riêng trên cluster sống trước khi Deny — khác 1 chút so với kỷ luật "audit trước, enforce sau, verify từng bước trên live cluster" đã dùng ở Mandate 5 gốc (Kyverno). Bù lại bằng: dry-run gate đầy đủ trước merge (5 fixture + không ảnh hưởng 18 workload thật) sẽ chạy ngay sau khi PR merge + Argo sync, trước khi coi Task 4 là "xong thật". Task 5 (PSA enforce) vẫn treo theo gate exception ở trên — **CHƯA làm**, không nằm trong quyết định gộp PR này (PSA enforce là quyết định riêng, rủi ro cao hơn VAP Deny vì có thể chặn nhầm Kafka/aiops-engine đang chạy thật).
 
 ## Nhật ký (mới nhất lên trên)
+
+### 2026-07-21 — PM-170 Task 4: VAP Warn/Audit → Deny
+- User quyết định: gộp cả 6 task (PM-168+169+170 code phần) vào 1 PR #291 duy nhất, không tách PR audit-bake riêng, không cần kiểm tra PR đã merge chưa trước khi làm tiếp — làm liền Task 4.
+- Sửa `gitops/policies/native/mandate-05-runtime-policy.yaml`: cả 2 `ValidatingAdmissionPolicyBinding` (`mandate05-native-resource-requirements-techx-tf3`, `mandate05-native-image-reference-techx-tf3`) đổi `validationActions` từ `["Warn","Audit"]` → `["Deny"]`. Commit `fd5b6f9`, dry-run sạch.
+- Chưa push commit này + các commit PM-169/Task4 trước đó (`bf83dd2`, `2508015`, `fd5b6f9`) — đang ở local, chờ user tự push như lần trước.
 
 ### 2026-07-21 — PM-169 audit/warn=restricted staged
 - Sửa `gitops/infrastructure/namespace-techx-tf3.yaml`: `audit`/`warn` từ `baseline` → `restricted` (+ version `v1.35`), **chưa thêm `enforce`**. Commit `bf83dd2`, dry-run sạch. Chưa push.
