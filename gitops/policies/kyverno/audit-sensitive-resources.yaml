@@ -1,0 +1,86 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-sensitive-resource-changes
+  annotations:
+    policies.kyverno.io/title: Block manual kubectl apply on sensitive resources
+    policies.kyverno.io/description: >
+      Blocks direct kubectl apply/create/update/delete on NetworkPolicy, Role,
+      ClusterRole, RoleBinding, ClusterRoleBinding by anyone who is not ArgoCD's
+      application-controller service account.
+      All changes to these resources MUST go through GitOps (PR → main → ArgoCD sync).
+      For emergencies, use the break-glass procedure in docs/runbooks/break-glass.md.
+      Related: postmortem 0008-manual-networkpolicy-checkout-browse-disruption.md
+spec:
+  validationFailureAction: Enforce
+  background: false  # admission-time only — no background scan needed
+  rules:
+
+    - name: block-manual-sensitive-resource-changes
+      match:
+        any:
+          - resources:
+              kinds:
+                - NetworkPolicy
+                - Role
+                - ClusterRole
+                - RoleBinding
+                - ClusterRoleBinding
+              operations:
+                - CREATE
+                - UPDATE
+                - DELETE
+
+      # Exclude legitimate actors that are allowed to manage these resources.
+      # Everyone else (including break-glass operators using tf3-production-operator role)
+      # is blocked — break-glass must go through ArgoCD or use the dedicated
+      # break-glass IAM role documented in rbac-least-privilege-proposal.md.
+      exclude:
+        any:
+          # ArgoCD application controller — the only actor allowed to apply infra changes
+          - subjects:
+              - kind: ServiceAccount
+                name: argocd-application-controller
+                namespace: argocd
+
+          # Kyverno itself (background policy reconciliation)
+          - subjects:
+              - kind: ServiceAccount
+                name: kyverno-admission-controller
+                namespace: kyverno
+              - kind: ServiceAccount
+                name: kyverno-background-controller
+                namespace: kyverno
+
+          # Kubernetes system controllers (node lifecycle, namespace controller etc.)
+          - clusterRoles:
+              - "cluster-admin"
+              - "system:controller:*"
+              - "system:node"
+              - "system:masters"
+              - "eks:*"
+
+      validate:
+        message: >
+          [BLOCKED] Direct kubectl apply on {{request.object.kind}} '{{request.object.metadata.name}}'
+          (namespace: {{request.namespace}}) by user '{{request.userInfo.username}}' is not allowed.
+          All changes to NetworkPolicy/RBAC resources MUST go through GitOps:
+            1. Create a branch and edit the file under gitops/infrastructure/ or gitops/policies/
+            2. Open a PR against main with a description of the change
+            3. Get peer review and approval
+            4. Merge — ArgoCD will automatically apply within ~3 minutes
+          For production incidents requiring immediate action, see:
+            docs/runbooks/break-glass.md
+        deny:
+          conditions:
+            all:
+              # Block if the actor is not one of the explicitly whitelisted service accounts.
+              # Kubernetes system users (system:node, system:controller:*) are already
+              # excluded via the exclude.clusterRoles block above, so they never reach
+              # this deny condition.
+              - key: "{{request.userInfo.username}}"
+                operator: NotIn
+                value:
+                  - "system:serviceaccount:argocd:argocd-application-controller"
+                  - "system:serviceaccount:kyverno:kyverno-admission-controller"
+                  - "system:serviceaccount:kyverno:kyverno-background-controller"

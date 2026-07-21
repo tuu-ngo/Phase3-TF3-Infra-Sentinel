@@ -12,6 +12,14 @@ spec:
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: techx-tf3
+  # Warn when resources exist in the namespace but are NOT tracked by ArgoCD.
+  # This surfaces resources created by direct kubectl apply (outside GitOps).
+  # The warning appears in the ArgoCD UI under the application's "App Diff" view.
+  # Note: this does NOT auto-delete orphans — it only makes them visible.
+  # Kyverno policy audit-sensitive-resource-changes is the Enforce gate.
+  # Related: postmortem 0008-manual-networkpolicy-checkout-browse-disruption.md
+  orphanedResources:
+    warn: true
   syncPolicy:
     automated:
       prune: true
