@@ -1,5 +1,7 @@
 # PM-129 — Directive #10: Immutable dependency pinning + truy ngược full provenance
 
+**Master sequence:** `mandate-10-closure-execution-plan.md` Gate 4.
+
 **Repo:** `tuu-ngo/Phase3-TF3-Infra-Sentinel`
 **Liên quan:** PM-124 (audit pin), PM-127 (SBOM + `verifyImages` — dependency cứng của Phase 4)
 **Trạng thái:** Kế hoạch thực thi chuẩn
@@ -13,7 +15,7 @@ Phase 0 không chặn Phase 1, nhưng phải hoàn tất trước Phase 2. Audit
 
 | Hạng mục | Audit cũ nói | Thực tế repo | Cần chốt / áp dụng |
 |---|---:|---|---|
-| Workflow dùng tag | 6 | **7** tại baseline `bbe25038`: `build-push-ecr`, `scan-external-images`, `secret-scan`, `terraform-plan`, `terraform-apply`, `validate-production-access`, `test-image-bump` | Snapshot only; final audit discover động |
+| Workflow dùng tag | 6 | **7 workflow / 37 action references** tại planning baseline `63db1d8`: `build-push-ecr`, `scan-external-images`, `secret-scan`, `terraform-plan`, `terraform-apply`, `validate-production-access`, `test-image-bump` | Snapshot only; final audit discover động |
 | Service build | 18 | **20** tại baseline theo `ALL_SERVICES` trong `build-push-ecr.yml`: `accounting`, `ad`, `cart`, `checkout`, `currency`, `email`, `fraud-detection`, `frontend`, `frontend-proxy`, `image-provider`, `kafka`, `llm`, `load-generator`, `payment`, `product-catalog`, `product-reviews`, `quote`, `recommendation`, `shipping`, `flagd-ui` | Snapshot only; final set phải reconcile với bake targets + inventory |
 | `opensearch` | — | Có Dockerfile + bake target trong `docker-compose.yml`, nhưng không thuộc `ALL_SERVICES`; không build/push/scan bởi `build-push-ecr.yml` | PM quyết định có thuộc Directive #4 hay là vendor image ngoài pipeline |
 | Genproto Dockerfile | — | 6 file (`checkout`, `currency`, `frontend`, `product-catalog`, `product-reviews`, `recommendation`), được `docker-gen-proto.sh` dùng thực sự để regenerate protobuf; không tạo production image | PM quyết định có thuộc DoD Dockerfile hay loại trừ vì không lên cluster |
@@ -43,7 +45,7 @@ còn sử dụng image tag mà không kèm @sha256.
 ### 0.2 Quyết định PM bổ sung
 
 1. **PR approval policy:** tối thiểu một latest review `APPROVED` hay bắt buộc `reviewDecision == APPROVED`; approver có phải khác author không.
-2. **SBOM contract từ PM-127:** format CycloneDX JSON; Cosign predicate type `cyclonedx`; exact identity `https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/.github/workflows/build-push-ecr.yml@refs/heads/main`; issuer `https://token.actions.githubusercontent.com`; một SBOM cho mỗi published platform; attestation subject là immutable release digest; final provenance cấm `--allow-pending-sbom`. Giữ trạng thái `BLOCKED` cho tới khi PM chính thức approve contract này.
+2. **SBOM contract từ PM-127:** format CycloneDX JSON; Cosign predicate type `cyclonedx`; exact identity `https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/.github/workflows/build-push-ecr.yml@refs/heads/main`; issuer `https://token.actions.githubusercontent.com`; một SBOM cho mỗi published platform; predicate có service/platform/subject/source SHA/run ID/attempt/generator/version; attestation subject là immutable release digest; SBOM hash nằm trong signed release-provenance/index contract, không self-reference trong SBOM; final provenance cấm `--allow-pending-sbom`. Giữ trạng thái `BLOCKED` cho tới khi PM chính thức approve contract này.
 3. **Evidence retention:** fix ngắn hạn manifest approved lên 90 ngày; durable design bằng OCI/SLSA attestation hoặc S3 Object Lock.
 
 Approval/SBOM policy phải chốt trước final Phase 4; Docker scope phải chốt trước Phase 2.
@@ -57,7 +59,7 @@ Approval/SBOM policy phải chốt trước final Phase 4; Docker scope phải c
 - [ ] 0 external `FROM` thiếu digest trong Dockerfile scope PM xác nhận.
 - [ ] Regression checker + unit tests chạy trong CI.
 - [ ] Inventory final-main machine-generated map 100% Dockerfile và mọi external stage; không dựa vào mẫu số 28/20 viết tay.
-- [ ] Local build thật `linux/amd64` đủ toàn bộ production target từ authoritative inventory (snapshot hiện tại: 20) pass trước merge.
+- [ ] Local/PR build thật `linux/amd64` và `linux/arm64` đủ toàn bộ production target từ authoritative inventory (snapshot hiện tại: 20) pass trước merge.
 - [ ] Một run `main` có aggregate manifest đúng authoritative production target set và toàn bộ Trivy/Cosign gate pass.
 - [ ] Trace pod thật: digest → build run/source SHA → source PR → promotion PR → scan → signature/Rekor → SBOM.
 - [ ] Final evidence không dùng `--allow-pending-sbom`.
@@ -129,6 +131,18 @@ Thêm `scripts/ci/verify-immutable-pins.py`, chạy trong `test-image-bump.yml`.
 - [ ] Pin có comment version gốc; lint toàn workflow và trigger path đã mở rộng.
 - [ ] Checker tồn tại, chạy trong CI, và fail đúng case test.
 
+### 1.6 Dependency freshness automation
+
+Thêm `renovate.json` và phê duyệt Renovate App cho `github-actions` + `dockerfile` managers:
+
+- schedule weekly;
+- giữ human-readable version comment cạnh full SHA/digest;
+- không automerge;
+- bump PR phải qua CODEOWNERS, immutable-pin checker, dual-platform PR Trivy và build tests;
+- dependency dashboard/report có owner và SLA xử lý security update.
+
+Nếu không thể cài Renovate, thêm scheduled read-only workflow pin-audit tạo artifact/issue và chỉ định owner mở PR thủ công. Workflow fallback không tự ghi production hoặc tự merge. DoD fail nếu không có cả Renovate lẫn scheduled audit.
+
 ## Phase 2 — Pin Dockerfile base image theo digest
 
 ### 2.1 Lấy digest từ registry
@@ -174,9 +188,9 @@ Unit test bắt buộc: ARG resolve (bao gồm `flagd-ui`), nested/cyclic ARG, `
 - [ ] Nhóm C có quyết định PM và lý do rõ.
 - [ ] Toàn bộ digest pin resolve qua `imagetools inspect`.
 
-## Phase 3 — Verify build không gãy
+## Phase 3 — Verify build không gãy trên mọi platform publish
 
-`build-push-ecr.yml` chỉ chạy `workflow_dispatch` và push `main` theo path filter, không có `pull_request`; PR check không là evidence full build. Trước merge chạy build thật single-arch:
+`build-push-ecr.yml` hiện chỉ chạy `workflow_dispatch` và push `main` theo path filter. PM-125 phải cung cấp read-only PR matrix cho cả AMD64/ARM64; PM-129 vẫn chạy local verification trên authoritative target set trước merge:
 
 ```bash
 TARGETS=(
@@ -187,20 +201,25 @@ TARGETS=(
 
 pushd "phase3 - information/techx-corp-platform" >/dev/null
 
+docker buildx inspect --bootstrap
+docker buildx inspect | rg -F 'linux/arm64'
+
 docker buildx bake \
   -f docker-compose.yml \
   --check \
   "${TARGETS[@]}"
 
-docker buildx bake \
-  -f docker-compose.yml \
-  --set '*.platform=linux/amd64' \
-  "${TARGETS[@]}"
+for platform in linux/amd64 linux/arm64; do
+  docker buildx bake \
+    -f docker-compose.yml \
+    --set "*.platform=${platform}" \
+    "${TARGETS[@]}"
+done
 
 popd >/dev/null
 ```
 
-Merge Dockerfile vào `main` dự kiến tự trigger push build do path filter. Theo dõi run đó trước; chỉ `workflow_dispatch` nếu push run không chạy, bị cancel, aggregate thiếu authoritative production target set (snapshot hiện tại: 20), hoặc cần rehearsal riêng. Không chạy đồng thời hai run gây build/push trùng chi phí.
+Merge Dockerfile vào `main` dự kiến tự trigger push build do path filter. Theo dõi run đó trước; chỉ `workflow_dispatch` nếu push run không chạy, bị cancel, aggregate thiếu authoritative production target/platform set (snapshot hiện tại: 20 × 2), hoặc cần rehearsal riêng. Không chạy đồng thời hai run gây build/push trùng chi phí.
 
 Không dùng workflow run mới nhất làm trust anchor. Chọn run theo exact source SHA:
 
@@ -334,8 +353,10 @@ docs/evidence/mandate-10/
 ├── action-pin-audit-before.txt
 ├── action-pin-audit-after.txt
 ├── action-pins.lock.json
+├── dependency-freshness-report.json
+├── dependency-automation-validation.txt
 ├── docker-pin-audit.txt
-├── local-amd64-build.log
+├── local-multiplatform-build.log
 ├── build-run.json
 ├── approved-images.json
 ├── trace-rehearsal.log
@@ -378,4 +399,4 @@ Phase 5: runbook + rehearsal/final evidence
 
 ## Điều kiện đóng Directive #10
 
-Chỉ đóng khi đồng thời có dependency bất biến (Actions SHA, actionlint checksum, Docker digest), build hoạt động (local AMD64 authoritative target set và main aggregate/scan/sign pass), provenance đầy đủ (digest → build run/source SHA → source PR → promotion PR/deployed revision → Trivy → Cosign/Rekor → SBOM), evidence tái chạy được (runbook/log/result/retention), và final `overallResult == "PASS"`, `sbomVerified == true`, không có `--allow-pending-sbom`.
+Chỉ đóng khi đồng thời có dependency bất biến và được duy trì (Actions SHA, actionlint checksum, Docker digest, Renovate/scheduled audit), build hoạt động (local/PR AMD64+ARM64 authoritative target set và main aggregate/scan/sign pass), provenance đầy đủ (digest → build run/source SHA → source PR → promotion PR/deployed revision → Trivy → Cosign/Rekor → SBOM), evidence tái chạy được (runbook/log/result/retention), và final `overallResult == "PASS"`, `sbomVerified == true`, không có `--allow-pending-sbom`.

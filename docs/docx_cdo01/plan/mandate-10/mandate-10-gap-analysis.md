@@ -2,15 +2,16 @@
 
 **Loại tài liệu:** audit và source of truth cho planning; không phải bằng chứng đã đóng mandate.
 **Quy tắc verdict:** chỉ ghi `Implemented`, `PASS` hoặc `Done` khi có evidence được liên kết. Thiếu evidence phải ghi `Gap`, `Blocked` hoặc `Needs reconciliation`.
+**Closure sequence:** `mandate-10-closure-execution-plan.md`.
 
 ## 0. Canonical source, baseline và hygiene gate
 
 - Canonical gap analysis duy nhất là file này: `docs/docx_cdo01/plan/mandate-10/mandate-10-gap-analysis.md`.
 - Không tạo hoặc giữ bản sao tại `docs/docx_cdo01/mandate-10-gap-analysis.md`. Tài liệu khác chỉ được link về canonical path, không được copy verdict sang một source of truth thứ hai.
-- Snapshot review này được đối chiếu tại `main@bbe25038b47bf743b5e35ec6f997d89380f639fd` ngày `2026-07-21`. Mọi final verdict phải chạy lại trên exact final-main SHA; không mặc định snapshot này vẫn hiện hành.
+- Snapshot planning mới nhất được đối chiếu sau khi sync tại `main@63db1d8d171a9d64284cea0f496a37b859791484` ngày `2026-07-21`. Mọi final verdict phải chạy lại trên exact final-main SHA; không mặc định snapshot này vẫn hiện hành.
 - Trước merge, toàn bộ Markdown trong thư mục Mandate 10 phải trả về zero match cho Unicode format controls (`Cf`), bao gồm bidi override/isolate và BOM ẩn giữa file. Unicode tiếng Việt bình thường được giữ nguyên.
 
-Machine-generated audit bundle bắt buộc:
+Machine-generated audit bundle dưới đây bắt buộc **trước final implementation/closure PR**, không phải artifact phải pre-create trong planning PR #288:
 
 ```text
 docs/evidence/mandate-10/audit/
@@ -46,7 +47,7 @@ else
 fi
 ```
 
-Snapshot `bbe25038` sinh ra 7 workflow: `build-push-ecr`, `scan-external-images`, `secret-scan`, `terraform-plan`, `terraform-apply`, `validate-production-access`, `test-image-bump`. Con số này chỉ mô tả baseline trên, không phải mẫu số DoD cố định.
+Planning snapshot `63db1d8` sinh ra 7 workflow, 37 external action references và 28 Dockerfile. Bốn production values render thành 23,065 dòng với 30 image reference duy nhất. Các con số này chỉ mô tả baseline trên, không phải mẫu số DoD cố định. Planning PR phải giữ command/output trong review; closure PR phải sinh bundle, checksum và stale-baseline gate theo `mandate-10-closure-execution-plan.md`.
 
 ## 1. Evidence boundary
 
@@ -71,7 +72,7 @@ PR metadata chỉ chứng minh một PR đã có review/check tại một thời
 | IaC scan | Không | Không | Chưa triển khai |
 | SAST | Không | Không | Chưa triển khai |
 
-`build-push-ecr.yml` chỉ chạy `workflow_dispatch` và push `main`; Trivy image gate hiện không thể là PR gate. PM-125 phải thêm PR-mode image build + Trivy scan, cùng IaC và SAST.
+`build-push-ecr.yml` chỉ chạy `workflow_dispatch` và push `main`; Trivy image gate hiện không thể là PR gate. PM-125 phải thêm PR-mode image build + Trivy scan cho cả `linux/amd64` và `linux/arm64`, cùng IaC và SAST.
 
 ### Yêu cầu 3: 🟡 Immutable release có nền tảng; SBOM/admission cần reconcile
 
@@ -120,12 +121,13 @@ Workflow có `prepare` và `git diff`, nhưng sự tồn tại của code không
 
 ## 4. Priority fixes before review
 
-1. PM-125: một `Secure delivery gate` luôn chạy; aggregate Gitleaks, PR Trivy, conditional IaC/SAST và `if: always()`. Branch protection chỉ require check aggregate.
-2. PM-127: đổi tên/spec khỏi PM-114; reconcile PM-127/128 bằng live/Git evidence.
+1. PM-125: khóa trust boundary bằng CODEOWNERS + ruleset + expected GitHub Actions source, sau đó tạo một `Secure delivery gate` luôn chạy; aggregate Gitleaks, dual-platform PR Trivy, conditional IaC/SAST và `if: always()`.
+2. PM-127: đổi tên/spec khỏi PM-114; bổ sung exact run metadata vào SBOM/provenance và reconcile PM-127/128 bằng live/Git evidence.
 3. PM-129: discovery dynamic mọi workflow tại final main, không audit `0/7`.
 4. PM-132: dùng contract provenance flags; manifest unsigned compliant các policy khác và dùng ECR digest thật; không pre-fill `ĐẠT`.
-5. Xóa duplicate gap analysis, chạy Unicode `Cf` gate và đính kèm machine-generated inventory cùng baseline SHA.
-6. Rebase branch lên latest `main`, chạy lại audit/checks, đổi title/body PR và request review chỉ sau evidence đủ.
+5. PM-132: dry-run chỉ rehearsal; final phải actual apply fail bởi đúng signature rule và chứng minh Pod absent.
+6. Planning PR chỉ cần current baseline review output; sinh machine audit bundle tại final implementation/closure SHA.
+7. Sync branch lên latest `main`, chạy lại audit/checks, đổi title/body PR và request review chỉ sau evidence đủ.
 
 ## 5. Review-blocker traceability
 
@@ -139,5 +141,11 @@ Workflow có `prepare` và `git diff`, nhưng sự tồn tại của code không
 | Scoped build bị gọi “đạt hoàn toàn” thiếu tests | Yêu cầu 6 | Positive/negative contract runs + selected/skipped sets + promotion PR |
 | PM-129 thiếu authoritative/multi-arch/promotion/retention/ambiguity | PM-129 §0.1, §2.1–2.3, §4.1, §4.3–4.5 | Docker inventory JSON, platform descriptors, source+promotion PR, retained trace bundle |
 | PM-132 dùng fake/nonexistent unsigned digest | PM-132 Demo 2 | ECR-resolvable digest, signature-absence proof, exact verifyImages rejection |
+| Required gate tự bị sửa để PASS | Closure plan D1 + PM-125 trust boundary | CODEOWNERS/ruleset export + malicious gate-edit PR bị block |
+| PR Trivy chỉ scan AMD64 | Closure plan D2 + PM-125 dual-platform matrix | AMD64/ARM64 reports và aggregate fail-closed |
+| Final demo chỉ server dry-run | Closure plan D4 + PM-132 Demo 2 | Actual apply non-zero + exact rule + Pod `NotFound` |
+| SBOM attestation mơ hồ giữa rerun/backfill | Closure plan D3 + PM-127 SBOM invariant | Exact service/platform/source/run/attempt metadata + signed hash link |
+| Baseline `bbe25038` stale | §0 baseline freshness | Planning baseline `63db1d8`; final stale-baseline gate |
+| Audit bundle contract không khớp planning PR | §0 + closure plan §5 | Bundle bắt buộc tại final implementation/closure, không pre-claim trong PR #288 |
 
 Một plan clause chỉ làm blocker **planned**, chưa làm nó `PASS`. Review blocker chỉ được đóng khi cột evidence tương ứng tồn tại và trỏ về exact baseline/run/PR.
