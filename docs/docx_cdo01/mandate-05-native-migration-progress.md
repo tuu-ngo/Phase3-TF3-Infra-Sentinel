@@ -1,11 +1,21 @@
 # Mandate 05 Native Migration — Progress Log
 
 ## Trạng thái tổng quan
-- PM-168: đang làm — code xong, dry-run sạch, **đã push + mở PR #291** (https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/291), nhánh `pm113-flagd-ui-kafka-digest-pin`. Chờ merge + Argo sync để verify Warn/Audit thật.
-- PM-169: chưa bắt đầu — bị block bởi 2 exception kafka/aiops-engine (xem execution guide mục 4), cần bàn hướng trước khi code.
-- PM-170: chưa bắt đầu — phụ thuộc PM-168 + PM-169 xong trước.
+- PM-168: code xong, dry-run sạch, **đã push + mở PR #291** (https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/291), nhánh `pm113-flagd-ui-kafka-digest-pin`. **Chưa merge.** Chờ merge + Argo sync để verify Warn/Audit thật.
+- PM-169: đang làm — namespace `techx-tf3` đã chuyển label `audit/warn=restricted` (commit `bf83dd2`, chưa push), **CHƯA bật `enforce`**. Quyết định exception (không mơ hồ):
+  - `kafka` (`m05-baseline-kafka-init-chown`): **không cần fix.** CDO02 xác nhận Mandate 8 (Kafka→MSK) đã xong, in-cluster Kafka không còn phục vụ traffic thật, chỉ chưa xoá. Bỏ qua fsGroup/non-root remediation — exception tự đóng khi workload bị dọn (theo dõi ở Mandate 8, không phải việc của task này).
+  - `aiops-engine` (`m05-baseline-aiops-engine-runtime`): **chưa giải quyết được, để user tự xử lý sau.** AIO02 chưa đưa manifest để quản qua ArgoCD, CDO01 không có gì trong tay để sửa (deployment kubectl-apply tay ngoài GitOps). Không block phần còn lại của native migration.
+  - → Do 2 exception trên vẫn còn tồn tại thật ở runtime (dù có lý do), **PSA `enforce=restricted` CHƯA được bật** — đúng gate DoD PM-169/PM-170 ("audit/warn trước, enforce chỉ sau khi có hướng rõ ràng"). Cân nhắc bật enforce sau khi kafka cũ bị xoá hẳn (Mandate 8 cleanup) dù aiops-engine vẫn còn treo — cần bàn lại với user lúc đó.
+- PM-170: chưa bắt đầu — Task 4 (VAP Deny) phụ thuộc PR #291 merge trước; Task 5 (PSA enforce) phụ thuộc gate exception ở trên.
 
 ## Nhật ký (mới nhất lên trên)
+
+### 2026-07-21 — PM-169 audit/warn=restricted staged
+- Sửa `gitops/infrastructure/namespace-techx-tf3.yaml`: `audit`/`warn` từ `baseline` → `restricted` (+ version `v1.35`), **chưa thêm `enforce`**. Commit `bf83dd2`, dry-run sạch. Chưa push.
+- Điều tra thật (agent Explore) trước khi quyết định hướng exception:
+  - Kafka: init-container `init-kafka-data` (`values-prod.yaml`) chạy `mkdir -p /var/lib/kafka/data && chown -R 1000:1000 ...`, `runAsUser: 0`, trên Deployment `kafka` (không phải StatefulSet), PVC `kafka-data`. `podSecurityContext.fsGroup: 1000` **đã có sẵn** trong `values-prod.yaml` (thêm trước đó để né lỗi "Permission denied" lúc ghi EBS mới) — về lý thuyết đủ để bỏ chown-root, nhưng **không cần làm** vì user xác nhận CDO02 đã hoàn tất Mandate 8 (Kafka→MSK), Kafka in-cluster không còn dùng, sắp bị xoá.
+  - aiops-engine: xác nhận **không có manifest nào trong repo này** — Deployment `aiops-engine` trong `techx-tf3` được `kubectl apply` tay ngoài GitOps bởi AIO02 (`last-applied-configuration` annotation, theo `mandate-05-final-report.md`). Không có gì để CDO01 tự sửa. User quyết định: để aiops-engine lại, tự xử lý sau, không chặn phần còn lại.
+- Quyết định: giữ PSA ở `audit/warn=restricted`, **không bật `enforce`** cho tới khi có thêm quyết định của user (sau khi Kafka cũ bị dọn / AIO02 có tiến triển).
 
 ### 2026-07-21 13:36 — PM-168 push + PR
 - User tự push nhánh `pm113-flagd-ui-kafka-digest-pin` (commit `818b139`, `7bc3290`) và mở PR #291:
