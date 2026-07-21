@@ -293,7 +293,7 @@ Test case bắt buộc trước khi đóng task:
 
 | Rủi ro | Mức độ | Giảm thiểu |
 |---|---|---|
-| Tăng concurrent RPC lên product-catalog | Thấp | Số sản phẩm/giỏ thông thường ≤ 10; connection pool REL-05 đã có |
+| Tăng concurrent RPC lên product-catalog/DB | Có ngưỡng định lượng | Worst-case checkout tạo `8 * N` request song song sang product-catalog khi 8 pod checkout cùng nhận giỏ trung bình `N` sản phẩm. Trần DB pool phía product-catalog là `8 pod * 20 = 160` connections, nên chỉ vượt nếu `8N > 160` tức `N > 20`. Với `N <= 10`, worst-case là 80 connections đồng thời, chưa vượt giới hạn 160. |
 | Tăng concurrent RPC lên currency service | Thấp | Currency service stateless, không có state/DB |
 | Race condition trên `out[]` slice | Không có | Mỗi goroutine chỉ ghi vào index riêng của mình |
 | Context cancel quá sớm khi 1 item lỗi | Đã xử lý | `errgroup.WithContext` cancel context → goroutine còn lại thoát sớm qua context deadline |

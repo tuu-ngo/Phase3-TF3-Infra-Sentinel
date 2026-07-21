@@ -600,62 +600,62 @@ func (cs *checkout) emptyUserCart(ctx context.Context, userID string) error {
 }
 
 func (cs *checkout) prepOrderItems(
-    ctx context.Context,
-    items []*pb.CartItem,
-    userCurrency string,
+	ctx context.Context,
+	items []*pb.CartItem,
+	userCurrency string,
 ) ([]*pb.OrderItem, error) {
 
-    out := make([]*pb.OrderItem, len(items))
+	out := make([]*pb.OrderItem, len(items))
 
-    g, ctx := errgroup.WithContext(ctx)
+	g, ctx := errgroup.WithContext(ctx)
 
-    for i, item := range items {
+	for i, item := range items {
 
-        i := i
-        item := item
+		i := i
+		item := item
 
-        g.Go(func() error {
+		g.Go(func() error {
 
-            product, err := cs.productCatalogSvcClient.GetProduct(
-                ctx,
-                &pb.GetProductRequest{
-                    Id: item.GetProductId(),
-                },
-            )
-            if err != nil {
-                return fmt.Errorf(
-                    "failed to get product #%q",
-                    item.GetProductId(),
-                )
-            }
+			product, err := cs.productCatalogSvcClient.GetProduct(
+				ctx,
+				&pb.GetProductRequest{
+					Id: item.GetProductId(),
+				},
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to get product #%q",
+					item.GetProductId(),
+				)
+			}
 
-            price, err := cs.convertCurrency(
-                ctx,
-                product.GetPriceUsd(),
-                userCurrency,
-            )
-            if err != nil {
-                return fmt.Errorf(
-                    "failed to convert price of %q to %s",
-                    item.GetProductId(),
-                    userCurrency,
-                )
-            }
+			price, err := cs.convertCurrency(
+				ctx,
+				product.GetPriceUsd(),
+				userCurrency,
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to convert price of %q to %s",
+					item.GetProductId(),
+					userCurrency,
+				)
+			}
 
-            out[i] = &pb.OrderItem{
-                Item: item,
-                Cost: price,
-            }
+			out[i] = &pb.OrderItem{
+				Item: item,
+				Cost: price,
+			}
 
-            return nil
-        })
-    }
+			return nil
+		})
+	}
 
-    if err := g.Wait(); err != nil {
-        return nil, err
-    }
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
 
-    return out, nil
+	return out, nil
 }
 
 func (cs *checkout) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
