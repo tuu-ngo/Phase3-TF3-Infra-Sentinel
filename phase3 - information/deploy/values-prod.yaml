@@ -107,6 +107,15 @@ otelGateway:
       cpu: 500m
       memory: 768Mi
 
+otel-node-agent:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
 components:
   # imageOverride (per-component) - dùng khi build/deploy lại 1 service riêng lẻ mà
   # KHÔNG bump default.image.tag dùng chung ở trên. build-push-ecr.yml giờ build scoped

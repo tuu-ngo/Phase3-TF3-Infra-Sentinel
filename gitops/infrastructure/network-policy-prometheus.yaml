@@ -25,6 +25,12 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: otel-gateway
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-node-agent
         # jaeger SPM (Monitor tab) query PROMETHEUS_ADDR=prometheus:9090
         - podSelector:
             matchLabels:
