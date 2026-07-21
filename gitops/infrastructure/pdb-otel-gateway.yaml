@@ -1,0 +1,13 @@
+# Mandate 5 Otel PSA migration: keep the app telemetry gateway available during
+# voluntary node drains before application traffic is moved to this endpoint.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: otel-gateway-pdb
+  namespace: techx-tf3
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-gateway
