@@ -38,7 +38,7 @@ Approval/SBOM policy phải chốt trước final Phase 4; Docker scope phải c
 
 ### 0.2 Definition of Done chuẩn hóa
 
-- [ ] 0 external `uses:` trong 7 workflow còn tag/branch/short SHA.
+- [ ] 0 external `uses:` trong **mọi** workflow ở final-main SHA còn tag/branch/short SHA. `7` chỉ là inventory snapshot trước PM-125/127, không phải mẫu số DoD.
 - [ ] Mọi action pin full SHA 40 ký tự, có comment version gốc.
 - [ ] Không còn `/main/`, `/master/`, `/releases/latest/`, `@latest` là remote CI dependency trong scope.
 - [ ] Actionlint pin release + checksum.
@@ -54,10 +54,10 @@ Approval/SBOM policy phải chốt trước final Phase 4; Docker scope phải c
 
 ### 1.1 Script pin thật
 
-Tạo `scripts/ci/pin-actions.sh`. Script phải resolve SHA thật qua GitHub API, thay exact ref trong mọi `.github/workflows/*.{yml,yaml}`, giữ comment tag/version, sinh `scripts/ci/action-pins.lock.json`, và fail nếu còn external action dùng tag/branch/short SHA.
+Tạo `scripts/ci/pin-actions.sh`. Script phải **tự discover** mọi external `uses:` và reusable-workflow reference trong `.github/workflows/*.{yml,yaml}` ở commit đang audit, resolve SHA thật qua GitHub API, thay exact ref, giữ comment tag/version, sinh `scripts/ci/action-pins.lock.json`, và fail nếu còn tag/branch/short SHA. Không dùng array viết tay làm source of truth, vì PM-125/127 có thể thêm workflow/action sau inventory 7 workflow.
 
 ```bash
-ACTIONS=(
+ACTIONS=( # seed inventory only; script must merge with dynamic discovery
   "actions/checkout@v6" "actions/checkout@v4"
   "actions/upload-artifact@v4" "actions/download-artifact@v4"
   "actions/setup-python@v5"
@@ -81,7 +81,7 @@ Workflow phải có dạng:
 uses: actions/checkout@<full-40-char-sha>  # v6
 ```
 
-`actions/checkout@v4` của `test-image-bump.yml` là version lệch cần note trong PR.
+`actions/checkout@v4` của `test-image-bump.yml` là version lệch cần note trong PR. Lock phải lưu `workflow path`, original ref, resolved SHA và thời điểm resolve, để review phát hiện action mới ngoài seed inventory.
 
 ### 1.2 Actionlint không dùng floating remote script
 
@@ -107,7 +107,7 @@ Chạy toàn bộ:
 
 ### 1.4 Regression checker
 
-Thêm `scripts/ci/verify-immutable-pins.py`, chạy trong `test-image-bump.yml`. `actionlint` chỉ kiểm cú pháp; checker phải fail khi gặp external `uses:` không phải 40-char SHA, external `FROM` thiếu `@sha256`, hoặc dependency CI floating. Cho phép `uses: ./local-action`, `FROM scratch`, và stage nội bộ như `FROM base AS builder`.
+Thêm `scripts/ci/verify-immutable-pins.py`, chạy trong `test-image-bump.yml`. `actionlint` chỉ kiểm cú pháp; checker phải discover toàn workflow tree và fail khi gặp external `uses:`/reusable workflow không phải 40-char SHA, external `FROM` thiếu `@sha256`, hoặc dependency CI floating. Cho phép `uses: ./local-action`, `FROM scratch`, và stage nội bộ như `FROM base AS builder`.
 
 ### 1.5 Exit criteria Phase 1
 
