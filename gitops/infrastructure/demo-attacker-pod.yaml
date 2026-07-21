@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: attacker-demo
+  namespace: techx-tf3
+  labels:
+    app.kubernetes.io/component: attacker-demo
+    app.kubernetes.io/instance: techx-corp
+    app.kubernetes.io/name: attacker-demo
+  annotations:
+    # Pod này chỉ dùng cho demo mentor — sẽ xóa sau buổi demo
+    mandate-17-demo: "attacker-pod — chứng minh NetworkPolicy containment"
+spec:
+  serviceAccountName: techx-corp   # SA đúng như business pod bị compromise
+  automountServiceAccountToken: false
+  # Không mount SA token vì demo không cần và để tránh lộ credential
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534   # nobody
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: attacker
+      image: python:3.12-alpine
+      command: ["sleep", "3600"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      # Không có volume mounts đặc biệt — pod đơn giản để exec vào
+  restartPolicy: Never

@@ -1,0 +1,1281 @@
+# NetworkPolicy: default deny ingress+egress cho business pods
+# Áp dụng cho tất cả pod business (component: các service chưa có NP riêng về egress)
+# Pattern: tạo NP per-component với policyTypes [Ingress, Egress]
+# Default là deny-all khi không có rule nào khớp.
+# Mỗi service sẽ có NP riêng cho phép đúng luồng cần thiết.
+---
+# Egress DNS được allow riêng cho mỗi NP để tránh port 53 bị chặn
+# Egress otel-collector được allow riêng cho mỗi NP để tránh PM-0006
+
+# ── checkout ──────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: checkout-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: checkout
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # OTel Collector (PM-0006: bắt buộc, thiếu → cascading failure)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # cart
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: cart
+      ports:
+        - protocol: TCP
+          port: 8080
+    # currency
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: currency
+      ports:
+        - protocol: TCP
+          port: 8080
+    # payment
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: payment
+      ports:
+        - protocol: TCP
+          port: 8080
+    # shipping
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: shipping
+      ports:
+        - protocol: TCP
+          port: 8080
+    # email
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: email
+      ports:
+        - protocol: TCP
+          port: 8080
+    # kafka
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+    # flagd (feature flags)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── cart ──────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cart-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: cart
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: checkout
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # valkey-cart (Redis)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: valkey-cart
+      ports:
+        - protocol: TCP
+          port: 6379
+    # flagd
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── currency ──────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: currency-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: currency
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: checkout
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── shipping ──────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shipping-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: shipping
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: checkout
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # quote service
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: quote
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── quote ──────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: quote-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: quote
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: shipping
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── ad ──────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ad-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: ad
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── recommendation ────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: recommendation-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: recommendation
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # product-catalog
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: product-catalog
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── product-catalog ───────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: product-catalog-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: product-catalog
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: recommendation
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # postgresql
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── product-reviews ───────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: product-reviews-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: product-reviews
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+      ports:
+        - protocol: TCP
+          port: 3551
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── payment ───────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payment-network-policy
+  namespace: techx-tf3
+  annotations:
+    # TODO(SEC): Xác nhận payment gateway endpoint với CDO02 để thay thế 0.0.0.0/0
+    # Nếu dùng Stripe/external gateway qua internet: cần ipBlock CIDR cụ thể.
+    # Tạm thời mở egress internet cho payment vì không có thông tin endpoint.
+    mandate-17-exception: "payment-egress-internet-open — pending endpoint confirmation"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: payment
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: checkout
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+    # TODO: Thay bằng CIDR payment gateway thực tế (e.g., Stripe 3.18.12.63/29...)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# ── email ──────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: email-network-policy
+  namespace: techx-tf3
+  annotations:
+    # TODO(SEC): Xác nhận AWS SES endpoint với CDO02.
+    # Tạm thời mở SMTP/TLS egress ra ngoài; nên lock xuống AWS SES CIDR sau.
+    mandate-17-exception: "email-egress-smtp-open — pending SES endpoint confirmation"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: email
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: checkout
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+    # SMTP/TLS egress (AWS SES: port 587 hay 465)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 587
+        - protocol: TCP
+          port: 465
+        - protocol: TCP
+          port: 25
+---
+# ── accounting ────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: accounting-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: accounting
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []  # accounting không expose HTTP — chỉ consume Kafka events
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # Kafka consumer
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+    # postgresql (audit logging)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── fraud-detection ────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fraud-detection-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: fraud-detection
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []  # fraud-detection chỉ consume Kafka events
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # Kafka consumer
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── frontend ──────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: frontend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── frontend-proxy ────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-proxy-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: frontend-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Internet traffic qua cloudflared tunnel (Cloudflare Access gated)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudflared
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Direct access cho port-forward từ ops (SSM tunnel)
+    - ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: cart
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: checkout
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: currency
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: ad
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: recommendation
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: shipping
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: product-catalog
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: product-reviews
+      ports:
+        - protocol: TCP
+          port: 3551
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: image-provider
+      ports:
+        - protocol: TCP
+          port: 8081
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── image-provider ────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: image-provider-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: image-provider
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+      ports:
+        - protocol: TCP
+          port: 8081
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+---
+# ── llm ───────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-network-policy
+  namespace: techx-tf3
+  annotations:
+    # TODO(SEC): Nếu Bedrock dùng VPC Endpoint thì xóa egress internet block này
+    # và thay bằng rule tới VPC endpoint CIDR (10.x.x.x).
+    mandate-17-exception: "llm-egress-bedrock — verify VPC endpoint vs internet"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: llm
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend-proxy
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+    # Bedrock / external LLM API
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# ── flagd ─────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: flagd-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: flagd
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Tất cả business pod query flagd
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: techx-corp
+      ports:
+        - protocol: TCP
+          port: 8013
+        - protocol: TCP
+          port: 8016
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # External flagd sync endpoint (BTC)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# ── aiops-engine ──────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aiops-engine-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app: aiops-engine
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []  # aiops-engine không expose HTTP trực tiếp
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+              component: agent-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # prometheus scrape
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+    # opensearch query
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opensearch
+      ports:
+        - protocol: TCP
+          port: 9200
+    # jaeger query
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: jaeger
+      ports:
+        - protocol: TCP
+          port: 16686
+        - protocol: TCP
+          port: 16685
+    # Bedrock / external LLM
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# ── cloudflared ───────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cloudflared-network-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cloudflared
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []  # cloudflared không nhận ingress từ cluster — chỉ outbound tunnel
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Cloudflare edge (QUIC/TLS)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: UDP
+          port: 443
+        - protocol: TCP
+          port: 7844
+        - protocol: UDP
+          port: 7844
+    # Grafana — cloudflared proxies grafana.arthur-ngo.org
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - protocol: TCP
+          port: 3000
+    # frontend-proxy — storefront traffic
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# ── demo "attacker pod" — deny all ingress+egress ─────────────────────────────
+# NP này chọn pod có label component: attacker-demo.
+# Không có ingress/egress rule → deny all. Dùng cho demo mentor.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: attacker-demo-deny-all
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: attacker-demo
+  policyTypes:
+    - Ingress
+    - Egress
+  # Không có ingress/egress rules → deny tất cả

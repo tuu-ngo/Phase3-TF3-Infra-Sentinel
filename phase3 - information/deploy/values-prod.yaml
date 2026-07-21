@@ -10,6 +10,12 @@ default:
     tag: 58b13f2
 
 grafana:
+  # SEC-01 fix (Mandate 17): Chuyển grafana-clusterrole → Role namespace-scoped để
+  # SA grafana không còn đọc được secrets ở kube-system và namespace khác.
+  # Xác nhận: kubectl auth can-i list secrets --as=system:serviceaccount:techx-tf3:grafana -n kube-system
+  # Phải trả 'no' sau khi ArgoCD sync.
+  rbac:
+    namespaced: true
   # REL-17: Grafana giờ có hostname riêng qua Cloudflare (grafana.arthur-ngo.org).
   # Base chart values.yaml đặt root_url = http://%(domain)s:%(http_port)s/grafana +
   # serve_from_sub_path=true (cho đường truy cập /grafana subpath cũ) → khi vào qua
