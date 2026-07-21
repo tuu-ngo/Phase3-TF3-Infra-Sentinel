@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log/global"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -597,23 +599,63 @@ func (cs *checkout) emptyUserCart(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (cs *checkout) prepOrderItems(ctx context.Context, items []*pb.CartItem, userCurrency string) ([]*pb.OrderItem, error) {
-	out := make([]*pb.OrderItem, len(items))
+func (cs *checkout) prepOrderItems(
+    ctx context.Context,
+    items []*pb.CartItem,
+    userCurrency string,
+) ([]*pb.OrderItem, error) {
 
-	for i, item := range items {
-		product, err := cs.productCatalogSvcClient.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get product #%q", item.GetProductId())
-		}
-		price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
-		}
-		out[i] = &pb.OrderItem{
-			Item: item,
-			Cost: price}
-	}
-	return out, nil
+    out := make([]*pb.OrderItem, len(items))
+
+    g, ctx := errgroup.WithContext(ctx)
+
+    for i, item := range items {
+
+        i := i
+        item := item
+
+        g.Go(func() error {
+
+            product, err := cs.productCatalogSvcClient.GetProduct(
+                ctx,
+                &pb.GetProductRequest{
+                    Id: item.GetProductId(),
+                },
+            )
+            if err != nil {
+                return fmt.Errorf(
+                    "failed to get product #%q",
+                    item.GetProductId(),
+                )
+            }
+
+            price, err := cs.convertCurrency(
+                ctx,
+                product.GetPriceUsd(),
+                userCurrency,
+            )
+            if err != nil {
+                return fmt.Errorf(
+                    "failed to convert price of %q to %s",
+                    item.GetProductId(),
+                    userCurrency,
+                )
+            }
+
+            out[i] = &pb.OrderItem{
+                Item: item,
+                Cost: price,
+            }
+
+            return nil
+        })
+    }
+
+    if err := g.Wait(); err != nil {
+        return nil, err
+    }
+
+    return out, nil
 }
 
 func (cs *checkout) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
