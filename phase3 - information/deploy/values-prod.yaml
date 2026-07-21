@@ -365,11 +365,10 @@ components:
           secretKeyRef:
             name: techx-tf3-valkey-auth
             key: auth_token
-      # dual-write DAO CHIEU -> valkey-cart cu (plaintext, khong auth) = duong lui
-      - name: VALKEY_DUAL_WRITE_ADDR
-        value: valkey-cart:6379
-      - name: VALKEY_DUAL_WRITE_TLS
-        value: "false"
+      # Mandate #8 §8: DA GO dual-write dao chieu ve valkey-cart cu. Truoc day cart ghi song song
+      # ve kho cu de giu "duong lui nong" (Plan A). Nay chuyen sang Plan B (snapshot ElastiCache
+      # + PITR) truoc khi xoa kho cu, nen bo dual-write: khong con ghi vao valkey-cart, va cart
+      # se khong loi khi kho cu bien mat.
   checkout:
     # Mandate 3: checkout is managed by Argo Rollouts, but the Rollout still reuses this
     # pod template through workloadRef. Keep the same graceful shutdown contract as the

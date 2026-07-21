@@ -206,31 +206,21 @@ components:
         value: kafka:9092
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
         value: http://$(OTEL_COLLECTOR_NAME):4318
+      # Mandate #8: KHONG dat credential plaintext o day. Production lay connection string
+      # (bao gom mat khau) tu Secrets Manager qua ExternalSecret `techx-tf3-postgres-conn`
+      # key `dotnet`, override bang envOverrides trong values-prod.yaml.
       - name: DB_CONNECTION_STRING
-        value: Host=postgresql;Username=otelu;Password=otelp;Database=otel
+        value: ""
       - name: OTEL_DOTNET_AUTO_TRACES_ENTITYFRAMEWORKCORE_INSTRUMENTATION_ENABLED
         value: "false"
     resources:
       limits:
         memory: 120Mi
-    initContainers:
-      - name: wait-for-kafka
-        image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
-        securityContext:
-          runAsUser: 65534
-          runAsGroup: 65534
-          runAsNonRoot: true
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-        resources:
-          requests:
-            cpu: 5m
-            memory: 8Mi
-          limits:
-            cpu: 50m
-            memory: 32Mi
+    # Mandate #8: DA GO initContainer `wait-for-kafka`. No hardcode `nc -z kafka 9092` (Kafka CU
+    # in-cluster), nen sau khi cutover sang MSK no se CHAN pod khoi dong vinh vien khi kho cu bi
+    # xoa o §8 (da xac nhan trong su co 0012: ca pod env-cu lan env-MSK deu ket o Init:0/1).
+    # Khong con can thiet: checkout da FAIL-FAST khi khong tao duoc producer (PR #269) - cong chan
+    # tot hon initContainer; accounting/fraud la consumer, client (librdkafka/Java) tu retry ket noi.
     securityContext:
       runAsUser: 1654  # app
       runAsGroup: 1654
@@ -368,24 +358,11 @@ components:
     resources:
       limits:
         memory: 20Mi
-    initContainers:
-      - name: wait-for-kafka
-        image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
-        securityContext:
-          runAsUser: 65534
-          runAsGroup: 65534
-          runAsNonRoot: true
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-        resources:
-          requests:
-            cpu: 5m
-            memory: 8Mi
-          limits:
-            cpu: 50m
-            memory: 32Mi
+    # Mandate #8: DA GO initContainer `wait-for-kafka`. No hardcode `nc -z kafka 9092` (Kafka CU
+    # in-cluster), nen sau khi cutover sang MSK no se CHAN pod khoi dong vinh vien khi kho cu bi
+    # xoa o §8 (da xac nhan trong su co 0012: ca pod env-cu lan env-MSK deu ket o Init:0/1).
+    # Khong con can thiet: checkout da FAIL-FAST khi khong tao duoc producer (PR #269) - cong chan
+    # tot hon initContainer; accounting/fraud la consumer, client (librdkafka/Java) tu retry ket noi.
     securityContext:
       runAsUser: 65532
       runAsGroup: 65532
@@ -484,24 +461,11 @@ components:
     resources:
       limits:
         memory: 300Mi
-    initContainers:
-      - name: wait-for-kafka
-        image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
-        securityContext:
-          runAsUser: 65534
-          runAsGroup: 65534
-          runAsNonRoot: true
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-        resources:
-          requests:
-            cpu: 5m
-            memory: 8Mi
-          limits:
-            cpu: 50m
-            memory: 32Mi
+    # Mandate #8: DA GO initContainer `wait-for-kafka`. No hardcode `nc -z kafka 9092` (Kafka CU
+    # in-cluster), nen sau khi cutover sang MSK no se CHAN pod khoi dong vinh vien khi kho cu bi
+    # xoa o §8 (da xac nhan trong su co 0012: ca pod env-cu lan env-MSK deu ket o Init:0/1).
+    # Khong con can thiet: checkout da FAIL-FAST khi khong tao duoc producer (PR #269) - cong chan
+    # tot hon initContainer; accounting/fraud la consumer, client (librdkafka/Java) tu retry ket noi.
     securityContext:
       runAsUser: 65532  # nonroot
       runAsGroup: 65532
@@ -778,7 +742,9 @@ components:
       - name: GOMEMLIMIT
         value: 16MiB
       - name: DB_CONNECTION_STRING
-        value: postgres://otelu:otelp@postgresql/otel?sslmode=disable
+        # Mandate #8: KHONG dat credential plaintext. Production lay tu Secrets Manager qua
+        # ExternalSecret `techx-tf3-postgres-conn` key `go-dsn` (override o values-prod.yaml).
+        value: ""
       - name: OTEL_SEMCONV_STABILITY_OPT_IN
         value: database
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -825,7 +791,9 @@ components:
       - name: FLAGD_PORT
         value: "8013"
       - name: DB_CONNECTION_STRING
-        value: host=postgresql user=otelu password=otelp dbname=otel
+        # Mandate #8: KHONG dat credential plaintext. Production lay tu Secrets Manager qua
+        # ExternalSecret `techx-tf3-postgres-conn` key `libpq` (override o values-aio-llm.yaml).
+        value: ""
       - name: PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
         value: python
       - name: OTEL_PYTHON_LOG_CORRELATION
@@ -1276,14 +1244,11 @@ opentelemetry-collector:
               allowed_origins:
                 - "http://*"
                 - "https://*"
-      kafkametrics:
-        scrapers:
-          - brokers
-          - topics
-          - consumers
-        brokers:
-          - kafka:9092
-        collection_interval: 10s
+      # Mandate #8: DA GO receiver `kafkametrics`. No scrape Kafka CU in-cluster (kafka:9092);
+      # sau cutover sang MSK thi kho cu khong con -> receiver bao loi ket noi lien tuc. Chi
+      # MSK (SASL_SSL) thi receiver nay se can credential trong config collector -> khong lam.
+      # Metric broker/topic/consumer-lag cua MSK lay qua CloudWatch (AWS cung cap san).
+      # Da go kem tham chieu trong pipeline metrics ben duoi (bo sot se lam collector khong khoi dong).
     exporters:
       otlp/jaeger:
         endpoint: jaeger:4317
@@ -1360,7 +1325,7 @@ opentelemetry-collector:
           processors: [memory_limiter, k8sattributes, resourcedetection, resource, transform, batch]
           exporters: [otlp/jaeger, debug, spanmetrics]
         metrics:
-          receivers: [otlp, kafkametrics, spanmetrics]
+          receivers: [otlp, spanmetrics]   # Mandate #8: bo kafkametrics (xem receiver da go o tren)
           processors: [memory_limiter, resourcedetection, resource, batch]
           exporters: [otlphttp/prometheus, debug]
         logs:
