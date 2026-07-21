@@ -168,3 +168,31 @@ Rollback caveat: re-adding the old LimitRange can make
 `bad-missing-resources-pod.yaml` pass again, so it is not a safe rollback for
 Mandate 05 acceptance unless the VAP resource policy is first disabled or
 redesigned.
+
+## Update 2026-07-21 — Otel host metrics node-agent split
+
+PR3 of the OpenTelemetry PSA migration adds a dedicated `otel-node-agent`
+DaemonSet in a new `observability-system` namespace. This agent is intentionally
+limited to host/kubelet metrics and exports them to Prometheus over OTLP HTTP.
+It does not receive application OTLP traffic, expose receiver hostPorts, or
+replace the existing `otel-collector-agent` yet.
+
+Decision:
+
+- Keep application telemetry on the `otel-gateway` Deployment introduced by PR1
+  and selected by PR2.
+- Keep the old `otel-collector-agent` DaemonSet live as fallback until the new
+  node-agent is observed receiving/exporting host and kubelet metrics.
+- Isolate the unavoidable host metrics `hostPath: /` requirement into
+  `observability-system`, labelled `audit`/`warn=baseline`, instead of trying to
+  force `techx-tf3` to `enforce=restricted` while a node-level collector still
+  needs host filesystem access.
+- Open Prometheus ingress explicitly for `observability-system` pods labelled
+  `app.kubernetes.io/name=otel-node-agent`; otherwise the node-agent can become
+  Ready but fail to deliver metrics.
+
+This is an additive, no-cutover change. PSA `enforce=restricted` for
+`techx-tf3` remains blocked until the old hostPort/hostPath collector, Kafka,
+and `aiops-engine` exceptions are resolved. The next safe gate after this PR is
+live comparison of old collector host metrics versus `otel-node-agent` metrics;
+only then can the old DaemonSet's host metrics responsibilities be retired.
