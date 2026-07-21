@@ -27,6 +27,19 @@ Native PSA `restricted` has no per-workload exception mechanism (unlike Kyverno'
 
 Turning on `pod-security.kubernetes.io/enforce=restricted` today would admission-reject any recreate/restart of either workload while they are still running with root/privileged security contexts. Namespace stays at `audit`/`warn=restricted` only until this is revisited.
 
+**Third, previously-unregistered violation found via live dry-run (2026-07-21):** testing `enforce=restricted` with `kubectl apply --dry-run=server` surfaced a warning that goes beyond the two known exceptions:
+
+```
+Warning: existing pods in namespace "techx-tf3" violate the new PodSecurity enforce level "restricted:v1.35"
+Warning: aiops-engine-5d5c7964c6-pz569: allowPrivilegeEscalation != false, unrestricted capabilities, runAsNonRoot != true, seccompProfile
+Warning: kafka-7cdc4476fb-9fww2: allowPrivilegeEscalation != false, unrestricted capabilities, runAsNonRoot != true, runAsUser=0
+Warning: otel-collector-agent-49sm6 (and 3 other pods): hostPort, restricted volume types
+```
+
+The DaemonSet `otel-collector-agent` — the shared OpenTelemetry Collector running on every node, used by all 18 application services for trace/metric export — also violates `restricted`: 6 container ports declared with `hostPort` (`jaeger-compact` 6831/UDP, `jaeger-grpc` 14250, `jaeger-thrift` 14268, `otlp` 4317, `otlp-http` 4318, `zipkin` 9411, all forbidden under `restricted`) and a `hostPath` volume (`hostfs`, not in the `restricted` allowed-volume-types list). This is a cluster-wide DaemonSet, not a single deprecated/deferred workload — its blast radius on enforcement is larger than either registered exception (any node replacement, drain, or DaemonSet rollout would strand that node's collector pod in a permanent admission failure until remediated).
+
+**Decision (2026-07-21, after seeing this live):** `enforce=restricted` stays off. This finding, not just the two registered exceptions, is now the primary reason. Remediating `otel-collector-agent` (moving off `hostPort`/`hostPath`, or an equivalent redesign) has not been scoped yet and is left open for follow-up.
+
 ## Rejection Demo Commands (dry-run, run before merge)
 
 ```bash

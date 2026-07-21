@@ -127,6 +127,16 @@ label-based bypass:**
   off. This is a deliberate, documented gate, not an oversight — enabling it
   now would admission-reject any recreate/restart of either workload while
   it still runs with a root/privileged security context.
+- **Third, previously-unregistered gap found via live `--dry-run=server`
+  test (2026-07-21):** the DaemonSet `otel-collector-agent` — the shared
+  OpenTelemetry Collector running on every node, used by all 18 services —
+  also violates `restricted` (6 `hostPort` container ports plus a
+  `hostPath` volume, neither allowed under `restricted`). This is now the
+  primary blocker for `enforce=restricted`, not just the two registered
+  exceptions: its blast radius is cluster-wide (any node replacement,
+  drain, or DaemonSet rollout strands that node's collector), larger than
+  either single-workload exception. Remediation has not been scoped yet.
+  Full detail: `docs/evidence/mandate-05/native-migration-20260721.md`.
 
 **Rollback additions:**
 
