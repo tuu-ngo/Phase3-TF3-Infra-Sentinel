@@ -10,19 +10,21 @@ def documents():
     return [doc for doc in yaml.safe_load_all(RBAC_PATH.read_text()) if doc]
 
 
-def rules_for(role_name):
+def rules_for(role_name, namespace=None):
     role = next(
         doc
         for doc in documents()
         if doc["kind"] == "Role" and doc["metadata"]["name"] == role_name
+        and (namespace is None or doc["metadata"]["namespace"] == namespace)
     )
     return role["rules"]
 
 
-def granted(role_name, resource, verb):
+def granted(role_name, resource, verb, namespace=None, api_group=None):
     return any(
         resource in rule.get("resources", []) and verb in rule.get("verbs", [])
-        for rule in rules_for(role_name)
+        and (api_group is None or api_group in rule.get("apiGroups", []))
+        for rule in rules_for(role_name, namespace)
     )
 
 
@@ -53,10 +55,47 @@ def test_reader_has_no_mutation_or_sensitive_reads():
 
 def test_bindings_target_expected_groups_and_namespace():
     docs = documents()
-    assert all(doc["metadata"]["namespace"] == "techx-tf3" for doc in docs)
-    bindings = {doc["metadata"]["name"]: doc for doc in docs if doc["kind"] == "RoleBinding"}
-    assert bindings["tf3-production-operator"]["subjects"][0]["name"] == "tf3-production-operators"
-    assert bindings["tf3-production-readonly"]["subjects"][0]["name"] == "tf3-production-readers"
+    assert all(doc["metadata"]["namespace"] in {"techx-tf3", "argocd"} for doc in docs)
+    bindings = {
+        (doc["metadata"]["namespace"], doc["metadata"]["name"]): doc
+        for doc in docs
+        if doc["kind"] == "RoleBinding"
+    }
+    assert (
+        bindings[("techx-tf3", "tf3-production-operator")]["subjects"][0]["name"]
+        == "tf3-production-operators"
+    )
+    assert (
+        bindings[("techx-tf3", "tf3-production-readonly")]["subjects"][0]["name"]
+        == "tf3-production-readers"
+    )
+    assert (
+        bindings[("argocd", "tf3-production-readonly-observability")]["subjects"][0]["name"]
+        == "tf3-production-readers"
+    )
+
+
+def test_reader_can_port_forward_observability_without_argocd_app_access():
+    assert granted(
+        "tf3-production-readonly",
+        "pods/portforward",
+        "create",
+        namespace="techx-tf3",
+    )
+    assert granted(
+        "tf3-production-readonly-observability",
+        "pods/portforward",
+        "create",
+        namespace="argocd",
+    )
+    assert granted("tf3-production-readonly-observability", "services", "get", namespace="argocd")
+    assert not granted(
+        "tf3-production-readonly-observability",
+        "applications",
+        "get",
+        namespace="argocd",
+        api_group="argoproj.io",
+    )
 
 
 def test_terraform_declares_expected_roles_and_users():
