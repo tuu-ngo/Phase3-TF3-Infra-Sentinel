@@ -125,3 +125,19 @@ output "cloudflare_ui_urls" {
   description = "REL-17: direct browser URLs for Grafana/Jaeger/ArgoCD, no kubectl/IAM needed. Empty when enable_cloudflare_access = false."
   value       = var.enable_cloudflare_access ? { for k, v in module.cloudflare_access[0].internal_ui_routes : k => "https://${v.hostname}" } : null
 }
+
+output "audit_detection_trails" {
+  description = "Mandate 11 CloudTrail trail names."
+  value = {
+    ap_southeast_1 = module.audit_detection_ap_southeast_1.trail_name
+    us_east_1      = module.audit_detection_us_east_1.trail_name
+  }
+}
+
+output "audit_detection_sns_topics" {
+  description = "Mandate 11 SNS topics used for audit alerts."
+  value = {
+    ap_southeast_1 = module.audit_detection_ap_southeast_1.sns_topic_arn
+    us_east_1      = module.audit_detection_us_east_1.sns_topic_arn
+  }
+}
