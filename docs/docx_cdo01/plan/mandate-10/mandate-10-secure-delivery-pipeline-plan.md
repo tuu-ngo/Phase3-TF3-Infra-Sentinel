@@ -29,6 +29,21 @@ Branch protection/ruleset must require only `Secure delivery gate` (plus existin
 - `build-push-ecr.yml` does not have `pull_request`; its Trivy gate blocks release after merge, not the PR.
 - IaC and SAST are not yet evidenced as final-main PR gates.
 
+## PR-safe execution boundary
+
+PM-125 phải tạo gate riêng cho PR; không thêm `pull_request` trực tiếp vào release/provisioning workflow hiện tại.
+
+Required PR workflow phải:
+
+- khai báo tối đa `permissions: contents: read`; không có `id-token: write`, `packages: write`, `pull-requests: write` hoặc quyền deployment;
+- checkout với `persist-credentials: false`, không dùng repository/environment secret và không assume AWS role;
+- không ECR login/push, không `cosign sign`, không mở image-bump PR, không chạy Terraform apply và không ghi production artifact;
+- build candidate vào local BuildKit only; Trivy/IaC/SAST đọc source của PR và xuất artifact/log không chứa secret;
+- chạy an toàn cho fork PR. Nếu một control không thể chạy trên fork mà không có secret, aggregate phải fail/mark blocked theo policy đã duyệt, không chuyển sang `pull_request_target` để chạy code không tin cậy với secret;
+- pin action/tool theo PM-129 trước khi context được cấu hình required.
+
+Release workflows `build-push-ecr.yml`, `terraform-plan.yml` và `terraform-apply.yml` giữ production boundary riêng. Kết quả post-merge của chúng không được dùng thay bằng chứng PR merge gate.
+
 ## Implementation design
 
 ### 1. Detect changes
@@ -59,6 +74,18 @@ For changed build targets, build local `linux/amd64` candidate images without pu
 
 The `Secure delivery gate` checks matrix outputs, not only exit codes. It must fail on relevant job failure/cancellation/unexpected skip and publish a concise summary of applicable/non-applicable controls. Its workflow name/job name are stable before ruleset configuration.
 
+### 6. Contract test matrix
+
+| Case | Expected applicable controls | Expected aggregate |
+|---|---|---|
+| Docs-only PR | Gitleaks; IaC/SAST/Trivy explicit N/A | PASS, check vẫn được tạo |
+| Một service đổi | Gitleaks + local build/Trivy đúng service | PASS/FAIL theo scan; không ECR write |
+| Terraform đổi | Gitleaks + IaC | HIGH/CRITICAL fixture làm FAIL |
+| Checkout/payment đổi | Gitleaks + SAST + Trivy nếu build input đổi | Fixture làm FAIL |
+| Shared build/workflow đổi | Tập target theo contract đã duyệt | Không được matrix rỗng/silent PASS |
+| Child fail/cancel/unexpected skip | Control tương ứng applicable | FAIL |
+| Fork PR | Cùng read-only contract, zero secret/AWS | Deterministic PASS/FAIL, không privileged fallback |
+
 ## Admin and proof steps
 
 1. Export/screenshot current `main` ruleset/branch protection and exact required contexts.
@@ -74,4 +101,6 @@ The `Secure delivery gate` checks matrix outputs, not only exit codes. It must f
 - [ ] Gitleaks, PR-mode Trivy, IaC and SAST results are correctly evaluated when applicable.
 - [ ] Unchanged Terraform or money-path source does not leave a required check pending/skipped.
 - [ ] A negative PR proves a failed aggregate gate locks merge.
+- [ ] Workflow permissions prove zero AWS/ECR/production write path, including fork PR behavior.
+- [ ] Admin export records the exact required context string; a screenshot showing only “successful check” is insufficient.
 - [ ] Actions/tool downloads are immutable-pinned before final evidence (PM-129).

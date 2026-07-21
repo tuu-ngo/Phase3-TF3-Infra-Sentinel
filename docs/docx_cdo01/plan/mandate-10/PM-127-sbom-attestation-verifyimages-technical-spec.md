@@ -29,12 +29,15 @@ Mọi ô `Pass` trong test matrix dưới đây là **expected acceptance result
 
 ### Final-main source re-audit tại `bbe25038`
 
+Canonical audit verdict được giữ duy nhất tại `docs/docx_cdo01/plan/mandate-10/mandate-10-gap-analysis.md`. Spec này consume baseline/inventory từ PM-124 và không trở thành gap-analysis source of truth thứ hai.
+
 - Có 7 workflow YAML ở snapshot hiện tại; final DoD vẫn phải discover động toàn bộ workflow/reusable workflow.
 - Có 28 Dockerfile khi tính 20 production target, OpenSearch, 6 genproto và Cypress; Docker scope vẫn cần quyết định PM như PM-129 quy định.
 - Authoritative production Helm render sử dụng đúng bốn values file: `values.yaml`, `values-flagd-sync.yaml`, `values-prod.yaml` và `values-aio-llm.yaml` theo Argo CD Application.
 - Sau khi đồng bộ main, render đủ bốn values tạo `/tmp/techx-prod.yaml` gồm 22,445 dòng và 30 image reference duy nhất. Inventory/allow-list phải được sinh lại từ output này; không giữ số của render ba values cũ. Local `helm dependency build` cần cấu hình đủ năm Helm repository trước khi được dùng làm evidence, dù chart vendored hiện vẫn template được.
 - `gitops/infrastructure/limit-range.yaml` đã bị xóa trên main. Resource/image-reference enforcement hiện có thêm native `ValidatingAdmissionPolicy` + binding `Deny`; các Kyverno policy digest/latest/resource/security-context vẫn phải được đối chiếu Git và live state trước cutover.
 - Render vẫn có external image tag; inventory/allow-list và digest policy cho external images phải được kiểm theo contract, không suy ra từ việc Helm render pass.
+- Final evidence phải đính kèm exact baseline SHA, machine-generated workflow/action/Dockerfile inventories và Unicode format-control scan; số 7/28 chỉ là snapshot `bbe25038`.
 
 ---
 

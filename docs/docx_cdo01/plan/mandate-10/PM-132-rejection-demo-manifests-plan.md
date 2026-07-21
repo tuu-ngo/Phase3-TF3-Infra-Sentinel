@@ -27,16 +27,25 @@ Do not use a fake digest: registry resolution can fail before admission. Do not 
 2. Push it to the exact ECR repository with a unique tag `mandate10-unsigned-demo-<timestamp>` using an approved demo identity.
 3. Do not run `cosign sign` or the standard release workflow for this tag.
 4. Resolve the real digest from ECR and form `IMAGE="$ECR_REGISTRY/techx-corp@$DIGEST"`.
-5. Run the exact `cosign verify` precondition below; the command must fail because no valid TechX main-workflow signature exists. If it succeeds, abort the demo.
-6. Insert the digest into a manifest compliant with every other admission policy.
-7. Run `kubectl apply --dry-run=server` and assert the output names both `verify-first-party-signatures` and `verify-techx-main-workflow-signature`.
-8. Save build/push identity, tag, digest, precondition output and admission rejection output.
-9. Delete the demo tag/digest only after evidence is copied and another subject does not reference it. Record the ECR deletion response. This is a material cleanup action and needs the approved demo owner/retention window.
+5. Prove registry readability first with ECR `describe-images`/`batch-get-image`; save the resolved digest and manifest media type. A registry/auth/network failure is not unsigned-image evidence.
+6. Run the exact `cosign verify` precondition below; the command must fail specifically because no valid TechX main-workflow signature exists. Also capture `cosign tree` (or equivalent attachment inventory) showing no matching signature. If verify succeeds, or failure is transport/auth/subject-not-found, abort the demo.
+7. Insert the digest into a manifest compliant with every other admission policy.
+8. Run `kubectl apply --dry-run=server` and assert the output names both `verify-first-party-signatures` and `verify-techx-main-workflow-signature`.
+9. Save build/push identity, unique tag, ECR manifest response, digest, signature-absence precondition output and admission rejection output.
+10. Retain the digest through reviewer sign-off or the approved evidence window. Delete it only after evidence is copied and another subject does not reference it; record the ECR deletion response. This is a material cleanup action and needs the approved demo owner/retention window.
 
 ```bash
 ECR_REGISTRY="197826770971.dkr.ecr.ap-southeast-1.amazonaws.com"
 EXPECTED_IDENTITY="https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/.github/workflows/build-push-ecr.yml@refs/heads/main"
 IMAGE="$ECR_REGISTRY/techx-corp@$DIGEST"
+
+test "$(aws ecr batch-get-image \
+  --repository-name techx-corp \
+  --image-ids imageDigest="$DIGEST" \
+  --query 'length(images)' --output text)" = "1" || {
+  echo "FAIL: demo digest không tồn tại hoặc không đọc được từ ECR" >&2
+  exit 1
+}
 
 if cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
@@ -46,6 +55,8 @@ if cosign verify \
   exit 1
 fi
 ```
+
+The saved stderr must be classified by the runbook. Messages indicating credential, timeout, DNS, TLS or missing subject/manifest make the demo `INVALID`; only absence of a signature satisfying the exact issuer/identity is an acceptable unsigned precondition.
 
 The demo container must include at least:
 
