@@ -111,7 +111,7 @@ Thêm `scripts/ci/verify-immutable-pins.py`, chạy trong `test-image-bump.yml`.
 
 ### 1.5 Exit criteria Phase 1
 
-- [ ] Bảy workflow không còn `uses: <action>@<tag-không-phải-sha>`.
+- [ ] Mọi workflow và reusable workflow trong `.github/workflows/*.{yml,yaml}` tại final-main SHA không còn external `uses:` dùng tag, branch hoặc short SHA. Bảy workflow chỉ là inventory snapshot trước PM-125/127.
 - [ ] Không còn actionlint `curl .../main/...`; v1.7.12 và checksum đã pin.
 - [ ] Pin có comment version gốc; lint toàn workflow và trigger path đã mở rộng.
 - [ ] Checker tồn tại, chạy trong CI, và fail đúng case test.
@@ -162,9 +162,25 @@ Unit test bắt buộc: ARG resolve (bao gồm `flagd-ui`), nested/cyclic ARG, `
 `build-push-ecr.yml` chỉ chạy `workflow_dispatch` và push `main` theo path filter, không có `pull_request`; PR check không là evidence full build. Trước merge chạy build thật single-arch:
 
 ```bash
-TARGETS=(accounting ad cart checkout currency email fraud-detection frontend frontend-proxy image-provider kafka llm load-generator payment product-catalog product-reviews quote recommendation shipping flagd-ui)
-docker buildx bake -f docker-compose.yml --check "${TARGETS[@]}"
-docker buildx bake -f docker-compose.yml --set '*.platform=linux/amd64' "${TARGETS[@]}"
+TARGETS=(
+  accounting ad cart checkout currency email fraud-detection frontend
+  frontend-proxy image-provider kafka llm load-generator payment
+  product-catalog product-reviews quote recommendation shipping flagd-ui
+)
+
+pushd "phase3 - information/techx-corp-platform" >/dev/null
+
+docker buildx bake \
+  -f docker-compose.yml \
+  --check \
+  "${TARGETS[@]}"
+
+docker buildx bake \
+  -f docker-compose.yml \
+  --set '*.platform=linux/amd64' \
+  "${TARGETS[@]}"
+
+popd >/dev/null
 ```
 
 Merge Dockerfile vào `main` dự kiến tự trigger push build do path filter. Theo dõi run đó trước; chỉ `workflow_dispatch` nếu push run không chạy, bị cancel, aggregate thiếu đúng 20 target, hoặc cần rehearsal riêng. Không chạy đồng thời hai run gây build/push trùng chi phí.

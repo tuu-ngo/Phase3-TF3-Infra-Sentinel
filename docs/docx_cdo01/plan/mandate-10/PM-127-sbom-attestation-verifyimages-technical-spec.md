@@ -4,7 +4,8 @@
 ## Technical Specification, Execution Plan, Test Matrix và Evidence Contract
 
 **Repository triển khai:** `tuu-ngo/Phase3-TF3-Infra-Sentinel`  
-**Baseline đã khảo sát:** `main@a92084f266fa7f6d989c9ddf1c66461293ab4b13`  
+**Baseline audit ban đầu:** `main@a92084f266fa7f6d989c9ddf1c66461293ab4b13`
+**Baseline triển khai cuối sau đồng bộ main:** `main@bbe25038b47bf743b5e35ec6f997d89380f639fd`
 **Cluster:** `techx-corp-tf3`  
 **AWS account:** `197826770971`  
 **Region:** `ap-southeast-1`  
@@ -25,6 +26,14 @@ Jira hiện ghi PM-127 `To Do` cho SBOM + `verifyImages`, trong khi PM-128 `Done
 Trước khi bất kỳ phần nào của tài liệu được đánh dấu triển khai xong, phải liên kết: PR/commit PM-128; policy source trong Git; `kubectl get clusterpolicy`; `Enforce` và `Ready=True`; signed image pass; và một first-party image thật nhưng unsigned/wrong-identity bị reject bởi đúng rule signature. Nếu thiếu mắt xích, reopen/correct ticket hoặc giữ `BLOCKED`.
 
 Mọi ô `Pass` trong test matrix dưới đây là **expected acceptance result**, không phải evidence đã có. Chỉ run ID, artifact, output policy và evidence runtime được liên kết mới đổi trạng thái thành `PASS`.
+
+### Final-main source re-audit tại `bbe25038`
+
+- Có 7 workflow YAML ở snapshot hiện tại; final DoD vẫn phải discover động toàn bộ workflow/reusable workflow.
+- Có 28 Dockerfile khi tính 20 production target, OpenSearch, 6 genproto và Cypress; Docker scope vẫn cần quyết định PM như PM-129 quy định.
+- Production Helm value stack trong `build-push-ecr.yml` render thành công 22,420 dòng với `values.yaml`, `values-flagd-sync.yaml` và `values-prod.yaml`.
+- `gitops/infrastructure/limit-range.yaml` đã bị xóa trên main. Resource/image-reference enforcement hiện có thêm native `ValidatingAdmissionPolicy` + binding `Deny`; các Kyverno policy digest/latest/resource/security-context vẫn phải được đối chiếu Git và live state trước cutover.
+- Render vẫn có external image tag; inventory/allow-list và digest policy cho external images phải được kiểm theo contract, không suy ra từ việc Helm render pass.
 
 ---
 
@@ -2348,47 +2357,33 @@ Không commit:
 
 # 21. One-Pod full provenance demo
 
-Pick one running first-party Pod:
+Không tự đọc `containers[0]`/`containerStatuses[0]` hoặc coi runtime `imageID` là release index digest. Chọn rõ pod/container và gọi script chuẩn PM-129:
 
 ```bash
-POD="$(kubectl -n techx-tf3 get pod \
+POD="$(kubectl -n techx-tf3 get pods \
   -l app.kubernetes.io/name=checkout \
   -o jsonpath='{.items[0].metadata.name}')"
 
-IMAGE="$(kubectl -n techx-tf3 get pod "$POD" \
-  -o jsonpath='{.spec.containers[0].image}')"
-
-IMAGE_ID="$(kubectl -n techx-tf3 get pod "$POD" \
-  -o jsonpath='{.status.containerStatuses[0].imageID}')"
-
-printf 'pod=%s\nimage=%s\nimageID=%s\n' \
-  "$POD" "$IMAGE" "$IMAGE_ID"
+./scripts/ci/trace-provenance.sh \
+  --namespace techx-tf3 \
+  --pod "$POD" \
+  --container checkout \
+  --sbom-type cyclonedx
 ```
-
-Then:
-
-1. verify digest syntax;
-2. `cosign verify` exact identity;
-3. lookup CycloneDX SBOM;
-4. find matching `approved-images.json`;
-5. get source SHA;
-6. open source commit;
-7. identify PR and reviewer;
-8. locate Trivy pre/post reports;
-9. identify Actions run;
-10. compare running `imageID` to signed subject digest.
 
 Final evidence must show one unbroken chain:
 
 ```text
-Pod
-→ imageID digest
+Pod/container
+→ deployed release/index digest
+→ runtime platform digest
+→ verified runtime digest membership in release index
+→ workflow run/attempt
 → approved-images entry
-→ workflow run
 → source SHA
-→ merged PR + reviewer
-→ Trivy pass
-→ Cosign identity
+→ merged PR + approver
+→ Trivy per platform
+→ Cosign identity + Rekor
 → CycloneDX SBOM
 ```
 

@@ -33,7 +33,13 @@ Branch protection/ruleset must require only `Secure delivery gate` (plus existin
 
 ### 1. Detect changes
 
-Run on every `pull_request` to `main`. Emit booleans for Terraform production/modules, checkout/payment source, Dockerfile/build context and all CI workflow changes. The final aggregate job always consumes the emitted values.
+Run on every `pull_request` to `main`. Admin evidence must also confirm whether merge queue is enabled. If it is enabled, the required workflow must additionally trigger on `merge_group`; otherwise a required Actions workflow can be missing from the merge-queue validation commit. Emit booleans for Terraform production/modules, checkout/payment source, Dockerfile/build context and all CI workflow changes. The final aggregate job always consumes the emitted values.
+
+```yaml
+on:
+  pull_request:
+  merge_group: # required when repository merge queue is enabled
+```
 
 ### 2. Gitleaks
 
@@ -56,6 +62,7 @@ The `Secure delivery gate` checks matrix outputs, not only exit codes. It must f
 ## Admin and proof steps
 
 1. Export/screenshot current `main` ruleset/branch protection and exact required contexts.
+   Record whether merge queue is enabled and whether `merge_group` is required.
 2. Land the workflow; confirm `Secure delivery gate` appears on a normal PR and a Terraform/code PR.
 3. Require only the aggregate context in ruleset, avoiding path-filtered child contexts.
 4. Open disposable negative PRs: fake secret, Terraform misconfiguration, a known-safe reproducible Trivy finding fixture, and SAST fixture. Capture failed aggregate check and merge lock. Never merge fixtures.
