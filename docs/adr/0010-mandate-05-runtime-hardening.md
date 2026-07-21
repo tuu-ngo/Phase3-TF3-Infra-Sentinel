@@ -143,9 +143,28 @@ label-based bypass:**
 - Native image/resource policy rollback: change the affected
   `ValidatingAdmissionPolicyBinding.spec.validationActions` from `["Deny"]`
   back to `["Warn", "Audit"]`, or revert PR #291 through GitOps.
-- LimitRange/ResourceQuota rollback: revert the `default`/`defaultRequest`
-  removal and the quota increase through GitOps if headroom or debug-pod
-  friction becomes a problem.
+- ResourceQuota rollback: revert the quota increase through GitOps if headroom
+  or debug-pod friction becomes a problem.
 - PSA rollback: not applicable yet — `enforce` was never turned on.
 - Kyverno retirement rollback: not applicable — Kyverno was never removed by
   this update.
+
+## Update 2026-07-21 — LimitRange defaulting hotfix
+
+Post-merge verification of PR #291 showed `bad-missing-resources-pod.yaml` was
+still admitted. Kubernetes `LimitRanger` materialized `default` and
+`defaultRequest` from the configured Container `LimitRange.max` values, so the
+native resource VAP evaluated an already-mutated Pod instead of the user's
+original object.
+
+Decision: remove `gitops/infrastructure/limit-range.yaml` from GitOps. The
+native enforcement path is now VAP for explicit per-Pod resources plus
+ResourceQuota for namespace-level budget and capacity guardrails. Do not
+reintroduce a Container `LimitRange` with `default`, `defaultRequest`, `min`, or
+`max` unless explicit-resource enforcement is moved to a pre-mutation control;
+otherwise omitted resources can be silently filled before VAP evaluates.
+
+Rollback caveat: re-adding the old LimitRange can make
+`bad-missing-resources-pod.yaml` pass again, so it is not a safe rollback for
+Mandate 05 acceptance unless the VAP resource policy is first disabled or
+redesigned.

@@ -1,6 +1,7 @@
 # Mandate 05 Native Migration — Progress Log
 
 ## Trạng thái tổng quan
+- PM-168 hotfix: PR #291 đã merge và VAP native đã live, nhưng post-merge verification phát hiện `bad-missing-resources-pod.yaml` vẫn **pass** vì Kubernetes `LimitRanger` tự materialize `default`/`defaultRequest` từ `LimitRange.max` (`4 CPU`/`4Gi`) trước khi VAP chạy. Branch `fix/mandate05-limitrange-defaults` xoá `gitops/infrastructure/limit-range.yaml`; sau merge cần chờ Argo prune `LimitRange`, rồi dry-run lại fixture thiếu resources phải bị `mandate05-native-resource-requirements` deny.
 - PM-168: code xong, dry-run sạch, **đã push + mở PR #291** (https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/291), nhánh `pm113-flagd-ui-kafka-digest-pin`. **Chưa merge.** Chờ merge + Argo sync để verify Warn/Audit thật.
 - PM-169: đang làm — namespace `techx-tf3` đã chuyển label `audit/warn=restricted` (commit `bf83dd2`, chưa push), **CHƯA bật `enforce`**. Quyết định exception (không mơ hồ):
   - `kafka` (`m05-baseline-kafka-init-chown`): **không cần fix.** CDO02 xác nhận Mandate 8 (Kafka→MSK) đã xong, in-cluster Kafka không còn phục vụ traffic thật, chỉ chưa xoá. Bỏ qua fsGroup/non-root remediation — exception tự đóng khi workload bị dọn (theo dõi ở Mandate 8, không phải việc của task này).
@@ -10,6 +11,23 @@
 - PM-170: đang làm — **Task 4 + Task 6 xong**, Task 5 Step 1 (fixture `bad-root-pod.yaml`) xong, **enforce=restricted vẫn CHƯA bật** — xem phát hiện `otel-collector-agent` bên dưới, đây là lý do mới, quan trọng hơn cả 2 exception cũ. (evidence `docs/evidence/mandate-05/native-migration-20260721.md` + ADR 0010 update, commit `7366ffd`). **Task 5 (PSA enforce) chủ động treo**, không phải bỏ sót — chờ user quyết định thêm (kafka cũ bị xoá / aiops-engine có tiến triển). Task 4 chi tiết: (2 Binding VAP đổi `["Warn","Audit"]` → `["Deny"]`, commit `fd5b6f9`, dry-run sạch). **Quyết định của user (21/07):** gộp cả 6 task vào chung PR #291, không tách audit-bake riêng trên cluster sống trước khi Deny — khác 1 chút so với kỷ luật "audit trước, enforce sau, verify từng bước trên live cluster" đã dùng ở Mandate 5 gốc (Kyverno). Bù lại bằng: dry-run gate đầy đủ trước merge (5 fixture + không ảnh hưởng 18 workload thật) sẽ chạy ngay sau khi PR merge + Argo sync, trước khi coi Task 4 là "xong thật". Task 5 (PSA enforce) vẫn treo theo gate exception ở trên — **CHƯA làm**, không nằm trong quyết định gộp PR này (PSA enforce là quyết định riêng, rủi ro cao hơn VAP Deny vì có thể chặn nhầm Kafka/aiops-engine đang chạy thật).
 
 ## Nhật ký (mới nhất lên trên)
+
+### 2026-07-21 — PM-168 hotfix sau merge: xoá LimitRange vì Kubernetes vẫn default từ `max`
+
+**Bằng chứng live sau khi merge PR #291:** `native-admission-policies`, `techx-infrastructure-app`, `techx-corp`, `kyverno`, và `kyverno-policies` đều `Synced/Healthy`; workload `techx-tf3` vẫn Ready, frontend/products smoke đều HTTP 200. Không có downtime từ PR #291.
+
+**Bug thật:** fixture `bad-missing-resources-pod.yaml` vẫn được server-side dry-run accept. Output YAML có annotation `kubernetes.io/limit-ranger` và container bị tự điền:
+
+```
+requests.cpu: "4"
+requests.memory: 4Gi
+limits.cpu: "4"
+limits.memory: 4Gi
+```
+
+**Root cause:** manifest `LimitRange` đã xoá `default`/`defaultRequest`, nhưng còn `min`/`max`. Kubernetes `LimitRanger` vẫn materialize default/defaultRequest từ `max`, nên VAP resource nhìn thấy object sau mutation và không thể biết pod ban đầu thiếu resources.
+
+**Hotfix:** xoá hẳn `gitops/infrastructure/limit-range.yaml` khỏi GitOps. Giữ `ResourceQuota` để chặn vượt budget namespace, giữ VAP để enforce explicit resources per Pod. Sau merge hotfix, cần verify `kubectl get limitrange -n techx-tf3` không còn object, rồi fixture `bad-missing-resources-pod.yaml` phải bị `mandate05-native-resource-requirements` deny.
 
 ### 2026-07-21 — PM-170 Task 5: PHÁT HIỆN QUAN TRỌNG — `otel-collector-agent` cũng vỡ PSA restricted, chưa bật enforce
 

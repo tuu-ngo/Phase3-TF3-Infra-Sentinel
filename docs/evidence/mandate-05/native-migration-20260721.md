@@ -11,7 +11,7 @@
 
 | Requirement | Native control | Enforcement state after this PR merges |
 |---|---|---|
-| No missing resource requests/limits | `ValidatingAdmissionPolicy` `mandate05-native-resource-requirements` + non-defaulting LimitRange + ResourceQuota | `Deny` |
+| No missing resource requests/limits | `ValidatingAdmissionPolicy` `mandate05-native-resource-requirements` + ResourceQuota | `Deny` |
 | No `latest` or implicit latest images | `ValidatingAdmissionPolicy` `mandate05-native-image-reference` | `Deny` |
 | First-party ECR image digest pinning | same policy, second validation | `Deny` |
 | No root / no privileged runtime | Pod Security Admission `restricted` | **`audit`/`warn` only — `enforce` intentionally NOT set** (see Open Item below) |
@@ -44,7 +44,6 @@ The DaemonSet `otel-collector-agent` — the shared OpenTelemetry Collector runn
 
 ```bash
 kubectl apply --dry-run=server -f gitops/policies/native/mandate-05-runtime-policy.yaml
-kubectl apply --dry-run=server -f gitops/infrastructure/limit-range.yaml
 kubectl apply --dry-run=server -f gitops/infrastructure/resource-quota.yaml
 kubectl apply --dry-run=server -f gitops/infrastructure/namespace-techx-tf3.yaml
 kubectl apply --dry-run=server -f docs/evidence/mandate-05/native-rejection-demo/good-native-compliant-pod.yaml
@@ -56,16 +55,37 @@ kubectl apply --dry-run=server -f docs/evidence/mandate-05/native-rejection-demo
 
 ## Dry-run Results Captured (2026-07-21, before merge)
 
-- All 4 modified/created config files (`mandate-05-runtime-policy.yaml`, `limit-range.yaml`, `resource-quota.yaml`, `namespace-techx-tf3.yaml`) applied clean via `--dry-run=server` — no CEL compile error, no schema error.
+- All 4 modified/created config files (`mandate-05-runtime-policy.yaml`, `limit-range.yaml`, `resource-quota.yaml`, `namespace-techx-tf3.yaml`) applied clean via `--dry-run=server` before merge — no CEL compile error, no schema error.
 - The 5 demo manifests were dry-run **before the new VAP existed server-side**, so what actually blocked them was still Kyverno (still `Enforce`):
   - `bad-latest-image-pod.yaml`, `bad-implicit-latest-pod.yaml`, `bad-first-party-tag-pod.yaml` → denied by Kyverno `disallow-latest-tag` / `require-first-party-image-digest`.
   - `good-native-compliant-pod.yaml` → accepted, as expected.
-  - `bad-missing-resources-pod.yaml` → **unexpectedly accepted** — root-caused to the *live* (pre-merge) `LimitRange` still having `default`/`defaultRequest`, which silently filled in resources before Kyverno's `require-resource-requests` rule could evaluate the pod. This is exactly the gap this PR's LimitRange change closes, captured here as live confirmation rather than a hypothesis.
+  - `bad-missing-resources-pod.yaml` → **unexpectedly accepted** — root-caused to the *live* (pre-merge) `LimitRange` still having `default`/`defaultRequest`, which silently filled in resources before Kyverno's `require-resource-requests` rule could evaluate the pod. This was captured as live confirmation of the defaulting gap; post-merge verification later showed that merely leaving `min`/`max` in `LimitRange` was still not enough because Kubernetes materialized `default`/`defaultRequest` from `max`.
+
+## Hotfix 2026-07-21 — remove LimitRange defaulting path
+
+Post-merge verification of PR #291 showed `bad-missing-resources-pod.yaml` was still accepted. The live admission response included the `kubernetes.io/limit-ranger` annotation and filled the missing container resources as `requests.cpu=4`, `requests.memory=4Gi`, `limits.cpu=4`, and `limits.memory=4Gi`.
+
+Root cause: a Container `LimitRange` with only `min`/`max` still causes the Kubernetes `LimitRanger` admission plugin to materialize `default` and `defaultRequest` from `max`. Because this mutation runs before validating admission, `mandate05-native-resource-requirements` sees an already-mutated Pod and cannot prove the workload author explicitly declared resources.
+
+Hotfix decision: remove `gitops/infrastructure/limit-range.yaml` from GitOps and rely on:
+
+- `ValidatingAdmissionPolicy` for per-Pod explicit `requests`/`limits`.
+- `ResourceQuota` for namespace-level cost/capacity headroom (`requests.cpu=12`, `requests.memory=16Gi`, `limits.cpu=48`, `limits.memory=30Gi`, `pods=100`).
+
+Required after this hotfix merges and Argo reconciles:
+
+```bash
+kubectl get limitrange -n techx-tf3
+kubectl apply --dry-run=server -f docs/evidence/mandate-05/native-rejection-demo/bad-missing-resources-pod.yaml
+```
+
+Expected result: no `LimitRange` remains in `techx-tf3`, and `bad-missing-resources-pod.yaml` is denied by `mandate05-native-resource-requirements`.
 
 **Required after merge, before this evidence doc or PM-170 can be considered actually verified:**
 ```bash
 kubectl get applications -n argocd | grep -E "native-admission-policies|techx-infrastructure-app|techx-corp"
 kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding
+kubectl get limitrange -n techx-tf3
 kubectl get pods -n techx-tf3
 curl -sS -o /dev/null -w 'status=%{http_code}\n' https://d2tn71186d7ilz.cloudfront.net/
 # re-run the 5 dry-run commands above — this time the two native VAPs must be
