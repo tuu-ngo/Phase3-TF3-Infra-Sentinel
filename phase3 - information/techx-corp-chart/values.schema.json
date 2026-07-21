@@ -26,6 +26,9 @@
     "opentelemetry-collector": {
       "type": "object"
     },
+    "otelGateway": {
+      "type": "object"
+    },
     "jaeger": {
       "type": "object"
     },

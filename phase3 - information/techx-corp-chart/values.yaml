@@ -1379,6 +1379,38 @@ opentelemetry-collector:
                     endpoint: http://otel-collector:4318
                     insecure: true
 
+otelGateway:
+  enabled: true
+  replicas: 2
+  minReadySeconds: 15
+  revisionHistoryLimit: 5
+  serviceAccountName: otel-collector
+  terminationGracePeriodSeconds: 45
+  image:
+    repository: "otel/opentelemetry-collector-contrib"
+    tag: "0.151.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
 jaeger:
   enabled: true
   fullnameOverride: jaeger

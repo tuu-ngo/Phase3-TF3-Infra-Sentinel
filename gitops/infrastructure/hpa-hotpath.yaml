@@ -6,8 +6,8 @@
 # Node burst do Karpenter Spot xử lý khi pod Pending; scaleDown giữ 2 phút để co xuống
 # nhanh sau đỉnh nhưng không flap quá mạnh.
 #
-# Yêu cầu: metrics-server EKS add-on + CPU requests
-# (LimitRange của CDO01 set default 100m). KHÔNG đặt HPA cho datastore (stateful).
+# Yêu cầu: metrics-server EKS add-on + CPU requests tường minh trong workload.
+# KHÔNG đặt HPA cho datastore (stateful).
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
