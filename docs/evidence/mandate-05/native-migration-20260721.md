@@ -149,3 +149,46 @@ git diff --check: clean
 ```
 
 Quota headroom from the live snapshot at `2026-07-21T16:39:23+07:00` remains sufficient for two gateway replicas. Current quota use is `requests.cpu=3750m/12`, `requests.memory=7896Mi/16Gi`, `limits.cpu=16900m/48`, and `limits.memory=17523Mi/30Gi`; PR1 adds only `requests.cpu=200m`, `requests.memory=512Mi`, `limits.cpu=1000m`, and `limits.memory=1536Mi`.
+
+## Otel PSA Migration PR2 — app telemetry endpoint switch
+
+Branch `fix/mandate05-otel-switch` changes only the default application collector name:
+
+```yaml
+default:
+  env:
+    - name: OTEL_COLLECTOR_NAME
+      value: otel-gateway
+```
+
+All application `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_COLLECTOR_HOST` values continue to use `$(OTEL_COLLECTOR_NAME)`, so rendered application telemetry clients move from `otel-collector` to `otel-gateway` without changing per-service code.
+
+Safety dependency: live snapshot `2026-07-21T16:47:51+07:00` showed `origin/main=3e2114e` but Argo `techx-corp` was still live at `fb4a59e`; `otel-gateway` was therefore not live-verified yet. This PR must not be merged/deployed until PR1 has reconciled and these checks pass:
+
+```bash
+kubectl get application techx-corp -n argocd -o jsonpath='{.status.sync.revision}{" sync="}{.status.sync.status}{" health="}{.status.health.status}{"\n"}'
+kubectl get deploy,svc,endpointslice,pdb -n techx-tf3 -l app.kubernetes.io/name=otel-gateway -o wide
+kubectl get pods -n techx-tf3 -l app.kubernetes.io/name=otel-gateway -o wide
+```
+
+Expected before PR2 merge/deploy:
+
+```text
+techx-corp revision is at or after 3e2114e, Synced, Healthy
+deployment/otel-gateway READY 2/2
+otel-gateway Service and EndpointSlice have ready endpoints
+otel-gateway-pdb exists
+```
+
+Local verification for PR2:
+
+```text
+helm lint phase3 - information/techx-corp-chart ...: 1 chart(s) linted, 0 chart(s) failed
+helm template with Argo values: pass
+render assertion: app OTEL_COLLECTOR_NAME values all resolve to otel-gateway; old otel-collector-agent still renders; otel-gateway still has no hostPort/hostPath
+python3 -m pytest scripts/ci/test_runtime_hardening.py -q: 5 passed
+python3 -m pytest scripts/ci/test_production_access_contract.py -q: 9 passed
+git diff --check: clean
+```
+
+Server-side dry-run for 29 rendered workload objects passed. Kubernetes emitted the known PSA warning for the existing old `otel-collector-agent` (`hostPort` + `hostPath`), which remains the PR3/PR4 blocker; all app workload templates with `OTEL_COLLECTOR_NAME=otel-gateway` were accepted by admission in server dry-run.
