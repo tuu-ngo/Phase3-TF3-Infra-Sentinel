@@ -106,3 +106,46 @@ curl -sS -o /dev/null -w 'status=%{http_code} latency=%{time_total}\n' https://d
 ## Kyverno Retirement — not in scope here
 
 Kyverno controller and its 4 `ClusterPolicy` objects are **untouched** by this PR. Removing them is tracked as PM-172, which has not been approved to start. This migration's goal is to make native controls the authoritative enforcement path for the mentor's "no third-party admission tool" requirement; Kyverno keeps running in parallel for `verifyImages`/Cosign and background PolicyReport reconciliation, which native VAP/PSA cannot do.
+
+## Otel PSA Migration PR1 — gateway added, no traffic moved
+
+Branch `fix/mandate05-otel-gateway` starts the Otel PSA migration by adding a new `otel-gateway` Deployment/Service/ConfigMap and PDB. It does **not** change `OTEL_COLLECTOR_NAME`; rendered application workloads still point to `otel-collector`, so this PR does not move application telemetry traffic.
+
+Rendered checks:
+
+```text
+ConfigMap otel-gateway 1
+Deployment otel-gateway 1
+Service otel-gateway 1
+replicas 2
+maxUnavailable 0
+maxSurge 1
+hostPorts []
+hostPaths []
+runAsNonRoot True
+allowPrivilegeEscalation False
+drop ['ALL']
+seccomp RuntimeDefault
+```
+
+Server-side dry-run, with the EKS API reached through the SSM tunnel:
+
+```text
+configmap/otel-gateway created (server dry run)
+service/otel-gateway created (server dry run)
+deployment.apps/otel-gateway created (server dry run)
+poddisruptionbudget.policy/otel-gateway-pdb created (server dry run)
+networkpolicy.networking.k8s.io/prometheus-access configured (server dry run)
+networkpolicy.networking.k8s.io/opensearch-access configured (server dry run)
+```
+
+Local verification:
+
+```text
+helm lint phase3 - information/techx-corp-chart ...: 1 chart(s) linted, 0 chart(s) failed
+python3 -m pytest scripts/ci/test_runtime_hardening.py -q: 5 passed
+python3 -m pytest scripts/ci/test_production_access_contract.py -q: 9 passed
+git diff --check: clean
+```
+
+Quota headroom from the live snapshot at `2026-07-21T16:39:23+07:00` remains sufficient for two gateway replicas. Current quota use is `requests.cpu=3750m/12`, `requests.memory=7896Mi/16Gi`, `limits.cpu=16900m/48`, and `limits.memory=17523Mi/30Gi`; PR1 adds only `requests.cpu=200m`, `requests.memory=512Mi`, `limits.cpu=1000m`, and `limits.memory=1536Mi`.
