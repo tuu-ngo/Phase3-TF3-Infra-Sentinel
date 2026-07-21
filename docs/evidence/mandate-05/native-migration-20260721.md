@@ -208,7 +208,7 @@ What this PR introduces:
   OTLP/Jaeger/Zipkin receiver ports for application traffic.
 - Prometheus ingress allow-rule from
   `observability-system/app.kubernetes.io/name=otel-node-agent` to port 9090.
-- Production resources of `requests.cpu=50m`, `requests.memory=128Mi`,
+- Production resources of `requests.cpu=10m`, `requests.memory=128Mi`,
   `limits.cpu=250m`, and `limits.memory=256Mi` per scheduled node.
 
 Expected rendered properties before merge:
@@ -273,6 +273,17 @@ helm template with Argo values: pass
 python3 -m pytest scripts/ci/test_runtime_hardening.py -q: 5 passed
 python3 -m pytest scripts/ci/test_production_access_contract.py -q: 9 passed
 git diff --check: clean
+```
+
+Post-merge scheduling hotfix:
+
+```text
+Observed after PR3 merge: otel-node-agent was created but one DaemonSet pod
+remained Pending on ip-10-0-26-153 because that node had 1915m/1930m CPU
+requests allocated. The original node-agent request of 50m could not fit even
+though actual CPU usage was low. Reduce the node-agent CPU request to 10m while
+keeping the 250m limit so the collector can still burst without blocking
+DaemonSet coverage on tightly packed nodes.
 ```
 
 Required after this PR merges and Argo reconciles:
