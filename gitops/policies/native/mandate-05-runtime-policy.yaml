@@ -21,7 +21,7 @@ metadata:
   name: mandate05-native-resource-requirements-techx-tf3
 spec:
   policyName: mandate05-native-resource-requirements
-  validationActions: ["Warn", "Audit"]
+  validationActions: ["Deny"]
   matchResources:
     namespaceSelector:
       matchLabels:
@@ -52,7 +52,7 @@ metadata:
   name: mandate05-native-image-reference-techx-tf3
 spec:
   policyName: mandate05-native-image-reference
-  validationActions: ["Warn", "Audit"]
+  validationActions: ["Deny"]
   matchResources:
     namespaceSelector:
       matchLabels:
