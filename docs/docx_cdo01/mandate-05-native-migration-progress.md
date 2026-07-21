@@ -1,7 +1,7 @@
 # Mandate 05 Native Migration — Progress Log
 
 ## Trạng thái tổng quan
-- PM-168: đang làm — code xong (VAP+Binding Warn/Audit, LimitRange, ResourceQuota, 5 demo manifest), đã dry-run verify sạch, **chưa commit/push/PR**, chưa verify Warn/Audit thật trên cluster (cần merge qua GitOps trước).
+- PM-168: đang làm — code xong, đã dry-run verify sạch, **đã commit local** (`818b139`, nhánh `pm113-flagd-ui-kafka-digest-pin`), **chưa push/PR**, chưa verify Warn/Audit thật trên cluster (cần merge qua GitOps trước).
 - PM-169: chưa bắt đầu — bị block bởi 2 exception kafka/aiops-engine (xem execution guide mục 4), cần bàn hướng trước khi code.
 - PM-170: chưa bắt đầu — phụ thuộc PM-168 + PM-169 xong trước.
 
@@ -22,9 +22,10 @@
     - `bad-missing-resources-pod.yaml` → **pass** dù thiếu hoàn toàn `resources` — **phát hiện thật, khớp đúng lý do PM-168 yêu cầu xoá LimitRange default**: LimitRange live hiện tại (chưa merge bản mới) tự điền `default`/`defaultRequest` trước khi Kyverno `require-resource-requests` kịp đánh giá, nên pod "trông hợp lệ" sau khi bị mutate. Đây không phải bug của VAP mới, là bằng chứng sống cho đúng gap đã ghi trong Mandate 5 gap-analysis cũ.
 - **Chưa làm được / còn treo:**
   - Chưa verify hành vi Warn/Audit thật của 2 VAP mới — cần chúng tồn tại trên server thật, nghĩa là phải qua GitOps (merge PR → Argo CD sync `native-admission-policies`), không tự `kubectl apply` tay bỏ qua GitOps.
-  - Chưa commit — đang chờ xác nhận nhánh làm việc + xác nhận nội dung trước khi git add/commit.
-  - Chưa mở PR/push — sẽ hỏi user trước khi làm (theo đúng nguyên tắc không tự ý push).
+  - Chưa push/PR — sẽ hỏi user trước khi làm (theo đúng nguyên tắc không tự ý push).
 - **Vướng mắc:** Không có.
+- **Lưu ý phiên này:** dùng `AWS_PROFILE=cdo_admin` (không phải `techx-new` như ghi trong CLAUDE.md/handoff cũ) để access cluster qua tunnel SSM — user xác nhận profile này đã tạo sẵn, dùng cho phiên làm việc PM-166/167/168/169/170.
+- **Commit:** `818b139` — "feat(pm-168): native VAP image-reference + resource-requirements (Warn/Audit)", nhánh `pm113-flagd-ui-kafka-digest-pin` (bằng đúng `origin/main` tại thời điểm branch, theo lựa chọn của user).
 
 ## Việc tiếp theo
 1. Commit Task 1+3 (PM-168) trên nhánh hiện tại `pm113-flagd-ui-kafka-digest-pin` (bằng đầu `origin/main`, theo xác nhận của user).
