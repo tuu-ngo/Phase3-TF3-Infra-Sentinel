@@ -40,3 +40,7 @@ Thumbs.db
 .vscode/
 
 infra/tfplan-*
+
+# --- Lambda zip do Terraform archive_file sinh ra, không commit ---
+infra/live/production/m12-audit-heartbeat.zip
+infra/modules/audit-detection/audit-alert-router.zip

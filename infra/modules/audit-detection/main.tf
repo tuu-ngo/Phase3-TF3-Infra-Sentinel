@@ -25,7 +25,11 @@ locals {
     secret_reader_principals         = var.secret_reader_principal_arns
     sensitive_secret_names           = var.sensitive_secret_names
     suppressions                     = var.suppressions
-    critical_group_numbers           = [1, 2, 4]
+    # Mandate 12: nhóm critical KHÔNG bao giờ bị allowlist automation hoặc
+    # suppression làm im lặng. Gồm cả group 3 (leo thang quyền IAM), group 7
+    # (tamper alert plane) và group 8 (boundary/OIDC), vì kịch bản phải bắt được
+    # là kẻ tấn công dùng chính principal automation đã được tin cậy.
+    critical_group_numbers           = [1, 2, 3, 4, 7, 8]
     critical_group_6_target_keywords = ["cloudtrail", "kms", "secret", "rds", "elasticache", "s3"]
   })
 }
@@ -35,6 +39,12 @@ resource "aws_s3_bucket" "trail_logs" {
 
   bucket              = local.trail_bucket_name
   object_lock_enabled = true
+
+  # Mandate 12: bucket này là nguồn bằng chứng. Guard chặn plan vô tình
+  # replace/delete; nó không thay Object Lock hay IAM boundary.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "trail_logs" {
@@ -63,10 +73,13 @@ resource "aws_s3_bucket_object_lock_configuration" "trail_logs" {
 
   bucket = aws_s3_bucket.trail_logs[0].id
 
+  # Mandate 12: default retention chỉ áp cho object ĐƯỢC GHI SAU khi apply.
+  # Object đã giao trước cutover giữ nguyên retention cũ; claim 365 ngày chỉ
+  # tính từ UTC cutover đã ghi trong evidence.
   rule {
     default_retention {
-      mode = "GOVERNANCE"
-      days = 14
+      mode = var.trail_object_lock_mode
+      days = var.trail_object_lock_days
     }
   }
 
@@ -112,6 +125,15 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail_logs" {
 
     noncurrent_version_expiration {
       noncurrent_days = var.trail_s3_retention_days
+    }
+  }
+
+  # Mandate 12: lifecycle không được xoá object khi Object Lock còn hiệu lực.
+  # Nếu retention lifecycle <= Object Lock, S3 để rule fail âm thầm.
+  lifecycle {
+    precondition {
+      condition     = var.trail_s3_retention_days > var.trail_object_lock_days
+      error_message = "S3 lifecycle retention must be longer than Object Lock retention."
     }
   }
 }
@@ -186,6 +208,40 @@ data "aws_iam_policy_document" "trail_logs" {
       values   = ["false"]
     }
   }
+
+  # Mandate 12: chỉ CloudTrail service principal được ghi/sửa object archive.
+  # User/role kể cả admin bị chặn put, delete, đổi retention và bypass
+  # governance ở tầng resource policy, độc lập với IAM boundary.
+  statement {
+    sid    = "DenyNonCloudTrailObjectMutation"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions = [
+      "s3:AbortMultipartUpload",
+      "s3:BypassGovernanceRetention",
+      "s3:DeleteObject",
+      "s3:DeleteObjectTagging",
+      "s3:DeleteObjectVersion",
+      "s3:PutObject",
+      "s3:PutObjectAcl",
+      "s3:PutObjectLegalHold",
+      "s3:PutObjectRetention",
+      "s3:PutObjectTagging",
+      "s3:RestoreObject",
+    ]
+    resources = ["${aws_s3_bucket.trail_logs[0].arn}/*"]
+
+    condition {
+      test     = "StringNotEqualsIfExists"
+      variable = "aws:PrincipalServiceName"
+      values   = ["cloudtrail.amazonaws.com"]
+    }
+  }
 }
 
 resource "aws_s3_bucket_policy" "trail_logs" {
@@ -206,9 +262,53 @@ resource "aws_cloudtrail" "audit" {
   enable_logging                = true
   enable_log_file_validation    = true
 
-  event_selector {
-    include_management_events = true
-    read_write_type           = "All"
+  # Mandate 12: advanced selectors THAY THẾ basic selector. Phải khai báo lại
+  # Management read/write, nếu không sẽ mất toàn bộ coverage của Mandate 11.
+  advanced_event_selector {
+    name = "ManagementReadWrite"
+
+    field_selector {
+      field  = "eventCategory"
+      equals = ["Management"]
+    }
+  }
+
+  # Chỉ bật S3 data events khi owner đã duyệt exact bucket/prefix.
+  dynamic "advanced_event_selector" {
+    for_each = length(var.s3_data_event_arns) > 0 ? [true] : []
+
+    content {
+      name = "ApprovedSensitiveS3Objects"
+
+      field_selector {
+        field  = "eventCategory"
+        equals = ["Data"]
+      }
+
+      field_selector {
+        field  = "resources.type"
+        equals = ["AWS::S3::Object"]
+      }
+
+      field_selector {
+        field       = "resources.ARN"
+        starts_with = var.s3_data_event_arns
+      }
+    }
+  }
+
+  lifecycle {
+    prevent_destroy = true
+
+    # Đưa chính audit archive vào data selector sẽ tạo vòng lặp logging:
+    # mỗi lần CloudTrail giao log lại sinh thêm một PutObject data event.
+    precondition {
+      condition = alltrue([
+        for arn in var.s3_data_event_arns :
+        !startswith(arn, "${aws_s3_bucket.trail_logs[0].arn}/")
+      ])
+      error_message = "s3_data_event_arns must not include the audit archive bucket or any of its prefixes."
+    }
   }
 
   depends_on = [aws_s3_bucket_policy.trail_logs]

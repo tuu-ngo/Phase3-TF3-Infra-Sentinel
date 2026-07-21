@@ -40,3 +40,19 @@ variable "lock_table_name" {
   type    = string
   default = "techx-tf3-terraform-lock"
 }
+
+variable "ci_audit_boundary_name" {
+  description = "Tên managed policy dùng làm permissions boundary cho hai GitHub Actions Terraform role."
+  type        = string
+  default     = "techx-corp-tf3-ci-audit-boundary"
+}
+
+# Mặc định false: apply lần đầu chỉ TẠO policy để review, CI chạy như cũ.
+# Chỉ đặt true sau khi iam:SimulatePrincipalPolicy chứng minh baseline Terraform
+# vẫn allowed và các kill switch audit là explicitDeny.
+# Đặt lại false là đường rollback: apply lại root này sẽ gỡ boundary.
+variable "enable_ci_audit_boundary" {
+  description = "Attach permissions boundary Mandate 12 vào terraform_plan/terraform_apply. Xem ci-audit-boundary.tf."
+  type        = bool
+  default     = false
+}

@@ -1,6 +1,17 @@
 name: Terraform Plan (production)
 
 on:
+  # Mandate 12: trước đây plan chỉ chạy SAU khi merge vào main, nên reviewer
+  # không xem được plan trước khi duyệt PR. Với change đụng CloudTrail, bucket
+  # policy và IAM, review sau merge là quá muộn. Role plan chỉ có ReadOnlyAccess
+  # + quyền đọc state nên an toàn khi chạy trên PR nội bộ.
+  # Dùng `pull_request` (không phải `pull_request_target`) để fork không lấy
+  # được credential OIDC.
+  pull_request:
+    paths:
+      - "infra/live/production/**"
+      - "infra/modules/**"
+      - ".github/workflows/terraform-plan.yml"
   push:
     branches:
       - main
@@ -25,7 +36,7 @@ concurrency:
 jobs:
   plan:
     name: Plan production
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       TF_VAR_cloudfront_staging_selector: ${{ secrets.CLOUDFRONT_STAGING_SELECTOR }}

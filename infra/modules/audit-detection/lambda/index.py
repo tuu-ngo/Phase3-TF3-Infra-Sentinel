@@ -60,6 +60,60 @@ GROUP_MAP = {
     "kms:ScheduleKeyDeletion": 6,
     "secretsmanager:DeleteSecret": 6,
     "s3:DeleteBucket": 6,
+    # Group 7 (Mandate 12) bắt thay đổi lên chính alert plane và heartbeat:
+    # EventBridge rule/target, SNS topic/subscription, Lambda router và các
+    # control của audit bucket. Nhóm này nằm trong critical_group_numbers nên
+    # không bị allowlist automation hay suppression làm im lặng.
+    "events:DisableRule": 7,
+    "events:DeleteRule": 7,
+    "events:PutRule": 7,
+    "events:RemoveTargets": 7,
+    "events:PutTargets": 7,
+    "sns:AddPermission": 7,
+    "sns:RemovePermission": 7,
+    "sns:DeleteTopic": 7,
+    "sns:SetTopicAttributes": 7,
+    "sns:Subscribe": 7,
+    "sns:ConfirmSubscription": 7,
+    "sns:SetSubscriptionAttributes": 7,
+    "sns:Unsubscribe": 7,
+    "lambda:DeleteFunction": 7,
+    "lambda:UpdateFunctionCode": 7,
+    "lambda:UpdateFunctionConfiguration": 7,
+    # Đặt reserved concurrency = 0 làm router ngừng xử lý mà không xoá gì.
+    "lambda:PutFunctionConcurrency": 7,
+    "lambda:DeleteFunctionConcurrency": 7,
+    "monitoring:DeleteAlarms": 7,
+    "monitoring:DisableAlarmActions": 7,
+    "monitoring:PutMetricAlarm": 7,
+    "s3:PutBucketPolicy": 7,
+    "s3:DeleteBucketPolicy": 7,
+    "s3:PutBucketVersioning": 7,
+    "s3:PutObjectLockConfiguration": 7,
+    "s3:PutBucketLifecycleConfiguration": 7,
+    "s3:DeleteBucketLifecycle": 7,
+    "s3:PutBucketEncryption": 7,
+    "s3:DeleteBucketEncryption": 7,
+    "s3:PutPublicAccessBlock": 7,
+    "s3:DeletePublicAccessBlock": 7,
+    # Group 8 (Mandate 12) bắt thay đổi permissions boundary, policy
+    # attachment và trust path OIDC. IAM là global service nên rule tương ứng
+    # nằm ở us-east-1.
+    "iam:PutUserPermissionsBoundary": 8,
+    "iam:DeleteUserPermissionsBoundary": 8,
+    "iam:PutRolePermissionsBoundary": 8,
+    "iam:DeleteRolePermissionsBoundary": 8,
+    "iam:DeletePolicy": 8,
+    "iam:DeletePolicyVersion": 8,
+    "iam:DeleteUserPolicy": 8,
+    "iam:DeleteRolePolicy": 8,
+    "iam:DetachUserPolicy": 8,
+    "iam:DetachRolePolicy": 8,
+    "iam:CreateOpenIDConnectProvider": 8,
+    "iam:DeleteOpenIDConnectProvider": 8,
+    "iam:UpdateOpenIDConnectProviderThumbprint": 8,
+    "iam:AddClientIDToOpenIDConnectProvider": 8,
+    "iam:RemoveClientIDFromOpenIDConnectProvider": 8,
 }
 
 
@@ -77,11 +131,19 @@ def handler(event, _context):
     actor = extract_actor(detail.get("userIdentity", {}))
     target = extract_target(detail, group)
 
-    if is_allowed_automation(actor):
+    # Mandate 12: nhóm critical là các đòn nhắm vào chính hệ kiểm toán và vào
+    # đường leo thang quyền. Nếu để chúng đi qua allowlist automation hoặc
+    # suppression window thì một principal đã được tin cậy (CI/CD, Terraform
+    # apply, deployer) có thể tắt audit mà không sinh cảnh báo nào — đúng kịch
+    # bản Mandate 12 phải bắt được. Approved change vẫn tạo alert; người trực
+    # đối chiếu change ID thay vì tắt cảnh báo.
+    critical_groups = set(CONFIG.get("critical_group_numbers") or [])
+
+    if group not in critical_groups and is_allowed_automation(actor):
         LOGGER.info(json.dumps({"ignored": True, "reason": "allowlisted_automation", "actor": actor, "event_key": event_key}))
         return {"ignored": True, "reason": "allowlisted_automation", "actor": actor, "event_key": event_key}
 
-    if is_suppressed(actor, target):
+    if group not in critical_groups and is_suppressed(actor, target):
         LOGGER.info(json.dumps({"ignored": True, "reason": "suppressed", "actor": actor, "target": target, "event_key": event_key}))
         return {"ignored": True, "reason": "suppressed", "actor": actor, "target": target, "event_key": event_key}
 
