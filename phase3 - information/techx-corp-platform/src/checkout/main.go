@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log/global"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -400,7 +402,7 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 
 	prep, err := cs.prepareOrderItemsAndShippingQuoteFromCart(ctx, req.UserId, req.UserCurrency, req.Address)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	span.AddEvent("prepared")
 
@@ -502,14 +504,35 @@ func (cs *checkout) prepareOrderItemsAndShippingQuoteFromCart(ctx context.Contex
 	if err != nil {
 		return out, fmt.Errorf("cart failure: %+v", err)
 	}
-	orderItems, err := cs.prepOrderItems(ctx, cartItems, userCurrency)
-	if err != nil {
-		return out, fmt.Errorf("failed to prepare order: %+v", err)
+
+	// Mandate #16: after the cart is loaded, item enrichment and shipping quote do
+	// not depend on each other. Run them in parallel to shorten the checkout
+	// critical path without adding capacity.
+	var (
+		orderItems  []*pb.OrderItem
+		shippingUSD *pb.Money
+		orderErr    error
+		shippingErr error
+		wg          sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		orderItems, orderErr = cs.prepOrderItems(ctx, cartItems, userCurrency)
+	}()
+	go func() {
+		defer wg.Done()
+		shippingUSD, shippingErr = cs.quoteShipping(ctx, address, cartItems)
+	}()
+	wg.Wait()
+
+	if orderErr != nil {
+		return out, fmt.Errorf("failed to prepare order: %+v", orderErr)
 	}
-	shippingUSD, err := cs.quoteShipping(ctx, address, cartItems)
-	if err != nil {
-		return out, fmt.Errorf("shipping quote failure: %+v", err)
+	if shippingErr != nil {
+		return out, fmt.Errorf("shipping quote failure: %+v", shippingErr)
 	}
+
 	shippingPrice, err := cs.convertCurrency(ctx, shippingUSD, userCurrency)
 	if err != nil {
 		return out, fmt.Errorf("failed to convert shipping cost to currency: %+v", err)
@@ -597,26 +620,61 @@ func (cs *checkout) emptyUserCart(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (cs *checkout) prepOrderItems(ctx context.Context, items []*pb.CartItem, userCurrency string) ([]*pb.OrderItem, error) {
-	out := make([]*pb.OrderItem, len(items))
+func (cs *checkout) prepOrderItems(
+	ctx context.Context,
+	items []*pb.CartItem,
+	userCurrency string,
+) ([]*pb.OrderItem, error) {
 
+	out := make([]*pb.OrderItem, len(items))
+	errCh := make(chan error, len(items))
+	var wg sync.WaitGroup
+
+	// Mandate #16: each cart line is independent, so enrich them concurrently to
+	// reduce tail latency on larger carts while keeping response ordering stable.
 	for i, item := range items {
-		product, err := cs.productCatalogSvcClient.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get product #%q", item.GetProductId())
-		}
-		price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
-		}
-		out[i] = &pb.OrderItem{
-			Item: item,
-			Cost: price}
+		wg.Add(1)
+		go func(i int, item *pb.CartItem) {
+			defer wg.Done()
+
+			product, err := cs.productCatalogSvcClient.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})
+			if err != nil {
+				errCh <- fmt.Errorf("failed to get product #%q", item.GetProductId())
+				return
+			}
+
+			price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
+				return
+			}
+
+			out[i] = &pb.OrderItem{
+				Item: item,
+				Cost: price,
+			}
+		}(i, item)
 	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return out, nil
 }
 
 func (cs *checkout) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
+	// Mandate #16: USD is already the source currency for catalog/shipping
+	// prices. Skip the RPC when no conversion is needed.
+	if from == nil || toCurrency == "" || from.GetCurrencyCode() == toCurrency {
+		return from, nil
+	}
+
 	result, err := cs.currencySvcClient.Convert(ctx, &pb.CurrencyConversionRequest{
 		From:   from,
 		ToCode: toCurrency})

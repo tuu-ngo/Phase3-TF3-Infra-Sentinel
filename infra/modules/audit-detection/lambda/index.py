@@ -75,7 +75,7 @@ def handler(event, _context):
         return {"ignored": True, "reason": "unmapped_event", "event_key": event_key}
 
     actor = extract_actor(detail.get("userIdentity", {}))
-    target = extract_target(detail)
+    target = extract_target(detail, group)
 
     if is_allowed_automation(actor):
         LOGGER.info(json.dumps({"ignored": True, "reason": "allowlisted_automation", "actor": actor, "event_key": event_key}))
@@ -93,11 +93,13 @@ def handler(event, _context):
     detected_at = datetime.now(timezone.utc)
     ttd_seconds = max(0, int((detected_at - event_time).total_seconds()))
     severity = map_severity(group, target)
+    resources = event.get("resources") or []
+    rule_name = resources[0] if resources else "eventbridge-rule-unknown"
 
     payload = {
         "severity": severity,
         "group": group,
-        "rule_name": event.get("resources", ["eventbridge-rule-unknown"])[0],
+        "rule_name": rule_name,
         "event_name": event_name,
         "actor": {
             "principal": actor,
@@ -120,7 +122,10 @@ def handler(event, _context):
     }
 
     LOGGER.info(json.dumps(payload))
-    publish_metric(group, severity, ttd_seconds)
+    try:
+        publish_metric(group, severity, ttd_seconds)
+    except Exception:
+        LOGGER.exception("failed to publish detection latency metric")
     publish_alert(payload)
     return {"sent": True, "severity": severity, "group": group, "ttd_seconds": ttd_seconds}
 
@@ -139,8 +144,28 @@ def extract_actor(user_identity):
     return actor_type or "unknown"
 
 
-def extract_target(detail):
+def extract_target(detail, group=None):
     request = detail.get("requestParameters") or {}
+
+    if group == 4:
+        cluster_name = request.get("name") or request.get("clusterName")
+        principal_arn = request.get("principalArn")
+        if cluster_name and principal_arn:
+            return f"{cluster_name} principal={principal_arn}"
+        if principal_arn:
+            return str(principal_arn)
+
+    if group == 5:
+        secret_targets = []
+        for key in ["secretId", "SecretId", "secretIdList", "SecretIdList", "secretIds", "SecretIds"]:
+            value = request.get(key)
+            if isinstance(value, list):
+                secret_targets.extend(str(item) for item in value if item)
+            elif value:
+                secret_targets.append(str(value))
+        if secret_targets:
+            return ",".join(secret_targets)
+
     for key in [
         "userName",
         "roleName",
@@ -195,8 +220,11 @@ def is_suppressed(actor, target):
         resource = suppression.get("resource", "*")
         if resource not in ("*", target) and resource not in (target or ""):
             continue
-        start = parse_time(suppression.get("start"))
-        end = parse_time(suppression.get("end"))
+        start = parse_time(suppression.get("start"), default_now=False)
+        end = parse_time(suppression.get("end"), default_now=False)
+        if not start or not end:
+            LOGGER.warning(json.dumps({"ignored_suppression": True, "reason": "missing_or_invalid_window", "suppression": suppression}))
+            continue
         if start <= now <= end:
             return True
     return False
@@ -269,8 +297,14 @@ def publish_alert(payload):
     )
 
 
-def parse_time(value):
+def parse_time(value, default_now=True):
     if not value:
-        return datetime.now(timezone.utc)
+        return datetime.now(timezone.utc) if default_now else None
     normalized = value.replace("Z", "+00:00")
-    return datetime.fromisoformat(normalized)
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        if default_now:
+            LOGGER.warning(json.dumps({"invalid_time": value, "fallback": "now"}))
+            return datetime.now(timezone.utc)
+        return None
