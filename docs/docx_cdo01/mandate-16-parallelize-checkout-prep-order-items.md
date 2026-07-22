@@ -416,6 +416,29 @@ Trace Jaeger sau deploy xác nhận luồng đã được sửa đúng theo mand
 | Request checkout quan sát ở trace trước | khoảng **185.05ms** | span chuẩn bị order/shipping khoảng **23.97ms** | Bottleneck trong đoạn prep giảm rõ |
 | `prepareOrderItemsAndShippingQuoteFromCart` | bị kéo dài theo tổng latency của từng item + shipping quote | gần với nhánh chậm nhất trong các tác vụ song song | Không còn cộng dồn tuyến tính theo số item |
 
+### So sánh trực tiếp cùng order 10 sản phẩm
+
+**Ngày kiểm chứng:** 22/07/2026  
+**Điều kiện đo:** cùng một order có **10 sản phẩm**, so sánh trace Jaeger trước và sau khi tối ưu luồng chuẩn bị item trong checkout.
+
+| Chỉ số Jaeger | Before | After | Delta |
+|---|---:|---:|---:|
+| Trace duration end-to-end | **1.44s** | **1.17s** | **-0.27s** |
+| Mức giảm latency | - | - | **18.75% nhanh hơn** |
+| Tổng số span | **120** | **104** | **-16 span** |
+| Span `prepareOrderItemsAndShippingQuoteFromCart` | **210.48ms** | **185.86ms** | **-24.62ms** |
+
+**Nhận xét:** Với cùng order 10 sản phẩm, duration toàn trace giảm từ **1.44s xuống 1.17s**, tương đương giảm **270ms**. Đây là mức cải thiện khoảng **18.75%** mà không cần tăng replica, CPU, memory hoặc node. Trace after cũng cho thấy tổng số span giảm từ **120 xuống 104**, đồng thời span chuẩn bị order/shipping giảm từ **210.48ms xuống 185.86ms**. Điều này củng cố kết luận rằng phần xử lý item trong checkout đã bớt bị cộng dồn tuần tự và tiến gần hơn đến mô hình chạy song song theo nhánh chậm nhất.
+
+### So sánh percentile checkout p95/p99
+
+| Metric | Before | After | Delta | Mức cải thiện |
+|---|---:|---:|---:|---:|
+| p95 checkout latency | **245ms** | **242ms** | **-3ms** | **1.22%** |
+| p99 checkout latency | **335ms** | **247ms** | **-88ms** | **26.27%** |
+
+**Nhận xét:** p95 gần như giữ ổn định, giảm nhẹ từ **245ms xuống 242ms**. Điểm cải thiện quan trọng nằm ở p99: giảm từ **335ms xuống 247ms**, tức giảm **88ms**. Điều này cho thấy tối ưu song song hóa tác động rõ nhất lên tail latency của checkout, đúng với kỳ vọng vì các order nhiều sản phẩm trước đây bị cộng dồn latency theo từng item.
+
 ### Diễn giải bằng trace
 
 Trước tối ưu, waterfall Jaeger cho thấy checkout phải đi qua chuỗi:
