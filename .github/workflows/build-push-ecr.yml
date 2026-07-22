@@ -677,118 +677,6 @@ jobs:
         if: steps.scope.outputs.mode != 'none'
         uses: sigstore/cosign-installer@v4.1.2
 
-      - name: Generate, attest, and verify CycloneDX SBOMs
-        if: steps.scope.outputs.mode != 'none'
-        env:
-          BUILD_PLATFORMS: ${{ steps.vars.outputs.platforms }}
-          SOURCE_SHA: ${{ steps.scope.outputs.source_sha }}
-          WORKFLOW_RUN_ID: ${{ github.run_id }}
-          WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          set -euo pipefail
-
-          EVIDENCE_ROOT="$GITHUB_WORKSPACE/release-evidence"
-          RAW_ROOT="$EVIDENCE_ROOT/sbom/raw"
-          PREDICATE_ROOT="$EVIDENCE_ROOT/sbom/predicates"
-          VERIFY_ROOT="$EVIDENCE_ROOT/sbom/verify"
-          SUMMARY="$EVIDENCE_ROOT/sbom/sbom-evidence.jsonl"
-          INDEX="$EVIDENCE_ROOT/sbom/sbom-index.json"
-          EXPECTED_IDENTITY="https://github.com/${GITHUB_WORKFLOW_REF}"
-
-          mkdir -p "$RAW_ROOT" "$PREDICATE_ROOT" "$VERIFY_ROOT"
-          : > "$SUMMARY"
-
-          service_count="$(jq '.services | length' approved-images.json)"
-          for ((index = 0; index < service_count; index++)); do
-            service="$(jq -r ".services[$index].name" approved-images.json)"
-            digest="$(jq -r ".services[$index].digest" approved-images.json)"
-            image="${ECR_REGISTRY}/${ECR_REPOSITORY}@${digest}"
-
-            while IFS= read -r platform; do
-              safe_platform="${platform//\//-}"
-              raw="$RAW_ROOT/${service}-${safe_platform}.json"
-              predicate="$PREDICATE_ROOT/${service}-${safe_platform}.json"
-              verify_report="$VERIFY_ROOT/${service}-${safe_platform}.jsonl"
-
-              echo "Generating CycloneDX SBOM for $image ($platform)"
-              trivy image \
-                --platform "$platform" \
-                --format cyclonedx \
-                --output "$raw" \
-                --no-progress \
-                "$image"
-
-              python3 "$GITHUB_WORKSPACE/scripts/ci/prepare-cyclonedx-sbom.py" \
-                --input "$raw" \
-                --output "$predicate" \
-                --image "$image" \
-                --platform "$platform" \
-                --subject-digest "$digest" \
-                --source-sha "$SOURCE_SHA"
-
-              echo "Attesting CycloneDX SBOM for $image ($platform)"
-              cosign attest \
-                --yes \
-                --type cyclonedx \
-                --predicate "$predicate" \
-                "$image"
-
-              echo "Verifying CycloneDX SBOM attestation for $image ($platform)"
-              cosign verify-attestation \
-                --type cyclonedx \
-                --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-                --certificate-identity "$EXPECTED_IDENTITY" \
-                "$image" > "$verify_report"
-
-              jq -nc \
-                --arg service "$service" \
-                --arg image "$image" \
-                --arg digest "$digest" \
-                --arg platform "$platform" \
-                --arg source_sha "$SOURCE_SHA" \
-                --arg run_id "$WORKFLOW_RUN_ID" \
-                --arg run_attempt "$WORKFLOW_RUN_ATTEMPT" \
-                --arg issuer "https://token.actions.githubusercontent.com" \
-                --arg identity "$EXPECTED_IDENTITY" \
-                --arg predicate "${predicate#"$GITHUB_WORKSPACE/"}" \
-                --arg verification "${verify_report#"$GITHUB_WORKSPACE/"}" \
-                '{
-                  service: $service,
-                  image: $image,
-                  digest: $digest,
-                  platform: $platform,
-                  sourceSha: $source_sha,
-                  workflowRunId: $run_id,
-                  workflowRunAttempt: $run_attempt,
-                  issuer: $issuer,
-                  identity: $identity,
-                  predicatePath: $predicate,
-                  verificationPath: $verification
-                }' >> "$SUMMARY"
-            done < <(printf '%s' "$BUILD_PLATFORMS" | tr ',' '\n')
-          done
-
-          jq -s \
-            --arg repository "$ECR_REPOSITORY" \
-            --arg registry "$ECR_REGISTRY" \
-            --arg source_sha "$SOURCE_SHA" \
-            --arg run_id "$WORKFLOW_RUN_ID" \
-            --arg run_attempt "$WORKFLOW_RUN_ATTEMPT" \
-            --arg issuer "https://token.actions.githubusercontent.com" \
-            --arg identity "$EXPECTED_IDENTITY" \
-            '{
-              schemaVersion: 1,
-              repository: $repository,
-              registry: $registry,
-              sourceSha: $source_sha,
-              workflowRunId: $run_id,
-              workflowRunAttempt: $run_attempt,
-              predicateType: "https://cyclonedx.org/bom",
-              issuer: $issuer,
-              identity: $identity,
-              attestations: .
-            }' "$SUMMARY" > "$INDEX"
-
       - name: Sign and verify approved image digests with keyless Cosign
         if: steps.scope.outputs.mode != 'none'
         env:
@@ -846,6 +734,200 @@ jobs:
                 workflowIdentity: $workflow_identity
               }' >> "$SUMMARY"
           done
+
+      - name: Generate, attest, and verify CycloneDX SBOMs
+        if: steps.scope.outputs.mode != 'none'
+        env:
+          BUILD_PLATFORMS: ${{ steps.vars.outputs.platforms }}
+          SOURCE_SHA: ${{ steps.scope.outputs.source_sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+
+          EVIDENCE_ROOT="$GITHUB_WORKSPACE/release-evidence"
+          RAW_ROOT="$EVIDENCE_ROOT/sbom/raw"
+          MANIFEST_ROOT="$EVIDENCE_ROOT/sbom/manifests"
+          PLATFORM_ROOT="$EVIDENCE_ROOT/sbom/platforms"
+          PREDICATE_ROOT="$EVIDENCE_ROOT/sbom/predicates"
+          VERIFY_ROOT="$EVIDENCE_ROOT/sbom/verify"
+          SUMMARY="$EVIDENCE_ROOT/sbom/sbom-evidence.jsonl"
+          INDEX="$EVIDENCE_ROOT/sbom/sbom-index.json"
+          EXPECTED_IDENTITY="https://github.com/${GITHUB_WORKFLOW_REF}"
+          INDEX_PREDICATE_TYPE="https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/attestations/sbom-index/v1"
+
+          mkdir -p "$RAW_ROOT" "$MANIFEST_ROOT" "$PLATFORM_ROOT" "$PREDICATE_ROOT" "$VERIFY_ROOT"
+          : > "$SUMMARY"
+
+          service_count="$(jq '.services | length' approved-images.json)"
+          for ((index = 0; index < service_count; index++)); do
+            service="$(jq -r ".services[$index].name" approved-images.json)"
+            index_digest="$(jq -r ".services[$index].digest" approved-images.json)"
+            index_image="${ECR_REGISTRY}/${ECR_REPOSITORY}@${index_digest}"
+            manifest_raw="$MANIFEST_ROOT/${service}.json"
+            platform_map="$PLATFORM_ROOT/${service}.json"
+
+            echo "Resolving OCI platform children for $index_image"
+            docker buildx imagetools inspect --raw "$index_image" > "$manifest_raw"
+            python3 "$GITHUB_WORKSPACE/scripts/ci/resolve-oci-platforms.py" \
+              --input "$manifest_raw" \
+              --image "$index_image" \
+              --expected-platforms "$BUILD_PLATFORMS" \
+              --output "$platform_map"
+
+            while IFS= read -r platform_entry; do
+              platform="$(jq -r '.platform' <<< "$platform_entry")"
+              child_digest="$(jq -r '.digest' <<< "$platform_entry")"
+              child_image="$(jq -r '.image' <<< "$platform_entry")"
+              safe_platform="${platform//\//-}"
+              raw="$RAW_ROOT/${service}-${safe_platform}.json"
+              predicate="$PREDICATE_ROOT/${service}-${safe_platform}.json"
+              child_verify_report="$VERIFY_ROOT/${service}-${safe_platform}-child.jsonl"
+              index_verify_report="$VERIFY_ROOT/${service}-${safe_platform}-index.jsonl"
+
+              echo "Generating CycloneDX SBOM for $child_image ($platform)"
+              trivy image \
+                --platform "$platform" \
+                --format cyclonedx \
+                --output "$raw" \
+                --no-progress \
+                "$child_image"
+
+              python3 "$GITHUB_WORKSPACE/scripts/ci/prepare-cyclonedx-sbom.py" \
+                --input "$raw" \
+                --output "$predicate" \
+                --image "$child_image" \
+                --platform "$platform" \
+                --index-digest "$index_digest" \
+                --subject-digest "$child_digest" \
+                --source-sha "$SOURCE_SHA"
+
+              echo "Attesting CycloneDX SBOM for child $child_image ($platform)"
+              cosign attest \
+                --yes \
+                --type cyclonedx \
+                --predicate "$predicate" \
+                "$child_image"
+
+              echo "Verifying CycloneDX SBOM attestation for child $child_image ($platform)"
+              cosign verify-attestation \
+                --type cyclonedx \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                --certificate-identity "$EXPECTED_IDENTITY" \
+                "$child_image" > "$child_verify_report"
+
+              # Keep a signed index-level CycloneDX reference for the current
+              # admission policy while child attestations remain authoritative
+              # for runtime-platform retrieval.
+              echo "Attesting CycloneDX SBOM reference on index $index_image ($platform)"
+              cosign attest \
+                --yes \
+                --type cyclonedx \
+                --predicate "$predicate" \
+                "$index_image"
+
+              echo "Verifying index CycloneDX SBOM reference for $index_image ($platform)"
+              cosign verify-attestation \
+                --type cyclonedx \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                --certificate-identity "$EXPECTED_IDENTITY" \
+                "$index_image" > "$index_verify_report"
+
+              jq -nc \
+                --arg service "$service" \
+                --arg index_image "$index_image" \
+                --arg index_digest "$index_digest" \
+                --arg child_image "$child_image" \
+                --arg child_digest "$child_digest" \
+                --arg platform "$platform" \
+                --arg source_sha "$SOURCE_SHA" \
+                --arg run_id "$WORKFLOW_RUN_ID" \
+                --arg run_attempt "$WORKFLOW_RUN_ATTEMPT" \
+                --arg issuer "https://token.actions.githubusercontent.com" \
+                --arg identity "$EXPECTED_IDENTITY" \
+                --arg predicate "${predicate#"$GITHUB_WORKSPACE/"}" \
+                --arg child_verification "${child_verify_report#"$GITHUB_WORKSPACE/"}" \
+                --arg index_verification "${index_verify_report#"$GITHUB_WORKSPACE/"}" \
+                '{
+                  service: $service,
+                  indexImage: $index_image,
+                  indexDigest: $index_digest,
+                  childImage: $child_image,
+                  childDigest: $child_digest,
+                  platform: $platform,
+                  sourceSha: $source_sha,
+                  workflowRunId: $run_id,
+                  workflowRunAttempt: $run_attempt,
+                  issuer: $issuer,
+                  identity: $identity,
+                  predicatePath: $predicate,
+                  childVerificationPath: $child_verification,
+                  indexVerificationPath: $index_verification,
+                  indexMappingPath: ($service + "-index-release-mapping.json")
+                }' >> "$SUMMARY"
+            done < <(jq -c '.platforms[]' "$platform_map")
+            index_mapping="$PREDICATE_ROOT/${service}-index-release-mapping.json"
+            mapping_verify_report="$VERIFY_ROOT/${service}-index-mapping.jsonl"
+            jq -s \
+              --arg service "$service" \
+              --arg predicate_type "$INDEX_PREDICATE_TYPE" \
+              --arg source_sha "$SOURCE_SHA" \
+              --arg run_id "$WORKFLOW_RUN_ID" \
+              --arg run_attempt "$WORKFLOW_RUN_ATTEMPT" \
+              'map(select(.service == $service)) as $entries |
+              {
+                schemaVersion: 1,
+                predicateType: $predicate_type,
+                service: $service,
+                indexDigest: $entries[0].indexDigest,
+                sourceSha: $source_sha,
+                workflowRunId: $run_id,
+                workflowRunAttempt: $run_attempt,
+                platforms: ($entries | map({
+                  platform,
+                  childDigest,
+                  predicateType: "https://cyclonedx.org/bom",
+                  predicatePath,
+                  childVerificationPath,
+                  attestationVerified: true
+                }))
+              }' "$SUMMARY" > "$index_mapping"
+
+            echo "Attesting index-to-platform SBOM mapping on $index_image"
+            cosign attest \
+              --yes \
+              --type "$INDEX_PREDICATE_TYPE" \
+              --predicate "$index_mapping" \
+              "$index_image"
+            cosign verify-attestation \
+              --type "$INDEX_PREDICATE_TYPE" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity "$EXPECTED_IDENTITY" \
+              "$index_image" > "$mapping_verify_report"
+          done
+          done
+
+          jq -s \
+            --arg repository "$ECR_REPOSITORY" \
+            --arg registry "$ECR_REGISTRY" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg run_id "$WORKFLOW_RUN_ID" \
+            --arg run_attempt "$WORKFLOW_RUN_ATTEMPT" \
+            --arg issuer "https://token.actions.githubusercontent.com" \
+            --arg identity "$EXPECTED_IDENTITY" \
+            '{
+              schemaVersion: 1,
+              repository: $repository,
+              registry: $registry,
+              sourceSha: $source_sha,
+              workflowRunId: $run_id,
+              workflowRunAttempt: $run_attempt,
+              predicateType: "https://cyclonedx.org/bom",
+              indexPredicateType: "https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/attestations/sbom-index/v1",
+              issuer: $issuer,
+              identity: $identity,
+              attestations: .
+            }' "$SUMMARY" > "$INDEX"
 
       - name: Upload signed release evidence
         if: always() && steps.scope.outputs.mode != 'none'
