@@ -57,18 +57,22 @@ review change, not an admission-time exception or an untracked cluster edit.
 
 ## Status and limits of this evidence
 
-The implementation is prepared in GitOps and validated offline. A live
+The implementation is prepared in GitOps and validated offline. Both child
+Applications are committed with automated reconciliation disabled, so merging
+the preparation PR cannot install the webhook before its IAM role exists. A live
 acceptance run is still required after the branch is merged and ArgoCD syncs:
 
 1. Terraform plan/apply must create the Kyverno ECR read role.
-2. ArgoCD must sync the Kyverno controller before the policy application.
-3. Kyverno must report both policies Ready and produce PolicyReports.
-4. A real first-party digest from the signed build must show both a valid
+2. A controller-only PR must set `kyverno` automated sync to enabled.
+3. After controller health is proven, a policy-only PR must set
+   `kyverno-policies` automated sync to enabled.
+4. Kyverno must report both policies Ready and produce PolicyReports.
+5. A real first-party digest from the signed build must show both a valid
    Cosign signature and a valid CycloneDX attestation.
-5. An unapproved external tag/digest must be reported by the Audit policy.
-6. Mandate 05 native VAP/PSA checks and storefront/flagd health must remain
+6. An unapproved external tag/digest must be reported by the Audit policy.
+7. Mandate 05 native VAP/PSA checks and storefront/flagd health must remain
    unchanged.
-7. Only after audit evidence is reviewed should PM-127 be considered for an
+8. Only after audit evidence is reviewed should PM-127 be considered for an
    enforce-mode change. This branch keeps PM-127 in Audit.
 
 During development, the private EKS API was reachable through the SSM tunnel,

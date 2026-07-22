@@ -13,8 +13,11 @@ Do not run `kubectl apply`, `helm upgrade`, `argocd app sync`, or
 1. Pull request review and merge to `main`.
 2. Terraform plan reviewed, then the approved saved plan is applied by the
    infrastructure owner.
-3. ArgoCD auto-syncs the Kyverno controller and policies from Git.
-4. Live checks below are read-only, except for the explicitly labelled mentor
+3. A reviewed controller-only PR enables automated reconciliation for the
+   `kyverno` child Application.
+4. After the controller is healthy, a policy-only PR enables automated
+   reconciliation for `kyverno-policies`.
+5. Live checks below are read-only, except for the explicitly labelled mentor
    rejection demo, which must be approved and run in a controlled namespace.
 
 ## Pre-merge checks
@@ -69,8 +72,8 @@ unable to inspect the cluster or ECR.
 
 ## Post-merge GitOps observation
 
-After the infrastructure owner applies the reviewed Terraform plan, observe
-ArgoCD without forcing a sync:
+After the infrastructure owner applies the reviewed Terraform plan, merge the
+controller enablement PR and observe ArgoCD without forcing a sync:
 
 ```sh
 kubectl -n argocd get application kyverno kyverno-policies -o wide
@@ -92,9 +95,10 @@ Expected ordering and state:
 - both policies are `Ready` and remain `Audit`.
 
 Terraform and Argo are separate reconcilers. Argo sync waves cannot prove that
-the Terraform IAM role already exists. Therefore the owner must complete and
-review the Terraform plan before allowing Argo to sync the Kyverno Application;
-do not merge an all-at-once change and assume wave 10 orders it after IAM.
+the Terraform IAM role already exists. The preparation branch therefore keeps
+automated reconciliation disabled for both child Applications. Do not manually
+sync them. Enable the controller through a PR only after IAM is applied, and
+enable Audit policies through a later PR only after controller health is proven.
 
 If Argo reports `ComparisonError`, inspect chart dependencies and the exact
 Git revision before touching the cluster. Do not bypass GitOps with a manual
