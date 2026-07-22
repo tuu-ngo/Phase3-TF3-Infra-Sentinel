@@ -919,6 +919,12 @@ components:
         cpu: 100m
         memory: 50Mi
   kafka:
+    # Mandate #8 §8: TAT component Kafka in-cluster. Toan bo luu luong order da chuyen sang
+    # Amazon MSK (producer checkout PR #276, consumer accounting+fraud PR #278, LAG=0).
+    # Kho cu da nghi huu: khong con producer, khong con consumer active.
+    # Duong lui khong con dua vao pod nay ma la PLAN B: retention topic `orders` tren MSK
+    # (log.retention.hours=168 = 7 ngay) + redeploy chart cu tu git neu can.
+    enabled: false
     imageOverride:
       digest: sha256:efc188d08627ea302b98a45bae30ae2868c7ffd1d69a4359019c26dd553419b0
     service:
@@ -1032,6 +1038,14 @@ components:
         cpu: "1"
         memory: 1500Mi
   postgresql:
+    # Mandate #8 §8: TAT component PostgreSQL in-cluster. accounting (nguoi ghi duy nhat) +
+    # product-catalog + product-reviews da tro RDS (sslmode=require) tu PR #252.
+    # Kho cu da DONG BANG tu luc cutover: 70.478 don, khong con ai ghi vao (da do 21/07).
+    # Duong lui = PLAN B: snapshot thu cong `techx-tf3-postgres-pre-cleanup-20260721-2242`
+    # + backup tu dong 7 ngay + PITR (LatestRestorableTime cap nhat lien tuc).
+    # Tat component nay cung go luon ConfigMap `postgresql-init` - noi con sot credential
+    # plaintext cuoi cung (gate `.Values.components.postgresql.enabled`).
+    enabled: false
     schedulingRules:
       nodeSelector:
         techx.io/workload: stateful
@@ -1079,6 +1093,11 @@ components:
       timeoutSeconds: 3
       failureThreshold: 5
   valkey-cart:
+    # Mandate #8 §8: TAT component Valkey in-cluster. cart da doc/ghi ElastiCache (TLS + auth
+    # token) tu PR #251, va dual-write dao chieu ve kho cu da go o PR #307.
+    # Duong lui = PLAN B: snapshot `techx-tf3-valkey-pre-cleanup-20260721-2243` (chup tu replica).
+    # Luu y: PVC `valkey-cart` do CHART render ra -> tat component nay se prune luon PVC do.
+    enabled: false
     schedulingRules:
       nodeSelector:
         techx.io/workload: stateful
