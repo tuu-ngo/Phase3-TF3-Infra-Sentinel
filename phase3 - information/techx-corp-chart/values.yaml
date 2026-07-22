@@ -1505,8 +1505,13 @@ jaeger:
         value: "25000"
       - name: PROMETHEUS_ADDR
         value: prometheus:9090
+      # PR3 (mandate05 otel parity): jaeger khong nam trong `components:` nen
+      # khong tu dong doi theo default.env.OTEL_COLLECTOR_NAME nhu 18 service
+      # khac (PR #301) - day la ly do duy nhat jaeger van tu gui trace/metric
+      # ve otel-collector-agent cu (da xac nhan qua Prometheus, service_name=
+      # jaeger). Doi tay sang otel-gateway de dong bo voi kien truc moi.
       - name: OTEL_COLLECTOR_HOST
-        value: otel-collector
+        value: otel-gateway
       - name: OTEL_COLLECTOR_PORT_HTTP
         value: "4318"
       - name: JAEGER_HOST
