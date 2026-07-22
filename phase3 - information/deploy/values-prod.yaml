@@ -464,15 +464,29 @@ components:
       rollingUpdate:
         maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
         maxSurge: 1
+    # Mandate 13 elastic (batch 2): opt-in NodePool flash-sale-spot (taint
+    # techx.io/workload=elastic) + hard spread ca hostname va zone (minDomains:2)
+    # - dung nguyen pattern da fix o batch 1 (currency/quote/shipping, PR #319)
+    # sau khi PR #317 (chi hostname soft, thieu minDomains) lam 2 replica dong
+    # chung 1 node Spot.
     schedulingRules:
+      nodeSelector:
+        techx.io/workload: elastic
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: elastic
+          effect: NoSchedule
       topologySpreadConstraints:
         - maxSkew: 1
+          minDomains: 2
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
               opentelemetry.io/name: payment
         - maxSkew: 1
+          minDomains: 2
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
