@@ -5,6 +5,11 @@
 **Namespace:** techx-tf3
 **Goal:** Replace Kyverno admission enforcement with Kubernetes-native controls without downtime, without gutting Kyverno's Cosign `verifyImages` capability (kept, see Status below).
 
+> Historical scope note: statements below that retain Kyverno describe the
+> 2026-07-21 migration stage. They are superseded by the 2026-07-22 retirement
+> addendum, which records the approved Mandate 05 retirement and the separate
+> future Mandate 10 webhook-plus-VAP boundary.
+
 **Status as of this commit: NOT YET LIVE-VERIFIED.** All checks below were run as `kubectl apply --dry-run=server` against the real API server (schema/CEL-compile validation only). The actual GitOps deploy (PR #291 → merge → Argo CD sync of `native-admission-policies` + `techx-infrastructure-app`) has **not happened yet** at the time this doc was written. Do not read any line below as a claim that native controls are already blocking production traffic — they are code-complete and dry-run-clean, not live-enforced yet.
 
 ## Native Controls — target state (this PR)
@@ -307,3 +312,12 @@ sum(rate(otelcol_exporter_send_failed_metric_points_total{service_name=~".*node.
 Do not delete or disable the old `otel-collector-agent` in this PR. Deletion is
 only safe after the node-agent has been live long enough to compare host/kubelet
 metric continuity and no Prometheus exporter failures are observed.
+
+## Retirement addendum — 2026-07-22
+
+- Native VAP enforcement: `LIVE-VERIFIED`, both bindings `Deny`.
+- PSA Restricted enforcement: `LIVE-VERIFIED` on approved application/platform namespaces.
+- `observability-system`: intentional `warn/audit` exception; no Restricted enforcement.
+- `kube-system`: intentional VAP/PSA system exception.
+- Mandate 05 Kyverno policies: removal proposed by the retirement PR; not complete until Argo prune and post-reconcile gates pass.
+- Mandate 10: not implemented; future design is a dedicated signature/provenance webhook plus VAP.

@@ -197,9 +197,13 @@ and `aiops-engine` exceptions are resolved. The next safe gate after this PR is
 live comparison of old collector host metrics versus `otel-node-agent` metrics;
 only then can the old DaemonSet's host metrics responsibilities be retired.
 
-## Update 2026-07-22 — PSA `enforce=restricted` live, Kyverno retired (PM-172), Mandate 5 fully native
+## Update 2026-07-22 — PSA `enforce=restricted` live, Kyverno retirement approved (PM-172), Mandate 5 fully native
 
-**Status:** Accepted — native admission enforcement (VAP + PSA) is the sole blocking mechanism, expanded cluster-wide (all namespaces except `kube-system`, PR #343) — matching the old Kyverno scope, not limited to `techx-tf3`. Kyverno controller removed. Mentor demo re-run and passed under the fully-native architecture (see evidence below). **Signed:** CDO01 (Hoàng Trọng Tân), 22/07/2026. *(Mentor countersignature — pending, add name/date here once witnessed.)*
+This update supersedes the 2026-07-21 requirement to retain Kyverno for a
+possible future Mandate 10 implementation. It does not rewrite the historical
+reasoning recorded above.
+
+**Status:** Accepted — native admission enforcement (VAP + PSA) is the sole blocking mechanism, expanded cluster-wide (all namespaces except `kube-system`, PR #343) — matching the old Kyverno scope, not limited to `techx-tf3`. Repository retirement of Kyverno is approved, but live retirement is not complete until Argo prunes the policy Application and controller Application and the post-reconcile gates pass. Mentor demo re-run and passed under the fully-native architecture (see evidence below). **Signed:** CDO01 (Hoàng Trọng Tân), 22/07/2026. *(Mentor countersignature — pending, add name/date here once witnessed.)*
 
 ### Decision
 
@@ -210,9 +214,16 @@ only then can the old DaemonSet's host metrics responsibilities be retired.
    - `aiops-engine`: remains the **one accepted, open exception** (see Exceptions update below) — not blocking Mandate 5 acceptance, tracked separately with AIO02 as owner.
 3. Retire Kyverno entirely (PM-172, previously gated pending explicit go-ahead — greenlit by user 22/07 after (1) and (2) above were both proven live with full parity, closing the reason Kyverno was originally kept as a safety net for these specific rules):
    - Step 1 (PR #339): all 4 `ClusterPolicy` downgraded `Enforce → Audit` (non-blocking checkpoint).
-   - Step 2 (PR #340): `kyverno-policies` Argo app + 4 `ClusterPolicy` manifests removed from git.
-   - Step 3 (PR #341): `kyverno` Argo app (controller, webhooks, CRDs) removed from git.
-   - **Explicitly accepted trade-off:** Kyverno was also the only path to Cosign `verifyImages` admission-time verification (PM-114/127/128) and PolicyReport background reconciliation for existing-resource drift — neither VAP nor PSA replace these. Per this repo's last status, `verifyImages` was not yet actually wired into an active admission path (Cosign verification was off-cluster only) — so this removal does not regress an already-active control, but does close off that specific implementation path. A native or alternative replacement for signature verification is not yet designed; tracked as future work, not blocking this ADR.
+   - Step 2 (this retirement change): remove the `kyverno-policies` Argo Application and four `ClusterPolicy` manifests from Git.
+   - Step 3 (PR #341): remove the `kyverno` controller Application declaration from Git.
+   - Step 4 (separately approved production operation): reconcile the bootstrap root and let Argo prune the wave-20 policy Application before the wave-10 controller Application; completion requires the post-reconcile health and SLO gates.
+
+**Mandate 10 boundary:** Mandate 10 admission verification is not implemented
+at this retirement point. CI signs and verifies first-party images, but no
+live `verifyImages` admission policy currently depends on Kyverno. Mandate 10
+will use a dedicated signature/provenance validating webhook together with VAP;
+that future webhook is a separate design, rollout, and acceptance gate. Retiring
+Kyverno here removes no active signature-verification admission control.
 4. Expand VAP + PSA cluster-wide (PR #343) — both were initially scoped only to `techx-tf3` (a real gap discovered after (2) and (3) above, not caught until explicitly asked whether scope matched the old Kyverno cluster-wide expansion from 19-20/07):
    - VAP: `namespaceSelector` changed from `matchLabels(techx-tf3)` to `matchExpressions: NotIn[kube-system]` — dynamically excludes `kube-system` by name; automatically covers any namespace created in the future too (an improvement over Kyverno's old exact-name-list approach, which had to be updated by hand each time a namespace was added).
    - PSA: added `{audit,warn,enforce}=restricted` to `argocd`, `argo-rollouts`, `external-secrets`, `default` via new `Namespace` manifests (these namespaces had no dedicated GitOps-managed `Namespace` object before — they were created implicitly by their own Helm chart Applications). `observability-system` intentionally stays `baseline` — documented exception, `otel-node-agent` requires `hostPath` for host metrics, which `restricted` forbids entirely.
@@ -238,7 +249,7 @@ No Kyverno involvement in any of the 8 outcomes — confirmed by re-running afte
 ### Rollback (this update)
 
 - PSA enforce rollback: revert PR #338 (drops back to `audit`/`warn=restricted`, no enforcement) — fastest, lowest-risk rollback if any workload regresses.
-- Kyverno retirement rollback: revert PR #341 then #340 then #339 in that order (git revert, Argo recreates the app/policies from git automatically) — full Kyverno stack restorable within one Argo sync cycle if a real need for `verifyImages`/PolicyReport resurfaces before a native replacement exists.
+- Kyverno retirement rollback: revert the retirement change and PR #341 through GitOps so Argo recreates the controller and policy Applications. Do not weaken PSA or VAP as the first response.
 - Cluster-wide expansion rollback: revert PR #343 — VAP `namespaceSelector` reverts to `techx-tf3`-only, and the 4 new `Namespace` manifests (`argocd`/`argo-rollouts`/`external-secrets`/`default`) simply stop carrying the PSA `restricted` labels (labels removed, not the namespaces themselves).
 - `otel-collector-agent` rollback: revert PR #337 (`enabled: true`) — DaemonSet redeploys immediately, no data was deleted.
 
