@@ -10,49 +10,107 @@ spec:
   source:
     repoURL: https://kyverno.github.io/kyverno/
     chart: kyverno
-    targetRevision: 3.3.4
+    targetRevision: 3.8.2
     helm:
       values: |
         admissionController:
-          replicas: 1
+          replicas: 3
           rbac:
             serviceAccount:
               annotations:
                 eks.amazonaws.com/role-arn: arn:aws:iam::197826770971:role/techx-corp-tf3-kyverno-ecr
           container:
+            image:
+              tag: v1.18.2@sha256:0a540e2ddf74d0d2d3d45f9ef248d7dbc96576accdbcc6a2dd7eaff9fea56504
             resources:
               requests:
                 cpu: 100m
+                memory: 256Mi
               limits:
                 cpu: 1000m
+                memory: 768Mi
+          initContainer:
+            image:
+              tag: v1.18.2@sha256:cd8cb4a31d25b3992734fb8f24a90ef691c90ce49338c89bea96792160eacb98
+          podDisruptionBudget:
+            enabled: true
+            minAvailable: 2
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: admission-controller
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: admission-controller
         backgroundController:
           replicas: 1
+          image:
+            tag: v1.18.2@sha256:d62566ce41bd0d4a32bf2cf44b9ebfc02c36374f821f83070890287f62f68671
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+        reportsController:
+          replicas: 2
           rbac:
             serviceAccount:
               annotations:
                 eks.amazonaws.com/role-arn: arn:aws:iam::197826770971:role/techx-corp-tf3-kyverno-ecr
+          image:
+            tag: v1.18.2@sha256:f09cf305170014e191b94e1c54f5be73163d8824eefad49349675c4efe43159a
           resources:
             requests:
               cpu: 100m
+              memory: 128Mi
             limits:
               cpu: 500m
-        reportsController:
-          replicas: 1
-          resources:
-            requests:
-              cpu: 100m
-            limits:
-              cpu: 500m
+              memory: 512Mi
+          podDisruptionBudget:
+            enabled: true
+            minAvailable: 1
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: reports-controller
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: reports-controller
         cleanupController:
           replicas: 1
+          image:
+            tag: v1.18.2@sha256:b0395d29ae332276e6910eb40418be9bc127c068d659f90aa1bcddd6be99ccb4
           resources:
             requests:
               cpu: 10m
+              memory: 32Mi
             limits:
               cpu: 200m
-        policyReportsCleanup:
+              memory: 256Mi
+        crds:
+          migration:
+            image:
+              tag: v1.18.2@sha256:7224ed05508c24419c3df98114c28ba682ad0a940dcdb7b9fdba0a4b6bf943cf
+        webhooksCleanup:
           image:
-            repository: bitnamilegacy/kubectl
+            tag: v1.18.2@sha256:4fb1870b1a4adfed0fa7a32b7c3bcaf736fb889c7e1947ee8b20710bc2f5a5ce
+        test:
+          image:
+            tag: v1.18.2@sha256:4fb1870b1a4adfed0fa7a32b7c3bcaf736fb889c7e1947ee8b20710bc2f5a5ce
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno

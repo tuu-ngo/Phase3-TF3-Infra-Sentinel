@@ -26,7 +26,7 @@ data "aws_iam_policy_document" "kyverno_ecr_assume_role" {
       variable = "${replace(data.aws_iam_openid_connect_provider.kyverno_ecr.url, "https://", "")}:sub"
       values = [
         "system:serviceaccount:kyverno:kyverno-admission-controller",
-        "system:serviceaccount:kyverno:kyverno-background-controller",
+        "system:serviceaccount:kyverno:kyverno-reports-controller",
       ]
     }
   }
