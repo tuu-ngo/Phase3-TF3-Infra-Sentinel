@@ -129,11 +129,7 @@ spec:
               app.kubernetes.io/name: otel-gateway
       containers:
         - name: opentelemetry-collector
-          {{- if $gateway.image.digest }}
-          image: "{{ $gateway.image.repository }}@{{ $gateway.image.digest }}"
-          {{- else }}
           image: "{{ $gateway.image.repository }}:{{ $gateway.image.tag }}"
-          {{- end }}
           imagePullPolicy: {{ $gateway.image.pullPolicy | default "IfNotPresent" }}
           args:
             - --config=/conf/relay.yaml
