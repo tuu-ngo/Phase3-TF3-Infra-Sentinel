@@ -70,6 +70,33 @@ def test_prepare_rejects_non_cyclonedx(tmp_path):
     assert "CycloneDX" in result.stderr
 
 
+def test_prepare_rejects_empty_components(tmp_path):
+    document = valid_sbom()
+    document["components"] = []
+    result, output = run_prepare(tmp_path, document)
+    assert result.returncode != 0
+    assert output is None
+    assert "meaningful component" in result.stderr
+
+
+def test_prepare_rejects_component_without_name(tmp_path):
+    document = valid_sbom()
+    document["components"] = [{"type": "library", "name": "  "}]
+    result, output = run_prepare(tmp_path, document)
+    assert result.returncode != 0
+    assert output is None
+    assert "non-empty name" in result.stderr
+
+
+def test_prepare_rejects_component_without_type(tmp_path):
+    document = valid_sbom()
+    document["components"] = [{"name": "example"}]
+    result, output = run_prepare(tmp_path, document)
+    assert result.returncode != 0
+    assert output is None
+    assert "non-empty type" in result.stderr
+
+
 def test_prepare_rejects_digest_binding_mismatch(tmp_path):
     result, output = run_prepare(tmp_path, valid_sbom(), subject_digest="sha256:" + "c" * 63)
     assert result.returncode != 0

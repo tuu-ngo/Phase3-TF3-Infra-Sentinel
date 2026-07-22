@@ -48,13 +48,26 @@ def property_map(properties: Any) -> dict[str, str]:
     return result
 
 
+def validate_components(components: Any) -> None:
+    if not isinstance(components, list):
+        fail("components must be a list")
+    if not components:
+        fail("components must contain at least one meaningful component")
+    for component in components:
+        if not isinstance(component, dict):
+            fail("components entries must be objects")
+        if not isinstance(component.get("type"), str) or not component["type"].strip():
+            fail("components entries must contain a non-empty type")
+        if not isinstance(component.get("name"), str) or not component["name"].strip():
+            fail("components entries must contain a non-empty name")
+
+
 def prepare(document: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     if document.get("bomFormat") != "CycloneDX":
         fail("bomFormat must be CycloneDX")
     if not isinstance(document.get("specVersion"), str) or not document["specVersion"]:
         fail("specVersion must be present")
-    if not isinstance(document.get("components"), list):
-        fail("components must be a list")
+    validate_components(document.get("components"))
     metadata = document.get("metadata")
     if not isinstance(metadata, dict):
         fail("metadata must be present")
