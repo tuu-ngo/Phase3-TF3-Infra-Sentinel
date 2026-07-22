@@ -47,13 +47,18 @@ files used by the chart deployment:
 - 31 total image references
 - 19 first-party `techx-corp` image references
 - 8 external image references
-- 0 mutable external references after digest pinning
-- external catalog comparison: pass
+- 7 mutable external references remain in the preparation render
+- 1 external reference (`busybox`) is already immutable
+- the exact-digest catalog records the reviewed remediation target
 - Kyverno admission controller: 3 replicas with PDB and topology constraints
 - Kyverno reports controller: 2 replicas with PDB and topology constraints
 
-The catalog is deliberately exact. A new external image or digest is a code
-review change, not an admission-time exception or an untracked cluster edit.
+The catalog is deliberately exact. The preparation PR does not update product
+Pod templates because doing so would trigger unrelated observability/flagd
+rollouts before Audit evidence exists. Audit findings are expected for the
+seven mutable references; their digest changes belong in the later remediation
+PR. A new external image or digest remains a reviewed code change, not an
+admission-time exception or an untracked cluster edit.
 
 ## Status and limits of this evidence
 

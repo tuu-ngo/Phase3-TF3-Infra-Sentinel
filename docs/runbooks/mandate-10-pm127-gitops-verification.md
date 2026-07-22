@@ -35,15 +35,14 @@ python scripts/ci/render-image-inventory.py \
   --rendered rendered.yaml \
   --first-party-repository 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp \
   --output image-inventory.json
-python scripts/ci/verify-external-image-allowlist.py \
-  --rendered rendered.yaml \
-  --allowlist docs/evidence/mandate-10/external-image-allowlist.yaml \
-  --first-party-repository 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
 kyverno test tests/kyverno/mandate-10/
 ```
 
 The repository test suite also checks the workflow, Terraform IAM contract,
 GitOps waves, native Mandate 05 retirement boundary, and policy structure.
+The preparation render intentionally still contains seven mutable external
+references. Do not pin them in this PR: first collect Audit findings, then run
+`verify-external-image-allowlist.py` as a required gate in the remediation PR.
 
 ## Required identity and connectivity
 
