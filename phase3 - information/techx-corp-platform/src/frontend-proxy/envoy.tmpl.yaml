@@ -48,9 +48,38 @@ static_resources:
                           route: { cluster: image-provider, prefix_rewrite: "/" }
                         - match: { prefix: "/flagservice/" }
                           route: { cluster: flagservice, prefix_rewrite: "/", timeout: 0s }
+                        - match: { prefix: "/api/checkout" }
+                          route: { cluster: frontend }
                         - match: { prefix: "/" }  # Default/catch-all route - keep last since prefix:"/" matches everything
                           route: { cluster: frontend }
+                          typed_per_filter_config:
+                            envoy.filters.http.local_ratelimit:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+                              stat_prefix: http_local_rate_limiter_browse
+                              token_bucket:
+                                max_tokens: 150
+                                tokens_per_fill: 150
+                                fill_interval: 1s
+                              filter_enabled:
+                                runtime_key: local_rate_limit_enabled
+                                default_value:
+                                  numerator: 100
+                                  denominator: HUNDRED
+                              filter_enforced:
+                                runtime_key: local_rate_limit_enforced
+                                default_value:
+                                  numerator: 100
+                                  denominator: HUNDRED
+                              response_headers_to_add:
+                                - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                                  header:
+                                    key: x-local-rate-limit
+                                    value: 'true'
                 http_filters:
+                  - name: envoy.filters.http.local_ratelimit
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+                      stat_prefix: http_local_rate_limiter
                   - name: envoy.filters.http.fault
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.fault.v3.HTTPFault
