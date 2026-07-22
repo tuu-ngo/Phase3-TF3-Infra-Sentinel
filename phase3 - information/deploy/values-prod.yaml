@@ -108,9 +108,12 @@ otelGateway:
       memory: 768Mi
 
 otel-node-agent:
-  # Disabled after the production rollout exhausted CPU request headroom on the
-  # on-demand nodes. Re-enable only after the capacity/right-sizing gate passes.
-  enabled: false
+  # Re-enabled 22/07/2026 after verifying CPU headroom on all 7 nodes (min free
+  # 555m on the tightest node ip-10-0-8-134, vs this DaemonSet's 10m/pod request -
+  # 55x margin). ip-10-0-26-153, the node that caused the original Pending
+  # incident (only 15m free at the time), now has 565m free after batch2/3
+  # Karpenter elastic migration moved load off the on-demand fleet.
+  enabled: true
   resources:
     requests:
       cpu: 10m
