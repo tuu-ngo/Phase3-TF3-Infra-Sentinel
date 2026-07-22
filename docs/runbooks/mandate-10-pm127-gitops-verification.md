@@ -3,7 +3,7 @@
 This runbook verifies the PM-127 supply-chain path without applying resources
 directly with `kubectl`, `helm`, or `kyverno`. The deployment source is the
 `main` branch after merge; this implementation is being prepared on
-`docs/mandate-10`.
+`feat/mandate10-pm127`.
 
 ## Safety boundary
 
@@ -36,6 +36,13 @@ python scripts/ci/render-image-inventory.py \
   --first-party-repository 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp \
   --output image-inventory.json
 kyverno test tests/kyverno/mandate-10/
+
+# Read one signed, non-empty CycloneDX SBOM from an immutable first-party ref.
+# For a multi-platform index, --platform is mandatory.
+scripts/ci/get-sbom.sh \
+  197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:<index> \
+  --platform linux/amd64 \
+  --metadata
 ```
 
 The repository test suite also checks the workflow, Terraform IAM contract,
@@ -43,6 +50,8 @@ GitOps waves, native Mandate 05 retirement boundary, and policy structure.
 The preparation render intentionally still contains seven mutable external
 references. Do not pin them in this PR: first collect Audit findings, then run
 `verify-external-image-allowlist.py` as a required gate in the remediation PR.
+The scheduled external Trivy workflow reads the same catalog file used by the
+Kyverno policy; it must not carry a second hardcoded image list.
 
 ## Required identity and connectivity
 
@@ -123,7 +132,13 @@ The first-party policy needs all of the following to succeed:
 - Fulcio issuer `https://token.actions.githubusercontent.com`
 - Rekor inclusion at `https://rekor.sigstore.dev`
 - CycloneDX predicate type `https://cyclonedx.org/bom`
+- non-empty CycloneDX components with TechX index/child/platform/source metadata
 - ECR read access for the Kyverno admission/reports controllers
+
+For a multi-platform release, the Kubernetes desired state pins the index digest
+while the runtime image ID may be a child digest. The workflow signs the index,
+attests each platform SBOM to its child, and publishes a signed index-to-platform
+mapping. Retrieval resolves the index before verifying the exact child SBOM.
 
 The ECR role is attached to the admission and reports controllers. The
 background controller is intentionally excluded because these PM-127 policies
@@ -153,6 +168,23 @@ Offline expected result:
 
 - valid fixture: pass
 - bad fixture: the `require-approved-external-image-digest` rule fails
+
+After a real first-party release has produced immutable evidence, execute the
+first-party matrix with the release owner’s fixture references:
+
+```sh
+scripts/ci/verify-first-party-evidence.sh \
+  --valid-image '<signed-index-or-child-digest>' \
+  --unsigned-image '<unsigned-digest>' \
+  --wrong-issuer-image '<digest-signed-by-wrong-issuer>' \
+  --wrong-identity-image '<digest-signed-by-wrong-workflow>' \
+  --missing-sbom-image '<signed-digest-without-cyclonedx>' \
+  --wrong-predicate-image '<signed-digest-with-wrong-predicate>'
+```
+
+The command is intentionally not part of the pre-merge suite: those fixtures
+must be real ECR artifacts and must never be laptop-signed. It fails closed when
+any expected rejection unexpectedly succeeds.
 
 For live admission rejection, the policy must first be intentionally promoted
 to `Enforce` through a reviewed PR. That is a separate change from restoring
