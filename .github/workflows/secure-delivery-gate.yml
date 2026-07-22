@@ -27,6 +27,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/iac
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             --volume "$GITHUB_WORKSPACE:/src:ro" \
             --volume "$GITHUB_WORKSPACE/artifacts/iac:/out" \
             aquasec/tfsec:v1.28.14@sha256:ac46d48a384ae2c0bbd0413cd2a18229e45e21a44d22c8be28b56de5b38d74c3 \

@@ -65,6 +65,7 @@ class SecureDeliveryWorkflowContractTests(unittest.TestCase):
             self.assertIn("actions/upload-artifact@", block)
             self.assertIn("retention-days: 90", block)
         self.assertIn("/src/infra/live/production", iac)
+        self.assertIn('--user "$(id -u):$(id -g)"', iac)
         self.assertIn("--minimum-severity HIGH", iac)
         self.assertIn("--scanners secret", secret)
         self.assertIn("--severity HIGH,CRITICAL", secret)
