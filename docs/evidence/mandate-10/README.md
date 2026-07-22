@@ -19,6 +19,12 @@ The retired Kyverno runtime-hardening policies are intentionally not restored.
 This keeps one owner for runtime admission while giving PM-127 the image
 verification capability that VAP cannot provide.
 
+Kyverno itself is pinned to chart `3.8.2` / app `v1.18.2`, which is the
+supported Kyverno line for the production Kubernetes `1.35` cluster. Its
+controller, migration-hook, and cleanup/test images are pinned in
+`kyverno-image-allowlist.yaml`. This is a system-component inventory; it is
+separate from the product-namespace external image policy.
+
 ## Requirement map
 
 | Requirement | Repository implementation | Evidence or test |
@@ -30,7 +36,7 @@ verification capability that VAP cannot provide.
 | Verify signature and SBOM at admission | `gitops/policies/kyverno/verify-first-party-signatures.yaml` | `test_pm127_policy_contract.py`; Kyverno CLI evaluation |
 | Keep external images controlled | `docs/evidence/mandate-10/external-image-allowlist.yaml` and `gitops/policies/kyverno/allow-approved-external-image-digests.yaml` | `verify-external-image-allowlist.py`; Kyverno positive/negative fixtures |
 | Deliver Kyverno declaratively | `gitops/apps/kyverno-app.yaml` and `gitops/apps/kyverno-policies-app.yaml` | sync waves 10/20, ServerSideApply, contract tests |
-| Give only verifier controllers ECR read access | `infra/live/production/kyverno-ecr.tf` | Terraform format and IAM contract tests |
+| Give only verifier controllers ECR read access | `infra/live/production/kyverno-ecr.tf` | Terraform format and IAM contract tests; admission and reports controllers only |
 | Preserve Mandate 05 ownership | Native policy app and PSA configuration remain the source of runtime enforcement | `test_mandate05_native_retirement_contract.py` and full CI suite |
 
 ## Current rendered inventory
@@ -43,6 +49,8 @@ files used by the chart deployment:
 - 8 external image references
 - 0 mutable external references after digest pinning
 - external catalog comparison: pass
+- Kyverno admission controller: 3 replicas with PDB and topology constraints
+- Kyverno reports controller: 2 replicas with PDB and topology constraints
 
 The catalog is deliberately exact. A new external image or digest is a code
 review change, not an admission-time exception or an untracked cluster edit.
@@ -67,6 +75,12 @@ During development, the private EKS API was reachable through the SSM tunnel,
 but the active AWS identity was a read-only role that could not list ArgoCD,
 Kyverno, CRDs, or ECR image metadata. Therefore no live Argo/Kyverno/ECR
 claim is made by this pack, and no cluster mutation was performed.
+
+The build workflow already supports `workflow_dispatch`. After merge, the
+release owner must explicitly run it from `main` to produce the real digest,
+Cosign signature, CycloneDX attestation, and uploaded evidence. A workflow-file
+change alone does not trigger the build because the push path filter is scoped
+to `phase3 - information/techx-corp-platform/**`.
 
 ## Evidence naming
 

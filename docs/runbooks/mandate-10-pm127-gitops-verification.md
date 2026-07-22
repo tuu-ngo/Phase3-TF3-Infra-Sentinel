@@ -83,10 +83,18 @@ Expected ordering and state:
 
 - `kyverno-app.yaml` sync wave 10 creates the controller and CRDs.
 - `kyverno-policies-app.yaml` sync wave 20 creates the two PM-127 policies.
-- admission and background controller service accounts have the dedicated
-  ECR read-role annotation.
-- cleanup and reports service accounts do not receive that annotation.
+- admission and reports controller service accounts have the dedicated ECR
+  read-role annotation because admission verifies new requests and reports
+  performs background scans.
+- background and cleanup service accounts do not receive that annotation.
+- admission has three replicas and reports has two replicas, each with a PDB
+  and topology constraints.
 - both policies are `Ready` and remain `Audit`.
+
+Terraform and Argo are separate reconcilers. Argo sync waves cannot prove that
+the Terraform IAM role already exists. Therefore the owner must complete and
+review the Terraform plan before allowing Argo to sync the Kyverno Application;
+do not merge an all-at-once change and assume wave 10 orders it after IAM.
 
 If Argo reports `ComparisonError`, inspect chart dependencies and the exact
 Git revision before touching the cluster. Do not bypass GitOps with a manual
@@ -112,7 +120,12 @@ The first-party policy needs all of the following to succeed:
 - Fulcio issuer `https://token.actions.githubusercontent.com`
 - Rekor inclusion at `https://rekor.sigstore.dev`
 - CycloneDX predicate type `https://cyclonedx.org/bom`
-- ECR read access for the Kyverno admission/background controllers
+- ECR read access for the Kyverno admission/reports controllers
+
+The ECR role is attached to the admission and reports controllers. The
+background controller is intentionally excluded because these PM-127 policies
+do not use generate/mutate-existing processing; the reports controller owns
+background scans.
 
 The external policy needs the exact digest to be present in
 `docs/evidence/mandate-10/external-image-allowlist.yaml`. A tag, a different
