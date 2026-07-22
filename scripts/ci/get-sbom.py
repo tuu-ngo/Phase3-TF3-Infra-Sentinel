@@ -265,12 +265,23 @@ def retrieve(image: str, platform: str | None, region: str, login: bool) -> dict
             }
             - {None}
         )
+        linux_platforms = [platform_name for platform_name in runnable if platform_name.startswith("linux/")]
         if platform is None:
-            if len(runnable) != 1:
+            if len(linux_platforms) != 1:
                 fail("multi-platform index requires --platform linux/<arch>")
-            platform = runnable[0]
-        mapping = RESOLVER.resolve(manifest, image, [platform])
-        child = mapping["platforms"][0]
+            platform = linux_platforms[0]
+        if platform not in linux_platforms:
+            fail(f"requested platform is not present in index: {platform}")
+
+        # The release resolver remains strict: resolve every runnable Linux
+        # child first, then select the operator-requested platform. This keeps
+        # release validation fail-closed without making retrieval reject the
+        # other valid platforms in the same index.
+        mapping = RESOLVER.resolve(manifest, image, linux_platforms)
+        matches = [entry for entry in mapping["platforms"] if entry["platform"] == platform]
+        if len(matches) != 1:
+            fail(f"unable to resolve exactly one child for {platform}")
+        child = matches[0]
         child_digest = child["digest"]
         child_image = child["image"]
     else:

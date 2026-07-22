@@ -14,6 +14,7 @@ SPEC.loader.exec_module(MODULE)
 
 PARENT = "sha256:" + "a" * 64
 CHILD = "sha256:" + "b" * 64
+ARM_CHILD = "sha256:" + "d" * 64
 SOURCE = "c" * 40
 
 
@@ -55,6 +56,35 @@ def select(entries, platform="linux/amd64"):
 def test_selects_valid_sbom_and_validates_subject_and_properties():
     result = select([statement()])
     assert result["bomFormat"] == "CycloneDX"
+
+
+def test_retrieve_selects_amd64_from_two_platform_index(monkeypatch):
+    image = MODULE.EXPECTED_REPOSITORY + "@" + PARENT
+    manifest = {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "manifests": [
+            {
+                "digest": CHILD,
+                "platform": {"os": "linux", "architecture": "amd64"},
+            },
+            {
+                "digest": ARM_CHILD,
+                "platform": {"os": "linux", "architecture": "arm64", "variant": "v8"},
+            },
+        ],
+    }
+    monkeypatch.setattr(MODULE, "manifest_for", lambda requested: manifest)
+    monkeypatch.setattr(
+        MODULE,
+        "run_capture",
+        lambda command, input_text=None: json.dumps([statement()]),
+    )
+
+    result = MODULE.retrieve(image, "linux/amd64", "ap-southeast-1", login=False)
+
+    assert result["indexDigest"] == PARENT
+    assert result["childDigest"] == CHILD
+    assert result["platform"] == "linux/amd64"
 
 
 def test_rejects_wrong_predicate_type():
