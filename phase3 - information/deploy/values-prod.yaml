@@ -90,6 +90,13 @@ prometheus:
         memory: 1200Mi
 
 opentelemetry-collector:
+  # Mandate 5 OTEL step 1 (tat truoc, xoa sau): otel-node-agent (host/kubelet/
+  # cluster metrics) + otel-gateway (app traces/metrics) da chung minh du chuc
+  # nang thay the qua verify song 22/07 - agent cu con 0 span/metric that (loai
+  # tru self-telemetry) trong 2 phut gan nhat. Tat truoc, theo doi on dinh, roi
+  # moi xoa han khoi chart o buoc sau. Xem
+  # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md.
+  enabled: false
   resources:
     requests:
       cpu: 50m
