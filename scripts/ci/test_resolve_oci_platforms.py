@@ -28,7 +28,7 @@ def index_document():
             {
                 "mediaType": "application/vnd.oci.image.manifest.v1+json",
                 "digest": ARM64,
-                "platform": {"os": "linux", "architecture": "arm64"},
+                "platform": {"os": "linux", "architecture": "arm64", "variant": "v8"},
             },
             {
                 "mediaType": "application/vnd.oci.image.manifest.v1+json",

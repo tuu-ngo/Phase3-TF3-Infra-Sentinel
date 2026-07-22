@@ -57,11 +57,10 @@ def descriptor_platform(descriptor: dict[str, Any]) -> str | None:
         return None
     if os_name == "unknown" or architecture == "unknown":
         return None
-    result = f"{os_name}/{architecture}"
-    variant = platform.get("variant")
-    if isinstance(variant, str) and variant:
-        result += f"/{variant}"
-    return result
+    # The workflow contract names Linux platforms by OS and architecture.
+    # OCI's optional ARM variant (normally v8) is runtime detail, not a
+    # second release platform for this build matrix.
+    return f"{os_name}/{architecture}"
 
 
 def resolve(document: dict[str, Any], image: str, expected: list[str]) -> dict[str, Any]:
