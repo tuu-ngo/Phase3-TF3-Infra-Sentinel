@@ -47,6 +47,27 @@ variable "ci_audit_boundary_name" {
   default     = "techx-corp-tf3-ci-audit-boundary"
 }
 
+# `gitlab-ci-deployer` là IAM user admin, chưa MFA, còn access key dài hạn, và
+# KHÔNG do Terraform quản lý. Không xoá được vì pipeline GitLab đang dùng. Nên
+# áp cùng boundary: nó vẫn deploy được như cũ nhưng mất đường tắt tắt audit.
+# Boundary được attach thủ công (xem execution plan §9.7) vì user nằm ngoài
+# state; liệt kê ở đây để statement DenyRemovingOwnBoundary chặn nó tự gỡ.
+variable "additional_bounded_principal_arns" {
+  description = "IAM user/role ngoài Terraform state cũng mang boundary này và không được tự gỡ."
+  type        = list(string)
+  default = [
+    "arn:aws:iam::197826770971:user/gitlab-ci-deployer",
+  ]
+
+  validation {
+    condition = alltrue([
+      for arn in var.additional_bounded_principal_arns :
+      can(regex("^arn:aws:iam::[0-9]{12}:(user|role)/.+$", arn))
+    ])
+    error_message = "Each value must be an IAM user or role ARN."
+  }
+}
+
 # Mặc định false: apply lần đầu chỉ TẠO policy để review, CI chạy như cũ.
 # Chỉ đặt true sau khi iam:SimulatePrincipalPolicy chứng minh baseline Terraform
 # vẫn allowed và các kill switch audit là explicitDeny.

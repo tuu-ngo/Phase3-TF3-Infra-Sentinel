@@ -19,12 +19,12 @@ locals {
   sns_topic_name    = "${local.name_prefix}-alerts"
   trail_arn         = "arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:trail/${local.trail_name}"
   detector_config = jsonencode({
-    deployment_label                 = var.deployment_label
-    allowed_principals               = var.allowed_automation_principal_arns
-    human_principals                 = var.human_principal_arns
-    secret_reader_principals         = var.secret_reader_principal_arns
-    sensitive_secret_names           = var.sensitive_secret_names
-    suppressions                     = var.suppressions
+    deployment_label         = var.deployment_label
+    allowed_principals       = var.allowed_automation_principal_arns
+    human_principals         = var.human_principal_arns
+    secret_reader_principals = var.secret_reader_principal_arns
+    sensitive_secret_names   = var.sensitive_secret_names
+    suppressions             = var.suppressions
     # Mandate 12: nhóm critical KHÔNG bao giờ bị allowlist automation hoặc
     # suppression làm im lặng. Gồm cả group 3 (leo thang quyền IAM), group 7
     # (tamper alert plane) và group 8 (boundary/OIDC), vì kịch bản phải bắt được

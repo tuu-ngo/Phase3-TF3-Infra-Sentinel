@@ -162,13 +162,13 @@ locals {
 module "audit_detection_ap_southeast_1" {
   source = "../../modules/audit-detection"
 
-  cluster_name                      = var.cluster_name
-  deployment_label                  = var.region
-  create_trail                      = true
-  include_global_service_events     = true
-  is_multi_region_trail             = true
-  lambda_log_retention_days         = var.audit_detection_lambda_log_retention_days
-  trail_s3_retention_days           = var.audit_detection_trail_s3_retention_days
+  cluster_name                  = var.cluster_name
+  deployment_label              = var.region
+  create_trail                  = true
+  include_global_service_events = true
+  is_multi_region_trail         = true
+  lambda_log_retention_days     = var.audit_detection_lambda_log_retention_days
+  trail_s3_retention_days       = var.audit_detection_trail_s3_retention_days
   # Mandate 12 — chỉ instance tạo trail mới nhận các input này.
   # require_s3_data_event_coverage = true: plan FAIL nếu chưa điền ARN đã duyệt,
   # thay vì apply một trail không ghi GetObject.

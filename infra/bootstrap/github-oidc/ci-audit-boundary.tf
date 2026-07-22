@@ -83,6 +83,13 @@ locals {
     "arn:aws:iam::${local.m12_account_id}:role/${var.cluster_name}-gha-terraform-plan",
     "arn:aws:iam::${local.m12_account_id}:role/${var.cluster_name}-gha-terraform-apply",
   ]
+
+  # Mọi principal mang boundary này đều không được tự gỡ nó, kể cả identity
+  # attach thủ công vì nằm ngoài Terraform state (gitlab-ci-deployer).
+  m12_bounded_principal_arns = concat(
+    local.m12_ci_role_arns,
+    var.additional_bounded_principal_arns,
+  )
 }
 
 data "aws_iam_policy_document" "ci_audit_boundary" {
@@ -228,8 +235,12 @@ data "aws_iam_policy_document" "ci_audit_boundary" {
     resources = local.m12_alarm_arns
   }
 
-  # Không có statement này thì boundary vô nghĩa: CI chỉ cần tự gỡ boundary
-  # của mình rồi làm gì cũng được.
+  # Không có statement này thì boundary vô nghĩa: principal chỉ cần tự gỡ
+  # boundary của mình rồi làm gì cũng được. Bao gồm cả action cho user vì
+  # gitlab-ci-deployer là IAM user, không phải role.
+  #
+  # Scope chỉ gồm các principal ĐANG mang boundary, nên việc attach/gỡ boundary
+  # cho user hoặc role KHÁC vẫn chạy — phase IAM hardening không bị cản.
   statement {
     sid    = "DenyRemovingOwnBoundary"
     effect = "Deny"
@@ -237,9 +248,11 @@ data "aws_iam_policy_document" "ci_audit_boundary" {
     actions = [
       "iam:PutRolePermissionsBoundary",
       "iam:DeleteRolePermissionsBoundary",
+      "iam:PutUserPermissionsBoundary",
+      "iam:DeleteUserPermissionsBoundary",
     ]
 
-    resources = local.m12_ci_role_arns
+    resources = local.m12_bounded_principal_arns
   }
 
   # Tương tự: chặn CI tự sửa nội dung boundary. Cập nhật boundary phải do người

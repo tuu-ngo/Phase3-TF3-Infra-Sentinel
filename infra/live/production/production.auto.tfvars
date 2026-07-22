@@ -52,9 +52,14 @@ audit_detection_additional_human_principal_arns = [
 # và group 6 (hành động huỷ hoại).
 #
 # `gitlab-ci-deployer` là IAM user admin, chưa MFA, còn access key dài hạn đang
-# hoạt động. Gỡ khỏi danh sách này + rotate key là việc của phase IAM hardening
-# (xem docs/mandate-12-execution-plan.md §9). KHÔNG gỡ trong PR foundation vì
-# cần owner pipeline GitLab xác nhận downtime window trước.
+# hoạt động, và không xoá được vì pipeline GitLab đang dùng. Quyết định: áp cùng
+# permissions boundary với CI role (attach thủ công vì user nằm ngoài Terraform
+# state — xem docs/mandate-12-execution-plan.md §9.5). Sau khi bounded, nó không
+# còn đường tắt tắt audit; phần còn bị suppress ở đây chỉ là group 5 (đọc secret)
+# và group 6 (xoá cluster/RDS/bucket).
+#
+# Hai việc còn lại thuộc PR IAM hardening: bật MFA (team AI sở hữu identity) và
+# rotate/vô hiệu 2 access key (cần owner pipeline xác nhận downtime).
 audit_detection_additional_allowed_automation_principal_arns = [
   "arn:aws:iam::197826770971:user/gitlab-ci-deployer",
 ]
@@ -67,10 +72,27 @@ audit_detection_additional_allowed_automation_principal_arns = [
 audit_detection_trail_s3_retention_days = 400
 
 # Mandate 12 — S3 data events.
-# BẮT BUỘC điền trước apply, lấy đúng giá trị đã ký trong coverage matrix.
-# Mỗi ARN phải kết thúc bằng "/". Toàn bucket dùng dạng arn:aws:s3:::bucket/
-# Để rỗng = trail KHÔNG ghi S3 data event = trượt đòn "làm hụt" (T03).
-# Không dùng bucket audit archive (tạo vòng lặp logging; module có precondition chặn).
-# audit_detection_s3_data_event_arns = [
-#   "arn:aws:s3:::<approved-bucket>/<approved-prefix>/",
-# ]
+#
+# Scope hiện tại: NGUYÊN bucket Terraform state. TF3 sở hữu rõ ràng bucket này
+# (backend của cả hai root), nên đủ thẩm quyền duyệt mà không cần đội khác ký.
+#
+# Dùng nguyên bucket chứ không phải prefix "eks-baseline/": bucket chứa HAI
+# state key, và key thứ hai mới là file nhạy cảm nhất với Mandate 12 —
+#   eks-baseline/terraform.tfstate          → EKS, network, edge, audit-detection
+#   bootstrap/github-oidc/terraform.tfstate → CI OIDC roles + chính ci-audit-boundary
+# Đọc được file thứ hai là biết boundary audit deny những gì và sót chỗ nào.
+# Prefix hẹp sẽ bỏ lọt đúng thứ cần bảo vệ nhất.
+#
+# Volume thấp: state chỉ được đọc khi terraform chạy (vài lần/ngày), nên không
+# cần lọc readOnly và chi phí data events không đáng kể.
+#
+# Ba bucket từng được cân nhắc nhưng KHÔNG đưa vào lần này vì TF3 không phải
+# data owner — xem docs/mandate-12-execution-plan.md §8.1:
+#   techx-aiops-playbooks-f6230446    → AIO02
+#   tf3-aiops-models-197826770971     → AIO02
+#   sosflow-alb-logs-197826770971     → dự án SOSFlow
+#
+# Không đưa audit archive vào đây (vòng lặp logging; module có precondition chặn).
+audit_detection_s3_data_event_arns = [
+  "arn:aws:s3:::techx-tf3-197826770971-tfstate/",
+]
