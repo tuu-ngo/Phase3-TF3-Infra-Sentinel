@@ -10,10 +10,10 @@ def test_kyverno_role_is_bound_only_to_expected_service_accounts():
     for service_account in (
         "kyverno-admission-controller",
         "kyverno-background-controller",
-        "kyverno-cleanup-controller",
-        "kyverno-reports-controller",
     ):
         assert f"system:serviceaccount:kyverno:{service_account}" in TERRAFORM
+    assert "kyverno-cleanup-controller" not in TERRAFORM
+    assert "kyverno-reports-controller" not in TERRAFORM
     assert "system:serviceaccount:kube-system" not in TERRAFORM
 
 
