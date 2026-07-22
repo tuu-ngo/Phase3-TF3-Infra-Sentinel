@@ -908,7 +908,6 @@ jobs:
               --certificate-identity "$EXPECTED_IDENTITY" \
               "$index_image" > "$mapping_verify_report"
           done
-          done
 
           jq -s \
             --arg repository "$ECR_REPOSITORY" \
