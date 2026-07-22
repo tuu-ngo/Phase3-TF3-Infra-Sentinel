@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 GET_SBOM="$SCRIPT_DIR/get-sbom.sh"
+EXPECTED_ISSUER="https://token.actions.githubusercontent.com"
+EXPECTED_IDENTITY="https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/.github/workflows/build-push-ecr.yml@refs/heads/main"
 
 VALID_IMAGE=""
 UNSIGNED_IMAGE=""
@@ -54,7 +56,11 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf -- "$tmpdir"' EXIT
 
 echo "Checking valid signed image and CycloneDX SBOM"
-"$GET_SBOM" "$VALID_IMAGE" --metadata > "$tmpdir/valid.json"
+cosign verify \
+  --certificate-oidc-issuer "$EXPECTED_ISSUER" \
+  --certificate-identity "$EXPECTED_IDENTITY" \
+  "$VALID_IMAGE" > "$tmpdir/valid-signature.json"
+"$GET_SBOM" "$VALID_IMAGE" --platform linux/amd64 --metadata > "$tmpdir/valid.json"
 python3 - "$tmpdir/valid.json" <<'PY'
 import json
 import sys
@@ -78,11 +84,32 @@ expect_failure() {
   echo "Expected rejection: ${name}"
 }
 
-expect_failure unsigned "$GET_SBOM" "$UNSIGNED_IMAGE"
-expect_failure wrong-issuer "$GET_SBOM" "$WRONG_ISSUER_IMAGE"
-expect_failure wrong-identity "$GET_SBOM" "$WRONG_IDENTITY_IMAGE"
-expect_failure missing-sbom "$GET_SBOM" "$MISSING_SBOM_IMAGE"
-expect_failure wrong-predicate "$GET_SBOM" "$WRONG_PREDICATE_IMAGE"
-expect_failure first-party-tag "$GET_SBOM" "$TAGGED_IMAGE"
+expect_failure unsigned-signature cosign verify \
+  --certificate-oidc-issuer "$EXPECTED_ISSUER" \
+  --certificate-identity "$EXPECTED_IDENTITY" \
+  "$UNSIGNED_IMAGE"
+expect_failure wrong-issuer-signature cosign verify \
+  --certificate-oidc-issuer "$EXPECTED_ISSUER" \
+  --certificate-identity "$EXPECTED_IDENTITY" \
+  "$WRONG_ISSUER_IMAGE"
+expect_failure wrong-identity-signature cosign verify \
+  --certificate-oidc-issuer "$EXPECTED_ISSUER" \
+  --certificate-identity "$EXPECTED_IDENTITY" \
+  "$WRONG_IDENTITY_IMAGE"
+
+# These controls prove the image signature is independent from SBOM presence.
+cosign verify \
+  --certificate-oidc-issuer "$EXPECTED_ISSUER" \
+  --certificate-identity "$EXPECTED_IDENTITY" \
+  "$MISSING_SBOM_IMAGE" > "$tmpdir/missing-sbom-signature.json"
+expect_failure missing-sbom "$GET_SBOM" "$MISSING_SBOM_IMAGE" --platform linux/amd64
+
+cosign verify \
+  --certificate-oidc-issuer "$EXPECTED_ISSUER" \
+  --certificate-identity "$EXPECTED_IDENTITY" \
+  "$WRONG_PREDICATE_IMAGE" > "$tmpdir/wrong-predicate-signature.json"
+expect_failure wrong-predicate "$GET_SBOM" "$WRONG_PREDICATE_IMAGE" --platform linux/amd64
+
+expect_failure first-party-tag "$GET_SBOM" "$TAGGED_IMAGE" --platform linux/amd64
 
 echo "PM-127 first-party evidence matrix passed"
