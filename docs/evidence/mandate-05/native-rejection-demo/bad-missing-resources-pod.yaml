@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mandate05-native-bad-missing-resources
+  namespace: techx-tf3
+  labels:
+    app.kubernetes.io/name: mandate05-native-bad-missing-resources
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:801b602b7ac4afc3887a27cb3a97b13ea10ce35bce64afe047e3dd2b42ae5f1d
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]

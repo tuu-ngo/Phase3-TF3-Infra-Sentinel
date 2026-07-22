@@ -8,7 +8,7 @@ default:
           apiVersion: v1
           fieldPath: "metadata.labels['app.kubernetes.io/component']"
     - name: OTEL_COLLECTOR_NAME
-      value: otel-collector
+      value: otel-gateway
     - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       value: cumulative
   # Allows overriding and additions to .Values.default.env
@@ -1378,6 +1378,151 @@ opentelemetry-collector:
                     protocol: http/protobuf
                     endpoint: http://otel-collector:4318
                     insecure: true
+
+otelGateway:
+  enabled: true
+  replicas: 2
+  minReadySeconds: 15
+  revisionHistoryLimit: 5
+  serviceAccountName: otel-collector
+  terminationGracePeriodSeconds: 45
+  image:
+    repository: "otel/opentelemetry-collector-contrib"
+    tag: "0.151.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+otel-node-agent:
+  enabled: true
+  namespaceOverride: observability-system
+  fullnameOverride: otel-node
+  nameOverride: otel-node-agent
+  mode: daemonset
+  revisionHistoryLimit: 5
+  image:
+    repository: "otel/opentelemetry-collector-contrib"
+    tag: "0.151.0"
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: otel-node-agent
+    automountServiceAccountToken: true
+  clusterRole:
+    create: false
+    name: otel-node-agent
+    clusterRoleBinding:
+      name: otel-node-agent
+  service:
+    enabled: false
+  ports:
+    otlp:
+      enabled: false
+    otlp-http:
+      enabled: false
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+    metrics:
+      enabled: true
+      containerPort: 8888
+      servicePort: 8888
+      protocol: TCP
+  presets:
+    hostMetrics:
+      enabled: true
+    kubeletMetrics:
+      enabled: true
+    kubernetesAttributes:
+      enabled: true
+    clusterMetrics:
+      enabled: false
+    annotationDiscovery:
+      metrics:
+        enabled: false
+      logs:
+        enabled: false
+    logsCollection:
+      enabled: false
+  rollout:
+    strategy: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  terminationGracePeriodSeconds: 30
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+  alternateConfig:
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+    receivers: {}
+    processors:
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      resourcedetection:
+        detectors: [env, system]
+      resource:
+        attributes:
+          - key: telemetry.role
+            value: node-agent
+            action: upsert
+      batch: {}
+    exporters:
+      otlphttp/prometheus:
+        endpoint: http://prometheus.techx-tf3.svc.cluster.local:9090/api/v1/otlp
+        tls:
+          insecure: true
+        sending_queue:
+          batch: {}
+        retry_on_failure:
+          enabled: true
+    service:
+      extensions: [health_check]
+      pipelines:
+        metrics:
+          receivers: []
+          processors: [memory_limiter, resourcedetection, resource, batch]
+          exporters: [otlphttp/prometheus]
+      telemetry:
+        metrics:
+          level: detailed
 
 jaeger:
   enabled: true

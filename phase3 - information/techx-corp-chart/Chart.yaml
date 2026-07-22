@@ -11,6 +11,11 @@ dependencies:
     version: 0.153.0
     repository: https://open-telemetry.github.io/opentelemetry-helm-charts
     condition: opentelemetry-collector.enabled
+  - name: opentelemetry-collector
+    alias: otel-node-agent
+    version: 0.153.0
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: otel-node-agent.enabled
   - name: jaeger
     version: 4.7.0
     repository: https://jaegertracing.github.io/helm-charts
