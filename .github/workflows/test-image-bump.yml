@@ -4,7 +4,10 @@ name: Test Image Bump PR
   pull_request:
     paths:
       - ".github/workflows/build-push-ecr.yml"
+      - ".github/workflows/secure-delivery-gate.yml"
       - ".github/workflows/test-image-bump.yml"
+      - ".semgrep/**"
+      - ".trivy-secret.yaml"
       - "scripts/ci/**"
       - "docs/ci-image-override-walkthrough.md"
   workflow_dispatch:
@@ -47,4 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -c "curl -sL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash"
-          ./actionlint .github/workflows/build-push-ecr.yml .github/workflows/test-image-bump.yml
+          ./actionlint \
+            .github/workflows/build-push-ecr.yml \
+            .github/workflows/secure-delivery-gate.yml \
+            .github/workflows/test-image-bump.yml

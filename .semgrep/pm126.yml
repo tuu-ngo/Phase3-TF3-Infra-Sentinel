@@ -1,0 +1,34 @@
+rules:
+  - id: pm126-python-dynamic-eval
+    message: Dynamic eval can execute attacker-controlled Python code.
+    severity: ERROR
+    metadata:
+      mandate_severity: HIGH
+      cwe: CWE-95
+      ticket: PM-126
+    languages: [python]
+    patterns:
+      - pattern: eval($EXPRESSION)
+
+  - id: pm126-javascript-dynamic-eval
+    message: Dynamic eval can execute attacker-controlled JavaScript or TypeScript code.
+    severity: ERROR
+    metadata:
+      mandate_severity: HIGH
+      cwe: CWE-95
+      ticket: PM-126
+    languages: [javascript, typescript]
+    patterns:
+      - pattern: eval($EXPRESSION)
+
+  - id: pm126-go-shell-command
+    message: Passing a dynamic command to a shell can permit command injection.
+    severity: ERROR
+    metadata:
+      mandate_severity: HIGH
+      cwe: CWE-78
+      ticket: PM-126
+    languages: [go]
+    patterns:
+      - pattern: exec.Command($SHELL, "-c", $COMMAND)
+      - pattern-not: exec.Command($SHELL, "-c", "...")
