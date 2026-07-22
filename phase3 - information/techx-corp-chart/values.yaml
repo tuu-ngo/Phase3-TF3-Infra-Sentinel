@@ -1422,9 +1422,17 @@ otel-node-agent:
     # k8s_namespace_phase...), khong bi 7 pod bao trung.
     clusterMetrics:
       enabled: true
+    # PR2 (mandate05 otel parity): bat receiver_creator/metrics + extension
+    # k8s_observer, dung preset co san - copy nguyen cach otel-collector-agent
+    # cu da lam. Phuc vu dung 3 pod dang phu thuoc annotation
+    # prometheus.io/scrape=true de tu-phat-hien: aws-load-balancer-controller
+    # (2 replica, kube-system) va jaeger (techx-tf3) - da xac nhan bang
+    # `kubectl get pods -A -o json` loc annotation nay, xem
+    # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md.
+    # Chi bat metrics, KHONG bat logs (agent nay khong lam logs pipeline).
     annotationDiscovery:
       metrics:
-        enabled: false
+        enabled: true
       logs:
         enabled: false
     logsCollection:
