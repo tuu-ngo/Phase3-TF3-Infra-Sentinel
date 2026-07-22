@@ -1342,6 +1342,7 @@ otelGateway:
   image:
     repository: "otel/opentelemetry-collector-contrib"
     tag: "0.151.0"
+    digest: ""
     pullPolicy: IfNotPresent
   resources:
     requests:
