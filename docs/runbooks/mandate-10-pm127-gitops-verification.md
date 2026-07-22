@@ -47,6 +47,9 @@ scripts/ci/get-sbom.sh \
 
 The repository test suite also checks the workflow, Terraform IAM contract,
 GitOps waves, native Mandate 05 retirement boundary, and policy structure.
+The Kyverno fixture here is intentionally external-only; a green result does
+not claim that private-ECR first-party `verifyImages` verification ran offline.
+Use the live first-party evidence matrix below after a trusted release exists.
 The preparation render intentionally still contains seven mutable external
 references. Do not pin them in this PR: first collect Audit findings, then run
 `verify-external-image-allowlist.py` as a required gate in the remediation PR.
@@ -169,6 +172,10 @@ Offline expected result:
 - valid fixture: pass
 - bad fixture: the `require-approved-external-image-digest` rule fails
 
+These two offline commands do not exercise the private-ECR first-party policy.
+That policy requires the live Kyverno controllers to have ECR read access and
+is verified with real signed artifacts by the matrix below.
+
 After a real first-party release has produced immutable evidence, execute the
 first-party matrix with the release owner’s fixture references:
 
@@ -179,7 +186,8 @@ scripts/ci/verify-first-party-evidence.sh \
   --wrong-issuer-image '<digest-signed-by-wrong-issuer>' \
   --wrong-identity-image '<digest-signed-by-wrong-workflow>' \
   --missing-sbom-image '<signed-digest-without-cyclonedx>' \
-  --wrong-predicate-image '<signed-digest-with-wrong-predicate>'
+  --wrong-predicate-image '<signed-digest-with-wrong-predicate>' \
+  --tagged-image '197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp:<tag>'
 ```
 
 The command is intentionally not part of the pre-merge suite: those fixtures
