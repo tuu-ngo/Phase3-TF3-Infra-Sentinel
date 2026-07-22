@@ -114,6 +114,22 @@ otel-node-agent:
   # incident (only 15m free at the time), now has 565m free after batch2/3
   # Karpenter elastic migration moved load off the on-demand fleet.
   enabled: true
+  # Without tolerations this DaemonSet skips nodes carrying the custom taint
+  # techx.io/workload=<elastic|stateful> - confirmed live: it only scheduled on
+  # 4/7 nodes, missing both Karpenter elastic Spot nodes (now running 11
+  # services from the batch 2/3 migration) and the stateful node (postgres/
+  # valkey). Old otel-collector-agent ran on all 7 nodes (no such taint existed
+  # when it was deployed), so this closes a real coverage gap vs what it's
+  # meant to replace.
+  tolerations:
+    - key: techx.io/workload
+      operator: Equal
+      value: elastic
+      effect: NoSchedule
+    - key: techx.io/workload
+      operator: Equal
+      value: stateful
+      effect: NoSchedule
   resources:
     requests:
       cpu: 10m
