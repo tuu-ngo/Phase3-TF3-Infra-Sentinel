@@ -5,7 +5,7 @@
 **Ngày chuyển sang cơ chế native (VAP + PSA) hoàn toàn, gỡ Kyverno (PM-172):** 21-22/07/2026<br>
 **Nhóm thực hiện:** CDO01 (Security, chủ trì) phối hợp CDO02 (Karpenter elastic capacity, resource headroom) và AIO02 (theo dõi `aiops-engine`)<br>
 **Người xác nhận/chứng kiến (mentor):** _(điền)_<br>
-**Video demo (native, 22/07):** _(điền link — quay lại theo bộ lệnh mục 4)_<br>
+**Video demo (native, 22/07):** _ (link demo)[https://drive.google.com/file/d/1j8BPlYPPgGe1DePhm67ysryscIEuaQLV/view?usp=sharing] _<br>
 **Kết quả:** **PASS — enforcement thật tại admission hoàn toàn bằng cơ chế native Kubernetes (`ValidatingAdmissionPolicy` + Pod Security Admission), không còn phụ thuộc công cụ ngoài (Kyverno đã gỡ hẳn).**
 
 > **Vì sao báo cáo này được viết lại:** bản gốc (18-20/07) dùng Kyverno làm cơ chế chặn chính, bị mentor đánh **FAIL** vì Kyverno là công cụ third-party, không phải "native" theo đúng yêu cầu directive. Báo cáo này thay thế hoàn toàn phần kỹ thuật bằng kiến trúc mới: `ValidatingAdmissionPolicy` (VAP, built-in Kubernetes từ 1.30) cho image/resource, `Pod Security Admission` (PSA, built-in từ lâu hơn) cho root/privileged. Lịch sử Kyverno vẫn giữ lại trong mục 7-8 vì đó là quá trình thật đã xảy ra, không xoá để giữ tính trung thực.
