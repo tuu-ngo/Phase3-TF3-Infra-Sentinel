@@ -116,6 +116,7 @@ spec:
     namespace: kyverno
   syncPolicy:
     automated:
+      enabled: false
       prune: true
       selfHeal: true
     syncOptions:
