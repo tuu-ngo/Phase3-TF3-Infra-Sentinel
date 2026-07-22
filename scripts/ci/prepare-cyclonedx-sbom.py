@@ -14,6 +14,7 @@ from typing import Any
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 REQUIRED_PROPERTIES = {
     "techx.image",
+    "techx.indexDigest",
     "techx.platform",
     "techx.sourceSha",
     "techx.subjectDigest",
@@ -26,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--image", required=True)
     parser.add_argument("--platform", required=True)
+    parser.add_argument("--index-digest", required=True)
     parser.add_argument("--subject-digest", required=True)
     parser.add_argument("--source-sha", required=True)
     return parser.parse_args()
@@ -73,6 +75,8 @@ def prepare(document: dict[str, Any], args: argparse.Namespace) -> dict[str, Any
         fail("metadata must be present")
     if not DIGEST_RE.fullmatch(args.subject_digest):
         fail("subject digest must be a lowercase sha256 digest")
+    if not DIGEST_RE.fullmatch(args.index_digest):
+        fail("index digest must be a lowercase sha256 digest")
     if not args.platform.startswith("linux/"):
         fail("platform must use the linux/<arch> form")
     if not re.fullmatch(r"[0-9a-f]{40}", args.source_sha):
@@ -85,6 +89,7 @@ def prepare(document: dict[str, Any], args: argparse.Namespace) -> dict[str, Any
     metadata["properties"] = [
         *metadata.get("properties", []),
         {"name": "techx.image", "value": args.image},
+        {"name": "techx.indexDigest", "value": args.index_digest},
         {"name": "techx.platform", "value": args.platform},
         {"name": "techx.sourceSha", "value": args.source_sha},
         {"name": "techx.subjectDigest", "value": args.subject_digest},

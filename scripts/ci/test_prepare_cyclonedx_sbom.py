@@ -15,8 +15,9 @@ def run_prepare(tmp_path, document, **overrides):
     args = {
         "image": "197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@" + DIGEST,
         "platform": "linux/amd64",
-        "subject-digest": DIGEST,
-        "source-sha": SOURCE_SHA,
+        "index_digest": DIGEST,
+        "subject_digest": DIGEST,
+        "source_sha": SOURCE_SHA,
     }
     args.update(overrides)
     result = subprocess.run(
@@ -55,6 +56,7 @@ def test_prepare_adds_subject_binding_properties(tmp_path):
     properties = {item["name"]: item["value"] for item in output["metadata"]["properties"]}
     assert properties == {
         "techx.image": "197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@" + DIGEST,
+        "techx.indexDigest": DIGEST,
         "techx.platform": "linux/amd64",
         "techx.sourceSha": SOURCE_SHA,
         "techx.subjectDigest": DIGEST,
@@ -102,6 +104,13 @@ def test_prepare_rejects_digest_binding_mismatch(tmp_path):
     assert result.returncode != 0
     assert output is None
     assert "lowercase sha256" in result.stderr
+
+
+def test_prepare_rejects_invalid_index_digest(tmp_path):
+    result, output = run_prepare(tmp_path, valid_sbom(), index_digest="sha256:" + "c" * 63)
+    assert result.returncode != 0
+    assert output is None
+    assert "index digest" in result.stderr
 
 
 def test_prepare_rejects_reserved_property_replacement(tmp_path):
