@@ -31,6 +31,26 @@ variable "audit_detection_trail_object_lock_mode" {
   }
 }
 
+# Map principal ARN -> permissions boundary ARN mà heartbeat phải thấy còn attach.
+#
+# Để rỗng cho tới Phase 4b: trước khi attach boundary thì check này sẽ FAIL giả.
+# Sau Phase 4b điền cả hai GHA role và gitlab-ci-deployer — riêng user đó attach
+# thủ công nên không có gì cưỡng chế nó tồn tại ngoài heartbeat.
+variable "audit_detection_bounded_principals" {
+  description = "Principal ARN -> boundary ARN mà heartbeat xác nhận còn attach. Rỗng = chưa tới Phase 4b."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for principal, boundary in var.audit_detection_bounded_principals :
+      can(regex("^arn:aws:iam::[0-9]{12}:(user|role)/.+$", principal))
+      && can(regex("^arn:aws:iam::[0-9]{12}:policy/.+$", boundary))
+    ])
+    error_message = "Key must be an IAM user/role ARN and value must be a managed-policy ARN."
+  }
+}
+
 variable "audit_detection_trail_object_lock_days" {
   description = "Mandate 12: số ngày Object Lock cho object CloudTrail mới. Mandate yêu cầu tối thiểu 365."
   type        = number

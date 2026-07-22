@@ -255,7 +255,11 @@ data "aws_iam_policy_document" "m12_audit_heartbeat" {
       "s3:GetObjectLockConfiguration",
       "sns:GetTopicAttributes",
       "sns:ListSubscriptionsByTopic",
-      "eks:DescribeCluster"
+      "eks:DescribeCluster",
+      # Xác nhận permissions boundary còn attach. Cần thiết vì với
+      # gitlab-ci-deployer việc attach là thủ công, không có gì cưỡng chế.
+      "iam:GetRole",
+      "iam:GetUser"
     ]
     resources = ["*"]
   }
@@ -314,6 +318,7 @@ resource "aws_lambda_function" "m12_audit_heartbeat" {
       PRIMARY_ROUTER_ARN                   = local.m12_primary_router_arn
       GLOBAL_ROUTER_ARN                    = local.m12_global_router_arn
       ROUTER_EXPECTED_JSON                 = jsonencode(local.m12_router_expected)
+      BOUNDED_PRINCIPALS_JSON              = jsonencode(var.audit_detection_bounded_principals)
       HEARTBEAT_SCHEDULE_RULE_NAME         = local.m12_heartbeat_schedule_name
       HEARTBEAT_FUNCTION_ARN               = local.m12_heartbeat_function_arn
       HEARTBEAT_ALARM_NAMES_JSON           = jsonencode(local.m12_heartbeat_alarm_names)

@@ -320,6 +320,38 @@ def _check_router_integrity(client, function_arn, expected, label):
     return failures
 
 
+def _check_bounded_principals(client, expected_boundaries):
+    """Xác nhận permissions boundary vẫn còn attach trên từng principal đã duyệt.
+
+    Với `gitlab-ci-deployer` việc attach là thủ công (user nằm ngoài Terraform
+    state), nên không có gì cưỡng chế nó tồn tại. Nếu ai đó gỡ, chỉ CloudTrail
+    bắt được — trừ khi heartbeat cũng kiểm tra. Map rỗng nghĩa là chưa tới
+    Phase 4b; khi đó bỏ qua để không FAIL giả.
+    """
+    failures = []
+    for principal_arn, expected_boundary_arn in expected_boundaries.items():
+        name = principal_arn.rsplit("/", 1)[-1]
+        try:
+            if ":user/" in principal_arn:
+                entity = client.get_user(UserName=name)["User"]
+            elif ":role/" in principal_arn:
+                entity = client.get_role(RoleName=name)["Role"]
+            else:
+                failures.append(f"unsupported bounded principal ARN: {principal_arn}")
+                continue
+        except Exception as exc:
+            failures.append(f"bounded principal check failed: {principal_arn}: {type(exc).__name__}: {exc}")
+            continue
+
+        actual = (entity.get("PermissionsBoundary") or {}).get("PermissionsBoundaryArn")
+        if actual != expected_boundary_arn:
+            failures.append(
+                f"permissions boundary missing or changed on {principal_arn}: "
+                f"expected {expected_boundary_arn}, found {actual}"
+            )
+    return failures
+
+
 def _publish_independently(destinations, subject, message):
     delivered = []
     failures = []
@@ -350,6 +382,7 @@ def handler(event, _context):
     primary_router_arn = os.environ["PRIMARY_ROUTER_ARN"]
     global_router_arn = os.environ["GLOBAL_ROUTER_ARN"]
     router_expected = json.loads(os.environ["ROUTER_EXPECTED_JSON"])
+    bounded_principals = json.loads(os.environ.get("BOUNDED_PRINCIPALS_JSON", "{}"))
     schedule_rule_name = os.environ["HEARTBEAT_SCHEDULE_RULE_NAME"]
     heartbeat_function_arn = os.environ["HEARTBEAT_FUNCTION_ARN"]
     alarm_names = json.loads(os.environ["HEARTBEAT_ALARM_NAMES_JSON"])
@@ -369,6 +402,7 @@ def handler(event, _context):
     lambda_global = boto3.client("lambda", region_name=global_region)
     cloudwatch = boto3.client("cloudwatch", region_name=region)
     eks = boto3.client("eks", region_name=region)
+    iam = boto3.client("iam")
     failures = []
 
     direct_alert_destinations = (
@@ -551,6 +585,9 @@ def handler(event, _context):
                 ))
         except Exception as exc:
             failures.append(f"SNS alert path check failed: {label}: {type(exc).__name__}: {exc}")
+
+    if bounded_principals:
+        failures.extend(_check_bounded_principals(iam, bounded_principals))
 
     try:
         logging_config = eks.describe_cluster(name=eks_cluster_name)["cluster"].get("logging", {})

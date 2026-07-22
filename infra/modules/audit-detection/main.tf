@@ -4,9 +4,18 @@ data "aws_partition" "current" {}
 
 data "aws_region" "current" {}
 
+# Mandate 12: đóng gói ĐÚNG một file thay vì cả thư mục.
+#
+# source_dir zip mọi thứ trong lambda/, nên __pycache__ có sẵn trên máy chạy
+# terraform sẽ lọt vào artifact và làm CodeSha256 lệch baseline mà heartbeat
+# so — một FAIL giả, hoặc tệ hơn là che mất một thay đổi code thật. .gitignore
+# không giúp được vì archive_file đọc filesystem chứ không đọc git.
+#
+# Router chỉ import stdlib và boto3 (Lambda runtime có sẵn) nên một file là đủ.
+# Nếu sau này tách thêm module, đổi lại source_dir và bổ sung excludes.
 data "archive_file" "audit_alert_router" {
   type        = "zip"
-  source_dir  = "${path.module}/lambda"
+  source_file = "${path.module}/lambda/index.py"
   output_path = "${path.module}/audit-alert-router.zip"
 }
 

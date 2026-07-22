@@ -84,8 +84,10 @@ locals {
     "arn:aws:iam::${local.m12_account_id}:role/${var.cluster_name}-gha-terraform-apply",
   ]
 
-  # Mọi principal mang boundary này đều không được tự gỡ nó, kể cả identity
-  # attach thủ công vì nằm ngoài Terraform state (gitlab-ci-deployer).
+  # Danh sách principal mang boundary này. Hai statement Deny bên dưới dùng
+  # Resource "*" chứ không dùng danh sách này (đường vượt rào là tạo principal
+  # MỚI, chưa tồn tại lúc viết policy). Danh sách tồn tại để sinh output cho
+  # heartbeat canh boundary còn attach — xem output ci_audit_boundary_expected_map.
   m12_bounded_principal_arns = concat(
     local.m12_ci_role_arns,
     var.additional_bounded_principal_arns,
@@ -235,24 +237,72 @@ data "aws_iam_policy_document" "ci_audit_boundary" {
     resources = local.m12_alarm_arns
   }
 
-  # Không có statement này thì boundary vô nghĩa: principal chỉ cần tự gỡ
-  # boundary của mình rồi làm gì cũng được. Bao gồm cả action cho user vì
-  # gitlab-ci-deployer là IAM user, không phải role.
-  #
-  # Scope chỉ gồm các principal ĐANG mang boundary, nên việc attach/gỡ boundary
-  # cho user hoặc role KHÁC vẫn chạy — phase IAM hardening không bị cản.
+  # Không có statement này thì boundary vô nghĩa: chỉ cần gỡ boundary rồi làm gì
+  # cũng được. Scope "*" chứ không chỉ các principal đang mang boundary, vì
+  # đường vượt rào là: tạo role mới -> gắn boundary -> gỡ ra -> assume.
+  # CI không có nhu cầu hợp lệ nào phải GỠ boundary khỏi bất kỳ principal nào;
+  # rollback boundary đi qua root bootstrap do người có MFA apply.
   statement {
-    sid    = "DenyRemovingOwnBoundary"
+    sid    = "DenyRemovingAnyBoundary"
+    effect = "Deny"
+
+    actions = [
+      "iam:DeleteRolePermissionsBoundary",
+      "iam:DeleteUserPermissionsBoundary",
+    ]
+
+    resources = ["*"]
+  }
+
+  # Cho phép GẮN boundary, nhưng chỉ đúng boundary này. Nếu không có điều kiện,
+  # CI gắn được một boundary rỗng/yếu lên principal bất kỳ rồi dùng nó vượt rào.
+  # Khi phase IAM hardening cần gắn operator boundary khác, việc đó do executor
+  # MFA thực hiện (§9), không qua CI — nên điều kiện này không cản.
+  statement {
+    sid    = "DenyAttachingAnyOtherBoundary"
     effect = "Deny"
 
     actions = [
       "iam:PutRolePermissionsBoundary",
-      "iam:DeleteRolePermissionsBoundary",
       "iam:PutUserPermissionsBoundary",
-      "iam:DeleteUserPermissionsBoundary",
     ]
 
-    resources = local.m12_bounded_principal_arns
+    resources = ["*"]
+
+    condition {
+      test     = "StringNotEquals"
+      variable = "iam:PermissionsBoundary"
+      values   = [local.m12_ci_boundary_policy_arn]
+    }
+  }
+
+  # Chặn đường lấy credential cho một principal không mang boundary.
+  #
+  # sts:AssumeRole: đã verify workflow dùng OIDC trực tiếp làm caller identity,
+  # không chain assume-role, và provider Terraform không có block assume_role.
+  # KHÔNG chặn AssumeRoleWithWebIdentity/WithSAML: đó là đường GitHub dùng để
+  # tạo chính session này, và boundary của role không áp lên bước assume đó —
+  # nhưng để nguyên cho chắc chắn không phá OIDC.
+  #
+  # iam:CreateAccessKey / LoginProfile: đã verify Terraform không quản
+  # aws_iam_access_key nào. CI không có nhu cầu hợp lệ phát hành credential
+  # dài hạn hay mật khẩu console.
+  statement {
+    sid    = "DenyCredentialIssuanceForEscalation"
+    effect = "Deny"
+
+    actions = [
+      "sts:AssumeRole",
+      "sts:GetFederationToken",
+      "iam:CreateAccessKey",
+      "iam:UpdateAccessKey",
+      "iam:CreateLoginProfile",
+      "iam:UpdateLoginProfile",
+      "iam:CreateServiceSpecificCredential",
+      "iam:ResetServiceSpecificCredential",
+    ]
+
+    resources = ["*"]
   }
 
   # Tương tự: chặn CI tự sửa nội dung boundary. Cập nhật boundary phải do người
@@ -290,4 +340,15 @@ output "ci_audit_boundary_policy_arn" {
 output "ci_audit_boundary_attached" {
   description = "false = policy đã tạo nhưng chưa attach; CI vẫn chạy như cũ."
   value       = var.enable_ci_audit_boundary
+}
+
+# Copy nguyên giá trị này vào audit_detection_bounded_principals trong
+# production.auto.tfvars ở Phase 4b. Hai root dùng state khác nhau nên không
+# tham chiếu trực tiếp được, nhưng sinh sẵn ở đây tránh gõ tay sai ARN.
+output "ci_audit_boundary_expected_map" {
+  description = "Map principal ARN -> boundary ARN cho heartbeat canh boundary còn attach."
+  value = {
+    for arn in local.m12_bounded_principal_arns :
+    arn => aws_iam_policy.ci_audit_boundary.arn
+  }
 }
