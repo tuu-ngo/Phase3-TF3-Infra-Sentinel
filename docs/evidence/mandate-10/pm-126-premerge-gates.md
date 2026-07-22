@@ -42,13 +42,28 @@ These are disposable fixtures under `/tmp`, never committed and deleted after th
 
 Positive baseline evidence is recorded in `pm-126-tfsec-before-after.md`; the clean secret and SAST summaries were generated with the same pinned images and produced zero blocking findings.
 
-## Admin handoff and merge-lock proof
+## Live required-gate rejection evidence
 
-The current execution identity cannot change branch protection/rulesets. After this workflow is merged, the repo owner/admin must:
+On 2026-07-23 the repo owner enabled the exact GitHub Actions context **`Secure delivery gate`** as a required check for `main`. `gh pr checks <PR> --required` reports the failed aggregate as required on each disposable PR, and the GitHub merge state is `BLOCKED`.
 
-1. Open a normal PR and confirm the exact check context **`Secure delivery gate`** appears.
-2. Require only that exact context on `main`, with expected source GitHub Actions; keep existing review policy intact.
-3. Export the resulting branch-protection/ruleset JSON (or equivalent settings export) into the PM-132 evidence bundle.
-4. Open three disposable negative PRs (Terraform HIGH/CRITICAL, fake secret, SAST HIGH) and capture the red aggregate check plus the merge button locked. Do not merge the fixtures.
+| Control | Disposable PR | Intended failed child | Required aggregate evidence | Merge state |
+|---|---|---|---|---|
+| IaC CRITICAL | [#350](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/350) | [IaC misconfiguration scan](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/actions/runs/29941763818/job/88997124650) | [Secure delivery gate](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/actions/runs/29941763818/job/88997235173) | `BLOCKED` |
+| Synthetic secret HIGH | [#351](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/351) | [Repository secret scan](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/actions/runs/29941768360/job/88997138937) | [Secure delivery gate](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/actions/runs/29941768360/job/88997237922) | `BLOCKED` |
+| SAST HIGH | [#352](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/352) | [SAST scan](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/actions/runs/29941770620/job/88997146205) | [Secure delivery gate](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/actions/runs/29941770620/job/88997251333) | `BLOCKED` |
 
-Until those admin actions and PR URLs/runs exist, PM-126 implementation is complete locally but the required-status-check and merge-lock DoD remains **pending external evidence**. No production apply or runtime change is needed for this handoff.
+The scanner children not under test passed on each PR, isolating the intended rejection. These fixture PRs and branches are evidence only and must never be approved or merged.
+
+## Admin handoff status
+
+Completed:
+
+1. The workflow was merged by [PR #348](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/348) at `main@4d4e66de5fff1d87cc194b23ad227e5c976f993b`.
+2. The exact `Secure delivery gate` context is required on `main`.
+3. Three real negative PRs fail the intended child, fail the required aggregate and report `mergeStateStatus=BLOCKED`.
+
+Pending owner-only artifact:
+
+1. Export the final Branch protection or Ruleset configuration into the PM-132 evidence bundle. The current non-admin identity can verify the required context and blocked PRs but receives HTTP 404 from the branch-protection export API.
+
+No production apply or runtime change is needed for this handoff. The post-merge Terraform Plan succeeded, but its bastion replacement remains under a separate no-apply safety hold.
