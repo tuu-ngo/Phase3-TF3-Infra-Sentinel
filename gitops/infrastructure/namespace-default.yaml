@@ -1,7 +1,11 @@
+# Mandate 5 cluster-wide expansion (native, 22/07): pre-flight verify sạch
+# (kubectl label --dry-run=server) trước khi ghi file này - không có vi phạm
+# nào (namespace default chỉ có 1 pod, không đáng kể, nhưng vẫn nằm trong
+# phạm vi "toàn cluster trừ kube-system").
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: techx-tf3
+  name: default
   labels:
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: v1.35

@@ -24,8 +24,19 @@ spec:
   validationActions: ["Deny"]
   matchResources:
     namespaceSelector:
-      matchLabels:
-        kubernetes.io/metadata.name: techx-tf3
+      # Mandate 5 cluster-wide expansion (native, 22/07): tu truoc chi khop
+      # techx-tf3, gio loai tru kube-system - ap dung toan cluster giong dung
+      # pham vi Kyverno cu (18-20/07). Dung matchExpressions/NotIn thay vi
+      # liet ke ten tung namespace nhu Kyverno truoc day - tu dong ap cho ca
+      # namespace tao moi sau nay, khong can sua lai policy moi lan them
+      # namespace. Da pre-flight verify sach argocd/argo-rollouts/
+      # external-secrets/default truoc khi doi dong nay - xem
+      # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md.
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
@@ -55,5 +66,16 @@ spec:
   validationActions: ["Deny"]
   matchResources:
     namespaceSelector:
-      matchLabels:
-        kubernetes.io/metadata.name: techx-tf3
+      # Mandate 5 cluster-wide expansion (native, 22/07): tu truoc chi khop
+      # techx-tf3, gio loai tru kube-system - ap dung toan cluster giong dung
+      # pham vi Kyverno cu (18-20/07). Dung matchExpressions/NotIn thay vi
+      # liet ke ten tung namespace nhu Kyverno truoc day - tu dong ap cho ca
+      # namespace tao moi sau nay, khong can sua lai policy moi lan them
+      # namespace. Da pre-flight verify sach argocd/argo-rollouts/
+      # external-secrets/default truoc khi doi dong nay - xem
+      # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md.
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
