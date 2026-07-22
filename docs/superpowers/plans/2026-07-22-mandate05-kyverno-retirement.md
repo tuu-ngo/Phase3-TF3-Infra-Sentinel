@@ -110,15 +110,18 @@ def test_argocd_self_uses_server_side_apply():
     assert "ServerSideApply=true" in sync_options
 ```
 
-- [ ] **Step 2: Install the pinned test dependencies**
+- [ ] **Step 2: Install the repository-pinned test dependencies in an isolated virtualenv**
 
 Run:
 
 ```bash
-python3 -m pip install -r scripts/ci/requirements-runtime-hardening.txt pytest==8.4.1
+python3 -m venv /tmp/tf3-mandate05-retirement-venv
+/tmp/tf3-mandate05-retirement-venv/bin/pip install \
+  -r scripts/ci/requirements-runtime-hardening.txt \
+  -r scripts/ci/requirements-image-bump.txt
 ```
 
-Expected: installation succeeds with `PyYAML==6.0.2` and `pytest==8.4.1` available.
+Expected: installation succeeds with the exact PyYAML, ruamel.yaml, and pytest versions pinned by the repository. Do not add a separate pytest version because `requirements-image-bump.txt` owns that pin.
 
 - [ ] **Step 3: Run the contract and prove it fails for only the intended gaps**
 
@@ -149,6 +152,7 @@ git commit -m "test: define native admission retirement contract"
 - Delete: `gitops/policies/kyverno/require-resource-requests.yaml`
 - Delete: `tests/kyverno/mandate-05/kyverno-test.yaml`
 - Delete: all fixtures under `tests/kyverno/mandate-05/resources/`
+- Modify: `scripts/ci/test_runtime_hardening.py`
 - Test: `scripts/ci/test_mandate05_native_retirement_contract.py`
 
 **Interfaces:**
@@ -158,6 +162,8 @@ git commit -m "test: define native admission retirement contract"
 - [ ] **Step 1: Delete only the obsolete Kyverno declarations and tests**
 
 Use `apply_patch` to delete the exact files listed above. Do not delete native rejection fixtures under `docs/evidence/mandate-05/native-rejection-demo/`.
+
+Remove the Kyverno manifest constants and the three tests that inspect the retired resource and baseline ClusterPolicy YAML from `scripts/ci/test_runtime_hardening.py`. Keep the authoritative Helm render test and runtime inventory verifier tests.
 
 - [ ] **Step 2: Verify no active GitOps or test declaration references Kyverno**
 
@@ -186,7 +192,8 @@ Expected: only `test_argocd_self_uses_server_side_apply` still fails.
 - [ ] **Step 4: Commit the desired-state removal**
 
 ```bash
-git add -A gitops/apps/kyverno-policies-app.yaml gitops/policies/kyverno tests/kyverno/mandate-05
+git add -A gitops/apps/kyverno-policies-app.yaml gitops/policies/kyverno \
+  tests/kyverno/mandate-05 scripts/ci/test_runtime_hardening.py
 git commit -m "chore: retire Mandate 05 Kyverno policies"
 ```
 
