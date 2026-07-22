@@ -199,7 +199,7 @@ only then can the old DaemonSet's host metrics responsibilities be retired.
 
 ## Update 2026-07-22 — PSA `enforce=restricted` live, Kyverno retired (PM-172), Mandate 5 fully native
 
-**Status:** Accepted — native admission enforcement (VAP + PSA) is the sole blocking mechanism in `techx-tf3`. Kyverno controller removed. Mentor demo re-run and passed under the fully-native architecture (see evidence below). **Signed:** CDO01 (Hoàng Trọng Tân), 22/07/2026. *(Mentor countersignature — pending, add name/date here once witnessed.)*
+**Status:** Accepted — native admission enforcement (VAP + PSA) is the sole blocking mechanism, expanded cluster-wide (all namespaces except `kube-system`, PR #343) — matching the old Kyverno scope, not limited to `techx-tf3`. Kyverno controller removed. Mentor demo re-run and passed under the fully-native architecture (see evidence below). **Signed:** CDO01 (Hoàng Trọng Tân), 22/07/2026. *(Mentor countersignature — pending, add name/date here once witnessed.)*
 
 ### Decision
 
@@ -213,6 +213,10 @@ only then can the old DaemonSet's host metrics responsibilities be retired.
    - Step 2 (PR #340): `kyverno-policies` Argo app + 4 `ClusterPolicy` manifests removed from git.
    - Step 3 (PR #341): `kyverno` Argo app (controller, webhooks, CRDs) removed from git.
    - **Explicitly accepted trade-off:** Kyverno was also the only path to Cosign `verifyImages` admission-time verification (PM-114/127/128) and PolicyReport background reconciliation for existing-resource drift — neither VAP nor PSA replace these. Per this repo's last status, `verifyImages` was not yet actually wired into an active admission path (Cosign verification was off-cluster only) — so this removal does not regress an already-active control, but does close off that specific implementation path. A native or alternative replacement for signature verification is not yet designed; tracked as future work, not blocking this ADR.
+4. Expand VAP + PSA cluster-wide (PR #343) — both were initially scoped only to `techx-tf3` (a real gap discovered after (2) and (3) above, not caught until explicitly asked whether scope matched the old Kyverno cluster-wide expansion from 19-20/07):
+   - VAP: `namespaceSelector` changed from `matchLabels(techx-tf3)` to `matchExpressions: NotIn[kube-system]` — dynamically excludes `kube-system` by name; automatically covers any namespace created in the future too (an improvement over Kyverno's old exact-name-list approach, which had to be updated by hand each time a namespace was added).
+   - PSA: added `{audit,warn,enforce}=restricted` to `argocd`, `argo-rollouts`, `external-secrets`, `default` via new `Namespace` manifests (these namespaces had no dedicated GitOps-managed `Namespace` object before — they were created implicitly by their own Helm chart Applications). `observability-system` intentionally stays `baseline` — documented exception, `otel-node-agent` requires `hostPath` for host metrics, which `restricted` forbids entirely.
+   - Pre-flight verified clean (not assumed) before expanding: live `kubectl label --dry-run=server` for PSA `restricted` and direct pod inspection for `latest`-tag images / missing resource requests-limits, across all 4 target namespaces — zero violations. Confirmed post-merge via cross-namespace demo fixtures (`bad-root-pod-cross-namespace.yaml`, `bad-latest-image-pod-cross-namespace.yaml`, namespace `default`) — both correctly denied by PSA/VAP, and `kube-system` confirmed still excluded.
 
 ### Mentor rejection demo (re-run under fully-native stack, 22/07)
 
@@ -226,13 +230,16 @@ All 6 fixtures in `docs/evidence/mandate-05/native-rejection-demo/`, via `kubect
 | `bad-first-party-tag-pod.yaml` | `ValidatingAdmissionPolicy` `mandate05-native-image-reference` |
 | `bad-missing-resources-pod.yaml` | `ValidatingAdmissionPolicy` `mandate05-native-resource-requirements` |
 | `bad-root-pod.yaml` | `PodSecurity "restricted:v1.35"` (`Error from server (Forbidden)`) |
+| `bad-root-pod-cross-namespace.yaml` (namespace `default`) | `PodSecurity "restricted:v1.35"` — proves PSA enforcement is cluster-wide, not just `techx-tf3` |
+| `bad-latest-image-pod-cross-namespace.yaml` (namespace `default`) | `ValidatingAdmissionPolicy` `mandate05-native-image-reference` — proves VAP enforcement is cluster-wide |
 
-No Kyverno involvement in any of the 6 outcomes — confirmed by re-running after the Audit downgrade (PR #339), where Kyverno could no longer have blocked anything even if it wanted to. Full command list and raw output: `docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md`.
+No Kyverno involvement in any of the 8 outcomes — confirmed by re-running after the Audit downgrade (PR #339), where Kyverno could no longer have blocked anything even if it wanted to. `kube-system` re-verified excluded (`aws-load-balancer-controller` Deployment re-applies cleanly). Full command list and raw output: `docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md`.
 
 ### Rollback (this update)
 
 - PSA enforce rollback: revert PR #338 (drops back to `audit`/`warn=restricted`, no enforcement) — fastest, lowest-risk rollback if any workload regresses.
 - Kyverno retirement rollback: revert PR #341 then #340 then #339 in that order (git revert, Argo recreates the app/policies from git automatically) — full Kyverno stack restorable within one Argo sync cycle if a real need for `verifyImages`/PolicyReport resurfaces before a native replacement exists.
+- Cluster-wide expansion rollback: revert PR #343 — VAP `namespaceSelector` reverts to `techx-tf3`-only, and the 4 new `Namespace` manifests (`argocd`/`argo-rollouts`/`external-secrets`/`default`) simply stop carrying the PSA `restricted` labels (labels removed, not the namespaces themselves).
 - `otel-collector-agent` rollback: revert PR #337 (`enabled: true`) — DaemonSet redeploys immediately, no data was deleted.
 
 ### Exceptions — final disposition
