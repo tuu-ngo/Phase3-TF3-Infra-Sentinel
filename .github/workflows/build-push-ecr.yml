@@ -766,6 +766,8 @@ jobs:
             index_image="${ECR_REGISTRY}/${ECR_REPOSITORY}@${index_digest}"
             manifest_raw="$MANIFEST_ROOT/${service}.json"
             platform_map="$PLATFORM_ROOT/${service}.json"
+            index_mapping="$PREDICATE_ROOT/${service}-index-release-mapping.json"
+            mapping_verify_report="$VERIFY_ROOT/${service}-index-mapping.jsonl"
 
             echo "Resolving OCI platform children for $index_image"
             docker buildx imagetools inspect --raw "$index_image" > "$manifest_raw"
@@ -848,6 +850,8 @@ jobs:
                 --arg predicate "${predicate#"$GITHUB_WORKSPACE/"}" \
                 --arg child_verification "${child_verify_report#"$GITHUB_WORKSPACE/"}" \
                 --arg index_verification "${index_verify_report#"$GITHUB_WORKSPACE/"}" \
+                --arg index_mapping "${index_mapping#"$GITHUB_WORKSPACE/"}" \
+                --arg mapping_verification "${mapping_verify_report#"$GITHUB_WORKSPACE/"}" \
                 '{
                   service: $service,
                   indexImage: $index_image,
@@ -863,11 +867,10 @@ jobs:
                   predicatePath: $predicate,
                   childVerificationPath: $child_verification,
                   indexVerificationPath: $index_verification,
-                  indexMappingPath: ($service + "-index-release-mapping.json")
+                  indexMappingPath: $index_mapping,
+                  indexMappingVerificationPath: $mapping_verification
                 }' >> "$SUMMARY"
             done < <(jq -c '.platforms[]' "$platform_map")
-            index_mapping="$PREDICATE_ROOT/${service}-index-release-mapping.json"
-            mapping_verify_report="$VERIFY_ROOT/${service}-index-mapping.jsonl"
             jq -s \
               --arg service "$service" \
               --arg predicate_type "$INDEX_PREDICATE_TYPE" \
