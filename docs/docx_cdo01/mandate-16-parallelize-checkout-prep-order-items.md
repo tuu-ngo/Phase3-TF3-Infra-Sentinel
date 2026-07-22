@@ -416,6 +416,29 @@ Trace Jaeger sau deploy xác nhận luồng đã được sửa đúng theo mand
 | Request checkout quan sát ở trace trước | khoảng **185.05ms** | span chuẩn bị order/shipping khoảng **23.97ms** | Bottleneck trong đoạn prep giảm rõ |
 | `prepareOrderItemsAndShippingQuoteFromCart` | bị kéo dài theo tổng latency của từng item + shipping quote | gần với nhánh chậm nhất trong các tác vụ song song | Không còn cộng dồn tuyến tính theo số item |
 
+### So sánh trực tiếp cùng order 10 sản phẩm
+
+**Ngày kiểm chứng:** 22/07/2026  
+**Điều kiện đo:** cùng một order có **10 sản phẩm**, so sánh trace Jaeger trước và sau khi tối ưu luồng chuẩn bị item trong checkout.
+
+| Chỉ số Jaeger | Before | After | Delta |
+|---|---:|---:|---:|
+| Trace duration end-to-end | **1.44s** | **1.17s** | **-0.27s** |
+| Mức giảm latency | - | - | **18.75% nhanh hơn** |
+| Tổng số span | **120** | **104** | **-16 span** |
+| Span `prepareOrderItemsAndShippingQuoteFromCart` | **210.48ms** | **185.86ms** | **-24.62ms** |
+
+**Nhận xét:** Với cùng order 10 sản phẩm, duration toàn trace giảm từ **1.44s xuống 1.17s**, tương đương giảm **270ms**. Đây là mức cải thiện khoảng **18.75%** mà không cần tăng replica, CPU, memory hoặc node. Trace after cũng cho thấy tổng số span giảm từ **120 xuống 104**, đồng thời span chuẩn bị order/shipping giảm từ **210.48ms xuống 185.86ms**. Điều này củng cố kết luận rằng phần xử lý item trong checkout đã bớt bị cộng dồn tuần tự và tiến gần hơn đến mô hình chạy song song theo nhánh chậm nhất.
+
+### So sánh percentile checkout p95/p99
+
+| Metric | Before | After | Delta | Mức cải thiện |
+|---|---:|---:|---:|---:|
+| p95 checkout latency | **245ms** | **242ms** | **-3ms** | **1.22%** |
+| p99 checkout latency | **335ms** | **247ms** | **-88ms** | **26.27%** |
+
+**Nhận xét:** p95 gần như giữ ổn định, giảm nhẹ từ **245ms xuống 242ms**. Điểm cải thiện quan trọng nằm ở p99: giảm từ **335ms xuống 247ms**, tức giảm **88ms**. Điều này cho thấy tối ưu song song hóa tác động rõ nhất lên tail latency của checkout, đúng với kỳ vọng vì các order nhiều sản phẩm trước đây bị cộng dồn latency theo từng item.
+
 ### Diễn giải bằng trace
 
 Trước tối ưu, waterfall Jaeger cho thấy checkout phải đi qua chuỗi:
@@ -441,3 +464,36 @@ GetCart
 ```
 
 Vì vậy phần chậm nhất không còn là tổng tất cả RPC theo từng item, mà gần bằng nhánh downstream chậm nhất trong nhóm song song. Đây là bằng chứng Jaeger chính cho thấy bottleneck của Mandate 16 đã giảm mà không cần tăng replica, CPU, memory hoặc thay đổi topology production.
+
+---
+
+## 7. Bằng Chứng Nghiệm Thu Tải (PM-145)
+
+**Ngày kiểm chứng:** 21/07/2026
+**Mục tiêu:** Xác nhận độ trễ p99 của luồng Checkout giảm xuống dưới ngân sách 300ms, không tăng tài nguyên, và chịu tải dao động tốt (không jitter).
+
+### 7.1. Kết Quả Tải Phẳng (100 Concurrent Users)
+
+| Mốc Đo | p99 Checkout | Tổng CPU Tiêu Thụ |
+| :--- | :--- | :--- |
+| **Trước tối ưu (PM-143)** | 940 ms | ~25 millicores |
+| **Sau tối ưu (PM-145)** | **280 ms** | **~18 millicores** |
+
+- **Độ trễ p99** giảm mạnh **70%**, đạt xuất sắc mục tiêu < 300ms.
+- **Tài nguyên CPU** không tăng (thực tế giảm nhẹ xuống 18m). Đáp ứng tuyệt đối yêu cầu "Không mua tốc độ bằng tài nguyên".
+
+![Locust Result - p99 280ms](./locust-optimized.png)
+
+### 7.2. Tính Ổn Định Dưới Tải Dao Động (Oscillating Load Test)
+
+**Kịch bản:** Thay đổi tải liên tục (200 users -> 50 users -> 150 users).
+
+**Quan sát từ biểu đồ Locust:**
+- Lượng Request (RPS) biến động mạnh theo cấu hình bơm xả tải.
+- Đường Response Time p99 đi ngang vững chắc ở mốc ~170ms - 250ms, không bị Jitter (giật cục) khi tải thay đổi đột ngột.
+- Chứng minh hệ thống không bị cạn kiệt Connection Pool hay nghẽn bộ nhớ dưới áp lực dao động.
+
+![Locust Jitter Chart](./locust-step-load.png)
+![Jaeger Optimized Waterfall](./jaeger-optimized-waterfall.png)
+
+**Kết luận chung:** Task PM-145 đạt 100% Tiêu chí hoàn thành (DoD).
