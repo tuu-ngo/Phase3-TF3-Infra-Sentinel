@@ -464,3 +464,36 @@ GetCart
 ```
 
 Vì vậy phần chậm nhất không còn là tổng tất cả RPC theo từng item, mà gần bằng nhánh downstream chậm nhất trong nhóm song song. Đây là bằng chứng Jaeger chính cho thấy bottleneck của Mandate 16 đã giảm mà không cần tăng replica, CPU, memory hoặc thay đổi topology production.
+
+---
+
+## 7. Bằng Chứng Nghiệm Thu Tải (PM-145)
+
+**Ngày kiểm chứng:** 21/07/2026
+**Mục tiêu:** Xác nhận độ trễ p99 của luồng Checkout giảm xuống dưới ngân sách 300ms, không tăng tài nguyên, và chịu tải dao động tốt (không jitter).
+
+### 7.1. Kết Quả Tải Phẳng (100 Concurrent Users)
+
+| Mốc Đo | p99 Checkout | Tổng CPU Tiêu Thụ |
+| :--- | :--- | :--- |
+| **Trước tối ưu (PM-143)** | 940 ms | ~25 millicores |
+| **Sau tối ưu (PM-145)** | **280 ms** | **~18 millicores** |
+
+- **Độ trễ p99** giảm mạnh **70%**, đạt xuất sắc mục tiêu < 300ms.
+- **Tài nguyên CPU** không tăng (thực tế giảm nhẹ xuống 18m). Đáp ứng tuyệt đối yêu cầu "Không mua tốc độ bằng tài nguyên".
+
+![Locust Result - p99 280ms](./locust-optimized.png)
+
+### 7.2. Tính Ổn Định Dưới Tải Dao Động (Oscillating Load Test)
+
+**Kịch bản:** Thay đổi tải liên tục (200 users -> 50 users -> 150 users).
+
+**Quan sát từ biểu đồ Locust:**
+- Lượng Request (RPS) biến động mạnh theo cấu hình bơm xả tải.
+- Đường Response Time p99 đi ngang vững chắc ở mốc ~170ms - 250ms, không bị Jitter (giật cục) khi tải thay đổi đột ngột.
+- Chứng minh hệ thống không bị cạn kiệt Connection Pool hay nghẽn bộ nhớ dưới áp lực dao động.
+
+![Locust Jitter Chart](./locust-step-load.png)
+![Jaeger Optimized Waterfall](./jaeger-optimized-waterfall.png)
+
+**Kết luận chung:** Task PM-145 đạt 100% Tiêu chí hoàn thành (DoD).
