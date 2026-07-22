@@ -1,0 +1,246 @@
+name: Secure delivery gate
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: secure-delivery-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TFSEC_VERSION: "v1.28.14"
+  SEMGREP_VERSION: "1.170.0"
+  GOSEC_VERSION: "v2.22.10"
+
+jobs:
+  detect-changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      iac_applicable: ${{ steps.detect.outputs.iac_applicable }}
+      sast_applicable: ${{ steps.detect.outputs.sast_applicable }}
+      workflow_changed: ${{ steps.detect.outputs.workflow_changed }}
+      changed_files: ${{ steps.detect.outputs.changed_files }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed areas
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            {
+              echo "iac_applicable=true"
+              echo "sast_applicable=true"
+              echo "workflow_changed=true"
+              echo "changed_files=merge_group validation runs all secure delivery controls"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ]; then
+            echo "FAIL: pull_request base/head SHA is unavailable" >&2
+            exit 1
+          fi
+
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sort -u)"
+
+          workflow_changed=false
+          iac_applicable=false
+          sast_applicable=false
+
+          if printf '%s\n' "$changed" | grep -Eq '^\.github/workflows/secure-delivery-gate\.yml$|^\.semgrep/mandate10-money-path\.yml$'; then
+            workflow_changed=true
+          fi
+
+          if [ "$workflow_changed" = true ] || printf '%s\n' "$changed" | grep -Eq '^infra/live/production/|^infra/modules/'; then
+            iac_applicable=true
+          fi
+
+          if [ "$workflow_changed" = true ] || printf '%s\n' "$changed" | grep -Eq '^phase3 - information/techx-corp-platform/src/(checkout|payment)/'; then
+            sast_applicable=true
+          fi
+
+          {
+            echo "iac_applicable=$iac_applicable"
+            echo "sast_applicable=$sast_applicable"
+            echo "workflow_changed=$workflow_changed"
+            echo "changed_files<<EOF"
+            printf '%s\n' "$changed"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Secure delivery change detection"
+            echo
+            echo "- Workflow changed: \`$workflow_changed\`"
+            echo "- IaC scan applicable: \`$iac_applicable\`"
+            echo "- SAST applicable: \`$sast_applicable\`"
+            echo
+            echo "<details><summary>Changed files</summary>"
+            echo
+            echo '```text'
+            printf '%s\n' "$changed"
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  iac-scan:
+    name: IaC scan (production)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.iac_applicable == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Go for tfsec
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.22.4"
+
+      - name: Install tfsec
+        run: |
+          set -euo pipefail
+          go install "github.com/aquasecurity/tfsec/cmd/tfsec@${TFSEC_VERSION}"
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Run tfsec Terraform scan
+        run: |
+          set -euo pipefail
+          tfsec infra/live/production --minimum-severity HIGH
+          tfsec infra/modules --minimum-severity HIGH
+
+  sast-scan:
+    name: SAST money path
+    needs: detect-changes
+    if: needs.detect-changes.outputs.sast_applicable == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Go for checkout SAST
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: "phase3 - information/techx-corp-platform/src/checkout/go.mod"
+          cache-dependency-path: "phase3 - information/techx-corp-platform/src/checkout/go.sum"
+
+      - name: Install gosec
+        run: |
+          set -euo pipefail
+          go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Run gosec on checkout
+        working-directory: phase3 - information/techx-corp-platform/src/checkout
+        run: |
+          set -euo pipefail
+          gosec -severity medium -confidence medium ./...
+
+      - name: Install Semgrep
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "semgrep==${SEMGREP_VERSION}"
+
+      - name: Run local Semgrep money-path rules
+        run: |
+          set -euo pipefail
+          semgrep \
+            --config .semgrep/mandate10-money-path.yml \
+            --error \
+            "phase3 - information/techx-corp-platform/src/checkout" \
+            "phase3 - information/techx-corp-platform/src/payment"
+
+  secure-delivery-gate:
+    name: Secure delivery gate
+    needs:
+      - detect-changes
+      - iac-scan
+      - sast-scan
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate secure delivery controls
+        env:
+          DETECT_RESULT: ${{ needs.detect-changes.result }}
+          IAC_APPLICABLE: ${{ needs.detect-changes.outputs.iac_applicable }}
+          SAST_APPLICABLE: ${{ needs.detect-changes.outputs.sast_applicable }}
+          IAC_RESULT: ${{ needs.iac-scan.result }}
+          SAST_RESULT: ${{ needs.sast-scan.result }}
+        run: |
+          set -euo pipefail
+
+          failures=0
+
+          check_result() {
+            local name="$1"
+            local applicable="$2"
+            local result="$3"
+
+            if [ "$applicable" != "true" ]; then
+              echo "$name: not applicable"
+              return 0
+            fi
+
+            case "$result" in
+              success)
+                echo "$name: pass"
+                ;;
+              failure|cancelled|skipped)
+                echo "$name: fail ($result)"
+                failures=$((failures + 1))
+                ;;
+              *)
+                echo "$name: fail (unexpected result: $result)"
+                failures=$((failures + 1))
+                ;;
+            esac
+          }
+
+          {
+            echo "### Secure delivery gate verdict"
+            echo
+            echo "| Control | Applicability | Result |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$DETECT_RESULT" != "success" ]; then
+            echo "Detect changed areas: fail ($DETECT_RESULT)"
+            failures=$((failures + 1))
+          else
+            echo "Detect changed areas: pass"
+          fi
+
+          check_result "IaC scan" "$IAC_APPLICABLE" "$IAC_RESULT"
+          check_result "SAST" "$SAST_APPLICABLE" "$SAST_RESULT"
+
+          {
+            echo "| Detect changed areas | required | $DETECT_RESULT |"
+            echo "| IaC scan | $IAC_APPLICABLE | $IAC_RESULT |"
+            echo "| SAST | $SAST_APPLICABLE | $SAST_RESULT |"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$failures" -gt 0 ]; then
+            echo "Secure delivery gate: FAIL ($failures failing control(s))" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "Secure delivery gate: PASS" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,243 +1,357 @@
-# Ke hoach thuc hien Mandate 10 - Secure Delivery Pipeline
+# Mandate 10 - PR security gate plan for IaC and SAST
 
-Ngay lap ke hoach: 20/07/2026
+Date: 2026-07-21
 
-## Muc tieu
+## Scope
 
-Hoan thanh phan con thieu cua Mandate 10 ve cong chan CI/CD:
+This plan covers the PR-gate part of Mandate 10 for this task:
 
-- Xac nhan bang chung that danh sach required status checks tren nhanh `main`.
-- Them cong chan scan IaC misconfiguration cho Terraform production.
-- Them cong chan SAST cho luong checkout/payment.
-- Nho admin repo gan cac check moi vao branch protection.
-- Tao PR test co CI do de chung minh merge bi khoa that.
+- confirm the exact required status checks on `main`;
+- add IaC misconfiguration scan for Terraform production;
+- add SAST for checkout/payment;
+- make the new security checks block merge reliably;
+- prove the block with a disposable red PR.
 
-Ket qua cuoi cung can chung minh: neu IaC scan hoac SAST fail thi PR khong merge duoc vao `main`, va tu do khong the di tiep den deploy.
+This plan does not close the whole Mandate 10 by itself. SBOM, Cosign provenance, digest pinning, native Kubernetes admission enforcement with `ValidatingAdmissionPolicy`/VAP, and full pod provenance are tracked by the other Mandate 10 tasks.
 
-## Tinh trang hien tai
+## Target Design
 
-- Branch protection tren `main` da ton tai that theo bang chung PR #273.
-- Khong can bat lai branch protection.
-- Ket qua `gh api .../branches/main/protection` tra 404 truoc day khong duoc xem la bang chung branch protection khong ton tai, vi token cu khong co quyen admin repo.
-- `.github/workflows/secret-scan.yml` da co Gitleaks cho `push` va `pull_request`.
-- `.github/workflows/build-push-ecr.yml` da co Trivy image scan, nhung can admin xac nhan check nao dang la required check.
-- `.github/workflows/terraform-plan.yml` chua co IaC misconfig scan va hien chi chay plan tren `push main`/manual.
-- Chua thay SAST gate cho checkout/payment trong CI.
+Use one stable required check named:
 
-## Cach lam tong the
+```text
+Secure delivery gate
+```
 
-Khong sua branch protection bang suy doan. Viec dau tien la lay bang chung tu nguoi co quyen admin. Sau do moi them cac workflow/check con thieu, roi nho admin gan dung ten check moi vao required status checks.
+Do not make `IaC scan` or `SAST` path-filtered jobs required directly. Path-filtered required checks can become skipped or missing on unrelated PRs, which can block merges unpredictably or create confusing evidence.
 
-Phan code thay doi se tap trung vao GitHub Actions:
+The aggregate gate should always be created on PRs to `main`:
 
-- Them IaC scan vao `.github/workflows/terraform-plan.yml`.
-- Them SAST workflow rieng hoac job rieng cho checkout/payment.
-- Giu cac workflow co ten check on dinh de admin co the chon lam required check.
+```text
+Secure delivery gate
++-- detect changed areas
++-- IaC scan, if Terraform paths changed
++-- SAST, if checkout/payment paths changed
++-- aggregate verdict, always runs
+```
 
-## Chi tiet ky thuat du kien
+Branch protection should require the new aggregate context `Secure delivery gate`, plus the existing review requirement and independently confirmed build/Trivy/secret checks.
 
-### IaC scan
+## Why This Design
 
-- File can sua: `.github/workflows/terraform-plan.yml`
-- Cach tach job:
-  - `iac-scan` chay tren `pull_request`
-  - `plan` giu nguyen cho `push` vao `main`
-- Thu muc scan:
-  - `infra/live/production`
-  - `infra/modules`
-- Cach run:
-  - checkout source
-  - setup Terraform nhu workflow hien tai neu can parse
-  - cai `tfsec` hoac `checkov`
-  - chay scan tren `infra/live/production`
-- Dieu kien fail:
-  - HIGH/CRITICAL finding -> job fail
-- Ten check goi y:
-  - `IaC scan (production)`
+Mandate 10 requires "red CI = no merge, no deploy". That means the required check must exist on every relevant PR and must fail closed when an applicable security control fails, is cancelled, or is unexpectedly skipped.
 
-### SAST
+A stable aggregate gate gives the repository one required context that GitHub can enforce consistently. Conditional child jobs can still run only when their paths are relevant, but the final gate records whether each control was `pass`, `fail`, or `not applicable`.
 
-- File can them: `.github/workflows/sast-money-path.yml`
-- Job goi y:
-  - `sast-checkout` cho Go service
-  - `sast-payment` cho Node service
-  - `sast-gate` neu muon gom ket qua thanh 1 check chat
-- Pham vi:
-  - `phase3 - information/techx-corp-platform/src/checkout`
-  - `phase3 - information/techx-corp-platform/src/payment`
-- Cach run:
-  - checkout source
-  - cai `gosec` cho checkout
-  - cai `semgrep` cho payment, hoac dung Semgrep de scan ca hai luong
-  - fail neu co HIGH finding
-- Ten check goi y:
-  - `SAST money path`
+## Current State To Confirm
 
-## Cac buoc thuc hien
+Branch protection on `main` is already known to exist from PR #273 evidence. Do not spend time "enabling" it again.
 
-### Buoc 1 - Xac nhan required checks hien tai
+Still required:
 
-Nguoi thuc hien: nguoi co quyen admin repo.
+- admin screenshot/export of `Settings -> Branches` or Rulesets for `main`;
+- exact list of current required status checks;
+- confirmation whether merge queue is enabled;
+- confirmation whether current required checks include Gitleaks, Trivy, IaC, and SAST.
 
-Viec can lam:
+Do not use the old non-admin API 404 as evidence. GitHub can return 404 when the token lacks admin visibility.
 
-- Vao GitHub repo -> Settings -> Branches -> branch protection cua `main`.
-- Chup anh hoac export cau hinh required status checks hien tai.
-- Xac nhan trong danh sach dang co nhung check nao:
-  - build/test
-  - Trivy
-  - secret scan/Gitleaks
-  - IaC scan
-  - SAST
+## Implementation Steps
 
-Ket qua can co:
+### Step 1 - Capture admin evidence
 
-- Anh/export danh sach required status checks hien tai.
-- Ghi chu ro check nao da co, check nao con thieu.
+What to do:
 
-Ly do:
+- Ask a repo admin to open branch protection/ruleset settings for `main`.
+- Capture screenshot/export of exact required status checks.
+- Record whether merge queue is enabled.
+- Save this evidence under `docs/evidence/mandate-10/`.
 
-Required checks nam trong cau hinh GitHub, khong nam trong file workflow. Neu khong co quyen admin thi khong the ket luan chinh xac. Mandate 10 can bang chung that, khong chap nhan suy doan.
+Expected output:
 
-### Buoc 2 - Them IaC misconfiguration scan
+- Before-update required-check evidence.
+- A list of checks that must be added or replaced by `Secure delivery gate`.
 
-Nguoi thuc hien: team dev/infra.
+Why:
 
-Viec can lam:
+Workflow YAML only proves that a job exists. It does not prove GitHub blocks merge on that job. Mandate 10 needs proof of enforcement, not assumptions.
 
-- Sua `.github/workflows/terraform-plan.yml`.
-- Them trigger `pull_request` cho cac duong dan:
-  - `infra/live/production/**`
-  - `infra/modules/**`
-  - `.github/workflows/terraform-plan.yml`
-- Them job hoac step scan rieng cho Terraform production, vi du ten check: `IaC scan (production)`.
-- Dung Checkov hoac tfsec de scan `infra/live/production`.
-- Cau hinh fail khi co HIGH/CRITICAL finding.
-- Khong yeu cau AWS credentials cho scan PR, de PR tu branch van chay duoc.
-- Neu dung tfsec:
-  - scan truc tiep thu muc production
-  - giu output ngan gon de trong CI log de doc
-- Neu dung Checkov:
-  - giu check theo framework terraform
-  - chi scan thu muc production, khong scan toan repo neu khong can
+### Step 2 - Add one aggregate PR workflow
 
-Ket qua can co:
+What to do:
 
-- PR diff co IaC scan trong workflow.
-- CI log cho thay scan chay tren PR.
-- Khi chen misconfig Terraform HIGH, check `IaC scan (production)` phai do.
+- Add a new workflow, for example:
 
-Ly do:
+```text
+.github/workflows/secure-delivery-gate.yml
+```
 
-Terraform production co the thay doi network, IAM, encryption, EKS, registry, hoac cac cau hinh bao mat. Neu chi `terraform plan` ma khong scan misconfig thi van co the dua loi bao mat vao production. IaC scan phai la cong chan truoc merge.
+- Trigger it on:
 
-### Buoc 3 - Them SAST cho checkout/payment
+```yaml
+pull_request:
+  branches: [main]
+merge_group:
+```
 
-Nguoi thuc hien: team dev/appsec.
+- Keep `merge_group` if merge queue is enabled. If merge queue is confirmed disabled, document that decision.
+- Give the final aggregate job a stable name:
 
-Viec can lam:
+```text
+Secure delivery gate
+```
 
-- Tao workflow moi, vi du `.github/workflows/sast-money-path.yml`, hoac them job SAST vao workflow phu hop.
-- Dat ten check on dinh, vi du `SAST money path`.
-- Scan toi thieu cac path:
-  - `phase3 - information/techx-corp-platform/src/checkout/**`
-  - `phase3 - information/techx-corp-platform/src/payment/**`
-- Dung gosec cho checkout Go service, hoac Semgrep de phu ca checkout va payment.
-- Cau hinh fail khi co HIGH finding.
-- Trigger tren `pull_request` va `push` vao `main`.
-- Cach lam ro:
-  - checkout: chay `gosec ./...` trong thu muc `src/checkout`
-  - payment: chay `semgrep` tren `src/payment`
-  - neu dung 1 workflow duy nhat, them `sast-gate` de gom ket qua 2 job con
-- Needing pin:
-  - pin version action/cli de check ten khong doi giua cac lan chay
+Expected output:
 
-Ket qua can co:
+- Every PR to `main` creates `Secure delivery gate`.
+- The check exists even when IaC/SAST paths are not changed.
 
-- PR diff co SAST gate.
-- CI log cho thay checkout/payment duoc scan.
-- Khi chen loi SAST HIGH, check `SAST money path` phai do.
+Why:
 
-Ly do:
+This avoids skipped required checks. It also gives the admin one stable check name to add to branch protection.
 
-Checkout va payment la luong ra tien. Loi bao mat o day co tac dong truc tiep den thanh toan, don hang, va du lieu khach hang. SAST giup chan cac loi code ro rang truoc khi code duoc build thanh image.
+### Step 3 - Detect changed areas
 
-### Buoc 4 - Cap nhat branch protection
+What to do:
 
-Nguoi thuc hien: nguoi co quyen admin repo.
+- Add a `detect-changes` job.
+- Detect these booleans:
 
-Viec can lam:
+```text
+terraform_changed = infra/live/production/** OR infra/modules/** OR secure-delivery workflow changed
+money_path_changed = phase3 - information/techx-corp-platform/src/checkout/** OR phase3 - information/techx-corp-platform/src/payment/** OR secure-delivery workflow changed
+image_path_changed = service Dockerfile/build context changed
+```
 
-- Sau khi IaC scan va SAST da chay thanh cong it nhat mot lan tren PR, vao Settings -> Branches -> `main`.
-- Them cac check moi vao required status checks:
-  - `IaC scan (production)`
-  - `SAST money path`
-- Neu bang chung buoc 1 cho thay Trivy hoac secret scan chua required, them luon:
-  - Trivy image scan check phu hop
-  - Gitleaks/secret scan check phu hop
-- Chup anh/export cau hinh sau khi update.
+- Use either `git diff` against PR base or a pinned paths-filter action after action-pinning work is complete.
 
-Ket qua can co:
+Expected output:
 
-- Anh/export required status checks sau update.
-- Danh sach required checks day du gom build/test, Trivy, secret scan, IaC scan, SAST.
+- The aggregate job knows which controls are applicable.
+- Workflow changes force IaC/SAST to run, so the gate cannot be weakened silently.
 
-Ly do:
+Why:
 
-Them workflow thoi chua du. Neu admin khong gan vao required checks, PR van co the merge khi check do, va Mandate 10 chua dat.
+IaC and SAST should not run as required checks on every PR if their code did not change, but security workflow changes must always test the gate itself.
 
-### Buoc 5 - Tao PR test CI do
+### Step 4 - Reconcile existing secret and Trivy checks
 
-Nguoi thuc hien: team dev/infra.
+What to do:
 
-Viec can lam:
+- Keep `secret-scan.yml` as the Gitleaks source of truth unless the admin evidence shows a reason to fold it into this workflow.
+- Confirm the exact Gitleaks check context and ask admin to require it if it is not already required.
+- Confirm whether any Trivy check currently runs on PRs and can be required.
+- If Trivy only runs after merge in `build-push-ecr.yml`, record it as a remaining PR-mode Trivy gap or add PR-mode Trivy in a follow-up task.
 
-- Tao branch test rieng.
-- Chen co chu dich mot misconfig Terraform HIGH trong `infra/live/production`, vi du:
-  - mo public access sai muc do
-  - bo encryption
-  - rule security group qua rong
-- Chen co chu dich mot loi SAST HIGH trong checkout hoac payment, vi du:
-  - gosec finding ro rang trong checkout
-  - rule Semgrep danh dau unsafe pattern trong payment
-- Mo PR vao `main`.
-- Doi CI chay xong.
-- Chup anh PR cho thay:
-  - required check fail
-  - nut merge bi khoa
-  - GitHub hien thi khong duoc merge do required check chua pass
-- Khong merge PR test nay.
-- Dong PR hoac revert commit test.
+Expected output:
 
-Ket qua can co:
+- Secret scan is required through its existing check or explicitly tracked as not yet required.
+- Trivy required-check status is proven by admin evidence, not guessed.
 
-- Link PR test.
-- Anh chup check do va merge bi chan.
-- CI log cua IaC scan/SAST cho thay loi co chu dich bi phat hien.
+Why:
 
-Ly do:
+This task adds the missing IaC/SAST gates. Secret and Trivy already have workflow coverage in the repo, but they only satisfy Mandate 10 when GitHub branch protection actually requires their exact check contexts.
 
-Day la bang chung manh nhat cho Mandate 10: khong chi co cau hinh tren giay, ma khi CI do that thi GitHub chan merge that.
+### Step 5 - Add IaC misconfiguration scan
 
-## Output can nop
+Recommended tool:
 
-- Anh/export required status checks tren `main` sau khi cap nhat.
-- PR/commit them IaC scan va SAST scan.
-- CI log cho IaC scan va SAST.
-- PR test co CI co tinh do.
-- Anh chup PR test cho thay merge bi khoa.
+- Use tfsec for Terraform scanning in this task.
 
-## Definition of Done
+What to scan:
 
-- Co bang chung admin-access xac nhan required checks, khong suy doan tu API token cu.
-- Required checks tren `main` gom build/test, Trivy, secret scan, IaC scan, SAST.
-- IaC scan fail khi co Terraform HIGH/CRITICAL misconfiguration.
-- SAST fail khi co HIGH finding trong checkout/payment.
-- PR test co required check fail va merge bi khoa.
+```text
+infra/live/production
+infra/modules
+```
 
-## Luu y khi lam
+When to run:
 
-- Khong commit secret that, AWS credential, token flagd, hoac key that de tao test fail.
-- Neu dung GitHub Action ben thu ba, can pin version theo yeu cau Mandate 10; tot nhat pin commit SHA khi chot ban nop.
-- Neu Trivy hien chi chay sau merge tren `push main`, can them PR-mode scan hoac xac nhan check nao moi that su chan merge.
-- Cac loi HIGH chen de test phai nam trong PR test rieng va khong duoc merge vao `main`.
+- Run when `terraform_changed == true`.
+- Also run when the secure-delivery workflow itself changes.
+
+Suggested behavior:
+
+- framework: Terraform
+- output: CLI output, plus JSON/SARIF artifact later if convenient
+- fail with `--minimum-severity HIGH`, which covers HIGH and CRITICAL
+- no AWS credentials required for PR scan
+
+Expected output:
+
+- Terraform HIGH/CRITICAL misconfig makes the IaC job fail.
+- Aggregate `Secure delivery gate` fails when IaC is applicable and fails.
+- Non-Terraform PRs record IaC as `not applicable`, not skipped silently.
+
+Why:
+
+`terraform plan` catches syntax/state drift, but not security posture like public exposure, weak IAM, disabled encryption, or unsafe network rules. IaC scan must run before merge because infrastructure defects become real once applied.
+
+### Step 6 - Add SAST for checkout/payment
+
+Recommended coverage:
+
+- `gosec` for Go checkout service.
+- Semgrep for checkout/payment source, especially payment JavaScript.
+
+Paths:
+
+```text
+phase3 - information/techx-corp-platform/src/checkout/**
+phase3 - information/techx-corp-platform/src/payment/**
+```
+
+When to run:
+
+- Run when `money_path_changed == true`.
+- Also run when the secure-delivery workflow itself changes.
+
+Suggested behavior:
+
+- checkout: run `gosec ./...` from the checkout service directory.
+- payment: run Semgrep against the payment service directory.
+- fail on HIGH findings.
+- upload logs/SARIF/JSON as evidence when possible.
+
+Expected output:
+
+- A deliberate HIGH SAST fixture in checkout/payment makes SAST fail.
+- Aggregate `Secure delivery gate` fails when SAST is applicable and fails.
+- Non-money-path PRs record SAST as `not applicable`.
+
+Why:
+
+Checkout/payment are the money path. A basic SAST gate prevents obvious high-impact code issues from reaching signed images and production deployment.
+
+### Step 7 - Record PR-mode Trivy status
+
+What to do:
+
+- Confirm whether Trivy is already a required PR check.
+- If current Trivy only runs in `build-push-ecr.yml` on `push main` or `workflow_dispatch`, do not claim it is a PR merge gate.
+- Either add a PR-mode Trivy follow-up, or document that the current task closes IaC/SAST while Trivy PR-mode remains owned by another Mandate 10 task.
+
+Expected output:
+
+- The final evidence does not confuse release-time Trivy with PR-time required checks.
+
+Why:
+
+Mandate 10 says scan before cluster and block before delivery. A scan that only runs after merge cannot prove "red CI = no merge".
+
+### Step 8 - Implement the aggregate verdict
+
+What to do:
+
+- Final job name must be exactly stable, for example:
+
+```text
+Secure delivery gate
+```
+
+- Use `if: always()` on the aggregate job.
+- Fail if an applicable child job:
+  - failed;
+  - was cancelled;
+  - was skipped unexpectedly;
+  - did not publish the expected status output.
+- Pass only when every applicable control passes.
+- Print a concise summary:
+
+```text
+Gitleaks: pass
+Trivy: not applicable
+IaC: pass
+SAST: fail
+Overall: fail
+```
+
+Expected output:
+
+- Reviewer can understand why the gate passed or failed from the summary.
+- GitHub branch protection only needs one required check context.
+
+Why:
+
+This is the core best practice. It removes ambiguity from conditional jobs and makes the required status check reliable.
+
+### Step 9 - Update branch protection
+
+What to do:
+
+- After the aggregate workflow has appeared on at least one PR, ask admin to add `Secure delivery gate` to required status checks.
+- Remove direct path-filtered IaC/SAST required contexts if they were added.
+- Keep required review policy.
+- Capture screenshot/export after update.
+
+Expected output:
+
+- Required checks show `Secure delivery gate`.
+- Evidence shows the required context name exactly.
+
+Why:
+
+GitHub can only require checks that have existed before. The admin should add the stable aggregate check after it has run once.
+
+### Step 10 - Prove with disposable red PRs
+
+What to do:
+
+- Create disposable negative PRs. Do not merge them.
+- Test at least:
+  - Terraform HIGH/CRITICAL misconfiguration.
+  - SAST HIGH finding in checkout/payment.
+  - Secret fixture if Gitleaks is part of aggregate evidence.
+  - Trivy fixture if PR-mode Trivy is in scope.
+- Capture:
+  - failed child job;
+  - failed `Secure delivery gate`;
+  - GitHub merge blocked UI;
+  - exact required check list.
+
+Expected output:
+
+- Red security control blocks merge through `Secure delivery gate`.
+
+Why:
+
+This is the mentor-verifiable proof. A plan or workflow is not enough; the repository must show a failing required security gate locks merge.
+
+## Evidence Package
+
+Save under:
+
+```text
+docs/evidence/mandate-10/
+```
+
+Required evidence:
+
+- before-update branch protection/ruleset screenshot or export;
+- PR link showing `Secure delivery gate` exists;
+- after-update branch protection/ruleset screenshot or export;
+- IaC red PR link, run link, log, and merge-block screenshot;
+- SAST red PR link, run link, log, and merge-block screenshot;
+- admin evidence for build/Trivy/secret required contexts, or explicit note that a separate task must add missing PR-mode coverage;
+- final workflow file diff.
+
+## DoD Checklist
+
+- [ ] Admin evidence confirms current required checks on `main`.
+- [ ] `Secure delivery gate` runs on every PR to `main`.
+- [ ] `merge_group` handling is included or explicitly ruled out by admin evidence.
+- [ ] IaC scan covers `infra/live/production` and `infra/modules`.
+- [ ] IaC HIGH/CRITICAL fails the aggregate gate.
+- [ ] SAST covers checkout/payment.
+- [ ] SAST HIGH fails the aggregate gate.
+- [ ] Non-applicable IaC/SAST jobs do not leave required checks pending or missing.
+- [ ] Branch protection requires `Secure delivery gate`.
+- [ ] Disposable red PR proves merge is blocked.
+- [ ] Evidence is linked in `docs/evidence/mandate-10/`.
+
+## Notes For Reviewers
+
+- This plan intentionally uses an aggregate required check instead of requiring IaC/SAST child jobs directly.
+- This task should not claim all of Mandate 10 is complete.
+- New actions, reusable workflows, container images, and downloaded CLI tools introduced by this task must be pinned according to the Mandate 10 immutable-dependency task before final evidence.
+- SBOM, provenance trace, action SHA pinning, Docker digest pinning, and VAP-based admission enforcement must be closed by their own evidence tasks before final Mandate 10 closure.
+- Do not use real secrets, AWS keys, flagd tokens, or production credentials in negative fixtures.
