@@ -108,6 +108,9 @@ otelGateway:
       memory: 768Mi
 
 otel-node-agent:
+  # Disabled after the production rollout exhausted CPU request headroom on the
+  # on-demand nodes. Re-enable only after the capacity/right-sizing gate passes.
+  enabled: false
   resources:
     requests:
       cpu: 10m
