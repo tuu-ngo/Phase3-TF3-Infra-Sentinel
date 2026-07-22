@@ -42,7 +42,7 @@ spec:
                     rekor:
                       url: https://rekor.sigstore.dev
           attestations:
-            - predicateType: https://cyclonedx.org/bom
+            - type: https://cyclonedx.org/bom
               attestors:
                 - count: 1
                   entries:
@@ -52,3 +52,25 @@ spec:
                         issuer: https://token.actions.githubusercontent.com
                         rekor:
                           url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ bomFormat }}"
+                      operator: Equals
+                      value: CycloneDX
+                    - key: "{{ length(components) }}"
+                      operator: GreaterThan
+                      value: 0
+                    - key: "{{ metadata.properties[?name == 'techx.platform'].value | [0] }}"
+                      operator: AnyIn
+                      value:
+                        - linux/amd64
+                        - linux/arm64
+                    - key: "{{ regex_match('^sha256:[0-9a-f]{64}$', metadata.properties[?name == 'techx.subjectDigest'].value | [0]) }}"
+                      operator: Equals
+                      value: true
+                    - key: "{{ metadata.properties[?name == 'techx.indexDigest'].value | [0] }}"
+                      operator: Equals
+                      value: "{{ image.digest }}"
+                    - key: "{{ regex_match('^[0-9a-f]{40}$', metadata.properties[?name == 'techx.sourceSha'].value | [0]) }}"
+                      operator: Equals
+                      value: true

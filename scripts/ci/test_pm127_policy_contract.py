@@ -29,7 +29,17 @@ def test_first_party_policy_is_audit_and_requires_exact_signature_and_sbom():
     assert keyless["issuer"] == "https://token.actions.githubusercontent.com"
     assert keyless["subject"] == WORKFLOW_IDENTITY
     attestation = verify["attestations"][0]
-    assert attestation["predicateType"] == "https://cyclonedx.org/bom"
+    assert attestation["type"] == "https://cyclonedx.org/bom"
+    conditions = attestation["conditions"][0]["all"]
+    assert {condition["key"] for condition in conditions} == {
+        "{{ bomFormat }}",
+        "{{ length(components) }}",
+        "{{ metadata.properties[?name == 'techx.platform'].value | [0] }}",
+        "{{ regex_match('^sha256:[0-9a-f]{64}$', metadata.properties[?name == 'techx.subjectDigest'].value | [0]) }}",
+        "{{ metadata.properties[?name == 'techx.indexDigest'].value | [0] }}",
+        "{{ regex_match('^[0-9a-f]{40}$', metadata.properties[?name == 'techx.sourceSha'].value | [0]) }}",
+    }
+    assert conditions[4]["value"] == "{{ image.digest }}"
     attestor = attestation["attestors"][0]["entries"][0]["keyless"]
     assert attestor["issuer"] == "https://token.actions.githubusercontent.com"
     assert attestor["subject"] == WORKFLOW_IDENTITY
