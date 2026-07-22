@@ -263,7 +263,7 @@ components:
       tag: 43dcf62-29569108433-product-catalog
     resources:
       requests:
-        cpu: 100m
+        cpu: 50m
         memory: 32Mi
       limits:
         cpu: 500m
@@ -561,11 +561,11 @@ components:
     replicas: 2
     resources:
       requests:
-        cpu: 100m
-        memory: 8Mi
+        cpu: 50m
+        memory: 12Mi
       limits:
         cpu: 300m
-        memory: 20Mi
+        memory: 32Mi
   shipping:
     # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
     # Service endpoints (tranh race: traffic con route toi pod dang terminate -> reset). Native
@@ -620,7 +620,7 @@ components:
     # Mandate 2: 20Mi limit quá mỏng cho tải 200 user, không có HPA để bù nếu chạm.
     resources:
       requests:
-        cpu: 50m
+        cpu: 25m
         memory: 8Mi
       limits:
         cpu: 150m
@@ -679,11 +679,11 @@ components:
     # Mandate 2: 40Mi limit quá mỏng cho tải 200 user, không có HPA để bù nếu chạm.
     resources:
       requests:
-        cpu: 50m
-        memory: 24Mi
+        cpu: 25m
+        memory: 32Mi
       limits:
         cpu: 150m
-        memory: 80Mi
+        memory: 96Mi
   product-reviews:
     replicasManagedExternally: true
     # Mandate 3: graceful shutdown. preStop sleep giu pod phuc vu them 5s SAU khi bi go khoi
@@ -984,7 +984,7 @@ components:
       failureThreshold: 3
     resources:
       requests:
-        cpu: 50m
+        cpu: 25m
         memory: 96Mi
       limits:
         cpu: 300m
@@ -1244,11 +1244,11 @@ components:
       tag: 43dcf62-29569108433-frontend-proxy
     resources:
       requests:
-        cpu: 100m
-        memory: 32Mi
+        cpu: 50m
+        memory: 64Mi
       limits:
         cpu: 500m
-        memory: 65Mi
+        memory: 128Mi
     ingress:
       annotations:
         alb.ingress.kubernetes.io/healthcheck-path: /
