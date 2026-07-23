@@ -13,15 +13,28 @@ const handler = async ({ method, query }: NextApiRequest, res: NextApiResponse<T
   switch (method) {
     case 'GET': {
       const { productIds = [], sessionId = '', currencyCode = '' } = query;
-      const { productIds: productList } = await RecommendationsGateway.listRecommendations(
-        sessionId as string,
-        productIds as string[]
-      );
-      const recommendedProductList = await Promise.all(
-        productList.slice(0, 4).map(id => ProductCatalogService.getProduct(id, currencyCode as string))
-      );
-
-      return res.status(200).json(recommendedProductList);
+      try {
+        const { productIds: productList } = await RecommendationsGateway.listRecommendations(
+          sessionId as string,
+          productIds as string[]
+        );
+        // Mandate 17 (REL-17-02): enrich each recommended product independently —
+        // one product-catalog failure must not drop the WHOLE panel (was Promise.all,
+        // which rejects on the first failure). allSettled keeps the products that
+        // resolved; a partial panel is a better degrade than an empty page section.
+        const settled = await Promise.allSettled(
+          productList.slice(0, 4).map(id => ProductCatalogService.getProduct(id, currencyCode as string))
+        );
+        const recommendedProductList = settled.flatMap(result =>
+          result.status === 'fulfilled' ? [result.value] : []
+        );
+        return res.status(200).json(recommendedProductList);
+      } catch (error) {
+        // Recommendation service itself down/slow → degrade to no recommendations
+        // (200 + empty). Non-critical enrichment must not 5xx the page.
+        console.warn('api/recommendations: degraded to none —', (error as Error)?.message);
+        return res.status(200).json([]);
+      }
     }
 
     default: {
