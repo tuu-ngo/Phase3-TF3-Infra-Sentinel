@@ -1,0 +1,616 @@
+{
+  "schemaVersion": 1,
+  "baselineSha": "5697e7f841051f0664822d3635e96719d893edf1",
+  "dockerfiles": 28,
+  "externalStages": [
+    {
+      "path": "phase3 - information/techx-corp-platform/src/accounting/Dockerfile",
+      "line": 4,
+      "raw_from": "mcr.microsoft.com/dotnet/sdk:10.0@sha256:ed034a8bf0b24ded0cbbac07e17825d8e9ebfe21e308191d0f7421eaf5ad4664",
+      "resolved_image": "mcr.microsoft.com/dotnet/sdk:10.0@sha256:ed034a8bf0b24ded0cbbac07e17825d8e9ebfe21e308191d0f7421eaf5ad4664",
+      "stage": "builder",
+      "platform_expression": "--platform=${BUILDPLATFORM}",
+      "classification": "production",
+      "owner": "accounting",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/accounting/Dockerfile",
+      "line": 24,
+      "raw_from": "mcr.microsoft.com/dotnet/aspnet:10.0@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7",
+      "resolved_image": "mcr.microsoft.com/dotnet/aspnet:10.0@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "accounting",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/ad/Dockerfile",
+      "line": 5,
+      "raw_from": "eclipse-temurin:21-jdk@sha256:da9d3a4f7650db39b918fc5a2c3da76556fb8cc8e5f3767cdea0bb409286951a",
+      "resolved_image": "eclipse-temurin:21-jdk@sha256:da9d3a4f7650db39b918fc5a2c3da76556fb8cc8e5f3767cdea0bb409286951a",
+      "stage": "builder",
+      "platform_expression": "--platform=${BUILDPLATFORM}",
+      "classification": "production",
+      "owner": "ad",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/ad/Dockerfile",
+      "line": 23,
+      "raw_from": "eclipse-temurin:21-jre-alpine-3.23@sha256:3f08b13888f595cc49edabea7250ba69499ba25602b267da591720769400e08c",
+      "resolved_image": "eclipse-temurin:21-jre-alpine-3.23@sha256:3f08b13888f595cc49edabea7250ba69499ba25602b267da591720769400e08c",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "ad",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/cart/src/Dockerfile",
+      "line": 18,
+      "raw_from": "mcr.microsoft.com/dotnet/sdk:10.0@sha256:ed034a8bf0b24ded0cbbac07e17825d8e9ebfe21e308191d0f7421eaf5ad4664",
+      "resolved_image": "mcr.microsoft.com/dotnet/sdk:10.0@sha256:ed034a8bf0b24ded0cbbac07e17825d8e9ebfe21e308191d0f7421eaf5ad4664",
+      "stage": "builder",
+      "platform_expression": "--platform=$BUILDPLATFORM",
+      "classification": "production",
+      "owner": "cart",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/cart/src/Dockerfile",
+      "line": 33,
+      "raw_from": "mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine3.23@sha256:ad7cd1ed2e913fbd806f8ecc0e8bb8e9e8fb7cfd4d3fa43be9aa0b4cd8008bf5",
+      "resolved_image": "mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine3.23@sha256:ad7cd1ed2e913fbd806f8ecc0e8bb8e9e8fb7cfd4d3fa43be9aa0b4cd8008bf5",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "cart",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/checkout/Dockerfile",
+      "line": 5,
+      "raw_from": "golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651",
+      "resolved_image": "golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651",
+      "stage": "builder",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "checkout",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/checkout/Dockerfile",
+      "line": 24,
+      "raw_from": "gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35",
+      "resolved_image": "gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "checkout",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/checkout/genproto/Dockerfile",
+      "line": 4,
+      "raw_from": "golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191",
+      "resolved_image": "golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "tooling",
+      "owner": "checkout",
+      "expected_platforms": [
+        "linux/amd64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/currency/Dockerfile",
+      "line": 17,
+      "raw_from": "docker.io/library/alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+      "resolved_image": "docker.io/library/alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+      "stage": "base",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "currency",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/currency/genproto/Dockerfile",
+      "line": 17,
+      "raw_from": "docker.io/library/alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+      "resolved_image": "docker.io/library/alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+      "stage": "builder",
+      "platform_expression": null,
+      "classification": "tooling",
+      "owner": "currency",
+      "expected_platforms": [
+        "linux/amd64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/email/Dockerfile",
+      "line": 5,
+      "raw_from": "docker.io/library/ruby:3.4.10-alpine3.23@sha256:aee2f8ad808abff4aecaa1d36340dce22e6b1eb9b88216ed18be4245c4324d9b",
+      "resolved_image": "docker.io/library/ruby:3.4.10-alpine3.23@sha256:aee2f8ad808abff4aecaa1d36340dce22e6b1eb9b88216ed18be4245c4324d9b",
+      "stage": "builder",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "email",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/email/Dockerfile",
+      "line": 14,
+      "raw_from": "docker.io/library/ruby:3.4.10-alpine3.23@sha256:aee2f8ad808abff4aecaa1d36340dce22e6b1eb9b88216ed18be4245c4324d9b",
+      "resolved_image": "docker.io/library/ruby:3.4.10-alpine3.23@sha256:aee2f8ad808abff4aecaa1d36340dce22e6b1eb9b88216ed18be4245c4324d9b",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "email",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/flagd-ui/Dockerfile",
+      "line": 106,
+      "raw_from": "docker.io/library/busybox:1.37.0-musl@sha256:222ad6d973c0d198014546a65cd02c5fdedcc172123c5b4c2bf0af636550bd94",
+      "resolved_image": "docker.io/library/busybox:1.37.0-musl@sha256:222ad6d973c0d198014546a65cd02c5fdedcc172123c5b4c2bf0af636550bd94",
+      "stage": "shell",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "flagd-ui",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/fraud-detection/Dockerfile",
+      "line": 5,
+      "raw_from": "gradle:8-jdk17@sha256:b7d2b978cad21a07a1192b9112029bc1a80ffe58db7ec828c3f399f833a468cb",
+      "resolved_image": "gradle:8-jdk17@sha256:b7d2b978cad21a07a1192b9112029bc1a80ffe58db7ec828c3f399f833a468cb",
+      "stage": "builder",
+      "platform_expression": "--platform=${BUILDPLATFORM}",
+      "classification": "production",
+      "owner": "fraud-detection",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/fraud-detection/Dockerfile",
+      "line": 16,
+      "raw_from": "eclipse-temurin:17.0.19_10-jre-noble@sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8",
+      "resolved_image": "eclipse-temurin:17.0.19_10-jre-noble@sha256:543aebd60ff1deb9e906a8d4b117a7eda68a7f8e0d71041db2b5839d7fa057b8",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "fraud-detection",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/frontend/Dockerfile",
+      "line": 10,
+      "raw_from": "docker.io/library/node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3",
+      "resolved_image": "docker.io/library/node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3",
+      "stage": "builder",
+      "platform_expression": "--platform=$BUILDPLATFORM",
+      "classification": "production",
+      "owner": "frontend",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/frontend/Dockerfile",
+      "line": 55,
+      "raw_from": "docker.io/library/node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3",
+      "resolved_image": "docker.io/library/node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3",
+      "stage": "deps",
+      "platform_expression": "--platform=$BUILDPLATFORM",
+      "classification": "production",
+      "owner": "frontend",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/frontend/Dockerfile",
+      "line": 83,
+      "raw_from": "docker.io/library/node:22-alpine3.23@sha256:8516dce0483394d5708d4b2ee6cacb79fb1d617ea4e2787c2120bcca92ce372e",
+      "resolved_image": "docker.io/library/node:22-alpine3.23@sha256:8516dce0483394d5708d4b2ee6cacb79fb1d617ea4e2787c2120bcca92ce372e",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "frontend",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/frontend/Dockerfile.cypress",
+      "line": 1,
+      "raw_from": "cypress/included:14.5.0@sha256:a807b075fab789a06d3b4618052bb59574c777093d9537e5587c853294f028b4",
+      "resolved_image": "cypress/included:14.5.0@sha256:a807b075fab789a06d3b4618052bb59574c777093d9537e5587c853294f028b4",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "test",
+      "owner": "frontend-qa",
+      "expected_platforms": [
+        "linux/amd64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/frontend/genproto/Dockerfile",
+      "line": 4,
+      "raw_from": "node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2",
+      "resolved_image": "node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "tooling",
+      "owner": "frontend",
+      "expected_platforms": [
+        "linux/amd64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/frontend-proxy/Dockerfile",
+      "line": 4,
+      "raw_from": "envoyproxy/envoy:v1.34.10@sha256:3343a698c1bdfdbb174f1bd907dea789d728692f4f99a943e3e6f0bc5ef6513f",
+      "resolved_image": "envoyproxy/envoy:v1.34.10@sha256:3343a698c1bdfdbb174f1bd907dea789d728692f4f99a943e3e6f0bc5ef6513f",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "frontend-proxy",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/image-provider/Dockerfile",
+      "line": 4,
+      "raw_from": "nginxinc/nginx-unprivileged:1.29.0-alpine3.22-otel@sha256:5a41b6424e817a6c97c057e4be7fb8fdc19ec95845c784487dee1fa795ef4d03",
+      "resolved_image": "nginxinc/nginx-unprivileged:1.29.0-alpine3.22-otel@sha256:5a41b6424e817a6c97c057e4be7fb8fdc19ec95845c784487dee1fa795ef4d03",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "image-provider",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/kafka/Dockerfile",
+      "line": 5,
+      "raw_from": "apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837",
+      "resolved_image": "apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "kafka",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/llm/Dockerfile",
+      "line": 5,
+      "raw_from": "docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "resolved_image": "docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "stage": "build-venv",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "llm",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/llm/Dockerfile",
+      "line": 12,
+      "raw_from": "docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "resolved_image": "docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "llm",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/load-generator/Dockerfile",
+      "line": 5,
+      "raw_from": "python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "resolved_image": "python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "stage": "base",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "load-generator",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/opensearch/Dockerfile",
+      "line": 4,
+      "raw_from": "opensearchproject/opensearch:3.2.0@sha256:23297b8d8545e129dd58c254ed08d786dc552410ba772983ad2af31048d2f04b",
+      "resolved_image": "opensearchproject/opensearch:3.2.0@sha256:23297b8d8545e129dd58c254ed08d786dc552410ba772983ad2af31048d2f04b",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "tooling",
+      "owner": "observability",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/payment/Dockerfile",
+      "line": 5,
+      "raw_from": "docker.io/library/node:22.22.0-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94",
+      "resolved_image": "docker.io/library/node:22.22.0-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94",
+      "stage": "builder",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "payment",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/payment/Dockerfile",
+      "line": 16,
+      "raw_from": "docker.io/library/node:22.22.0-alpine3.23@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34",
+      "resolved_image": "docker.io/library/node:22.22.0-alpine3.23@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "payment",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/product-catalog/Dockerfile",
+      "line": 5,
+      "raw_from": "golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651",
+      "resolved_image": "golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651",
+      "stage": "builder",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "product-catalog",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/product-catalog/Dockerfile",
+      "line": 19,
+      "raw_from": "gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35",
+      "resolved_image": "gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "product-catalog",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/product-catalog/genproto/Dockerfile",
+      "line": 4,
+      "raw_from": "golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191",
+      "resolved_image": "golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "tooling",
+      "owner": "product-catalog",
+      "expected_platforms": [
+        "linux/amd64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/product-reviews/Dockerfile",
+      "line": 5,
+      "raw_from": "docker.io/library/python:3.12-alpine3.22@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322",
+      "resolved_image": "docker.io/library/python:3.12-alpine3.22@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322",
+      "stage": "build-venv",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "product-reviews",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/product-reviews/Dockerfile",
+      "line": 17,
+      "raw_from": "docker.io/library/python:3.12-alpine3.22@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322",
+      "resolved_image": "docker.io/library/python:3.12-alpine3.22@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "product-reviews",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/product-reviews/genproto/Dockerfile",
+      "line": 4,
+      "raw_from": "python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b",
+      "resolved_image": "python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "tooling",
+      "owner": "product-reviews",
+      "expected_platforms": [
+        "linux/amd64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/quote/Dockerfile",
+      "line": 5,
+      "raw_from": "ghcr.io/mlocati/php-extension-installer:2.9.11@sha256:693f97d7f4c9ea8022bbddeb45abdbd1599714ff1f187fe5d13c12b2e95eb5f9",
+      "resolved_image": "ghcr.io/mlocati/php-extension-installer:2.9.11@sha256:693f97d7f4c9ea8022bbddeb45abdbd1599714ff1f187fe5d13c12b2e95eb5f9",
+      "stage": "installer",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "quote",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/quote/Dockerfile",
+      "line": 7,
+      "raw_from": "docker.io/library/composer:2.8.12@sha256:5248900ab8b5f7f880c2d62180e40960cd87f60149ec9a1abfd62ac72a02577c",
+      "resolved_image": "docker.io/library/composer:2.8.12@sha256:5248900ab8b5f7f880c2d62180e40960cd87f60149ec9a1abfd62ac72a02577c",
+      "stage": "vendor",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "quote",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/quote/Dockerfile",
+      "line": 21,
+      "raw_from": "docker.io/library/php:8.4-cli-alpine3.22@sha256:191228671fb45eb35d0fa53d909b2bdd4c01dc5077c9005dda3695b07154c6f6",
+      "resolved_image": "docker.io/library/php:8.4-cli-alpine3.22@sha256:191228671fb45eb35d0fa53d909b2bdd4c01dc5077c9005dda3695b07154c6f6",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "quote",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/recommendation/Dockerfile",
+      "line": 5,
+      "raw_from": "docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "resolved_image": "docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "stage": "build-venv",
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "recommendation",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/recommendation/Dockerfile",
+      "line": 18,
+      "raw_from": "docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "resolved_image": "docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "recommendation",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/recommendation/genproto/Dockerfile",
+      "line": 4,
+      "raw_from": "python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b",
+      "resolved_image": "python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "tooling",
+      "owner": "recommendation",
+      "expected_platforms": [
+        "linux/amd64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/shipping/Dockerfile",
+      "line": 5,
+      "raw_from": "docker.io/library/rust:1.91@sha256:867f1d1162913c401378a8504fb17fe2032c760dc316448766f150a130204aad",
+      "resolved_image": "docker.io/library/rust:1.91@sha256:867f1d1162913c401378a8504fb17fe2032c760dc316448766f150a130204aad",
+      "stage": "builder",
+      "platform_expression": "--platform=${BUILDPLATFORM}",
+      "classification": "production",
+      "owner": "shipping",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    },
+    {
+      "path": "phase3 - information/techx-corp-platform/src/shipping/Dockerfile",
+      "line": 37,
+      "raw_from": "gcr.io/distroless/cc-debian13:nonroot@sha256:d97bc0a941b8d4be647dc0ee75b264ddbb772f1ac5ba690a4309c00723b23775",
+      "resolved_image": "gcr.io/distroless/cc-debian13:nonroot@sha256:d97bc0a941b8d4be647dc0ee75b264ddbb772f1ac5ba690a4309c00723b23775",
+      "stage": null,
+      "platform_expression": null,
+      "classification": "production",
+      "owner": "shipping",
+      "expected_platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    }
+  ]
+}

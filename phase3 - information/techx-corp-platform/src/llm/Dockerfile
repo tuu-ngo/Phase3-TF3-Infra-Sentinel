@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-FROM docker.io/library/python:3.12.13-alpine3.23 AS build-venv
+FROM docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d AS build-venv
 
 COPY ./src/llm/requirements.txt requirements.txt
 
 RUN python -m venv venv && \
     venv/bin/pip install --no-cache-dir -r requirements.txt
 
-FROM docker.io/library/python:3.12.13-alpine3.23
+FROM docker.io/library/python:3.12.13-alpine3.23@sha256:601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d
 
 # Apply Alpine security fixes in the runtime layer; Trivy is the release gate.
 RUN apk upgrade --no-cache

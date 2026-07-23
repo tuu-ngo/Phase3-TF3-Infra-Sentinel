@@ -1,0 +1,4 @@
+trace shell syntax: PASS
+actionlint 1.7.12: PASS (official checksum verified)
+docker buildx bake --check: BLOCKED (Docker daemon socket unavailable in sandbox)
+pytest suites: BLOCKED (pytest is not installed in the operator environment)

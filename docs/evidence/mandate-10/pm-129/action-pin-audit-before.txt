@@ -1,0 +1,36 @@
+origin/main:.github/workflows/build-push-ecr.yml:49:        uses: actions/checkout@v6
+origin/main:.github/workflows/build-push-ecr.yml:193:        uses: actions/checkout@v6
+origin/main:.github/workflows/build-push-ecr.yml:349:        uses: aws-actions/configure-aws-credentials@v4
+origin/main:.github/workflows/build-push-ecr.yml:356:        uses: aws-actions/amazon-ecr-login@v2
+origin/main:.github/workflows/build-push-ecr.yml:360:        uses: docker/setup-qemu-action@v3
+origin/main:.github/workflows/build-push-ecr.yml:364:        uses: docker/setup-buildx-action@v3
+origin/main:.github/workflows/build-push-ecr.yml:406:        uses: aquasecurity/setup-trivy@v0.3.1
+origin/main:.github/workflows/build-push-ecr.yml:444:        uses: actions/upload-artifact@v4
+origin/main:.github/workflows/build-push-ecr.yml:668:        uses: actions/upload-artifact@v4
+origin/main:.github/workflows/build-push-ecr.yml:678:        uses: sigstore/cosign-installer@v4.1.2
+origin/main:.github/workflows/build-push-ecr.yml:936:        uses: actions/upload-artifact@v4
+origin/main:.github/workflows/build-push-ecr.yml:946:        uses: actions/upload-artifact@v4
+origin/main:.github/workflows/build-push-ecr.yml:964:        uses: actions/download-artifact@v4
+origin/main:.github/workflows/build-push-ecr.yml:1058:        uses: actions/upload-artifact@v4
+origin/main:.github/workflows/build-push-ecr.yml:1078:        uses: actions/checkout@v6
+origin/main:.github/workflows/build-push-ecr.yml:1084:        uses: actions/setup-python@v5
+origin/main:.github/workflows/build-push-ecr.yml:1102:        uses: actions/download-artifact@v4
+origin/main:.github/workflows/scan-external-images.yml:18:        uses: actions/checkout@v6
+origin/main:.github/workflows/scan-external-images.yml:21:        uses: actions/setup-python@v6
+origin/main:.github/workflows/scan-external-images.yml:29:        uses: aquasecurity/setup-trivy@v0.3.1
+origin/main:.github/workflows/scan-external-images.yml:54:        uses: actions/upload-artifact@v4
+origin/main:.github/workflows/secret-scan.yml:22:        uses: gitleaks/gitleaks-action@v3
+origin/main:.github/workflows/secure-delivery-gate.yml:18:        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+origin/main:.github/workflows/secure-delivery-gate.yml:42:        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+origin/main:.github/workflows/secure-delivery-gate.yml:54:        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+origin/main:.github/workflows/secure-delivery-gate.yml:83:        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+origin/main:.github/workflows/secure-delivery-gate.yml:101:        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+origin/main:.github/workflows/secure-delivery-gate.yml:126:        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+origin/main:.github/workflows/terraform-apply.yml:51:        uses: aws-actions/configure-aws-credentials@v4
+origin/main:.github/workflows/terraform-apply.yml:78:        uses: actions/upload-artifact@v4
+origin/main:.github/workflows/terraform-apply.yml:113:        uses: aws-actions/configure-aws-credentials@v4
+origin/main:.github/workflows/terraform-apply.yml:128:        uses: actions/download-artifact@v4
+origin/main:.github/workflows/terraform-plan.yml:48:        uses: aws-actions/configure-aws-credentials@v4
+origin/main:.github/workflows/test-image-bump.yml:25:        uses: actions/setup-python@v5
+origin/main:.github/workflows/validate-production-access.yml:36:        uses: actions/setup-python@v5
+origin/main:.github/workflows/validate-production-access.yml:51:        uses: hashicorp/setup-terraform@v3
