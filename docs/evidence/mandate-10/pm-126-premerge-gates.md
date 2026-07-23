@@ -54,6 +54,16 @@ On 2026-07-23 the repo owner enabled the exact GitHub Actions context **`Secure 
 
 The scanner children not under test passed on each PR, isolating the intended rejection. These fixture PRs and branches are evidence only and must never be approved or merged.
 
+## Classic branch-protection configuration evidence
+
+The repository uses classic Branch Protection rather than a Ruleset. The owner-provided captures show that the rule targets exactly `main`, requires a pull request with one approval, requires status checks, requires the branch to be up to date, and requires the exact `Secure delivery gate` context from GitHub Actions.
+
+![Classic branch protection targeting main](assets/pm-126-classic-branch-protection-main.png)
+
+![Required Secure delivery gate context](assets/pm-126-required-secure-delivery-gate.png)
+
+Machine-readable capture manifest: `pm-126-branch-protection-evidence.json`.
+
 ## Admin handoff status
 
 Completed:
@@ -61,9 +71,6 @@ Completed:
 1. The workflow was merged by [PR #348](https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/pull/348) at `main@4d4e66de5fff1d87cc194b23ad227e5c976f993b`.
 2. The exact `Secure delivery gate` context is required on `main`.
 3. Three real negative PRs fail the intended child, fail the required aggregate and report `mergeStateStatus=BLOCKED`.
-
-Pending owner-only artifact:
-
-1. Export the final Branch protection or Ruleset configuration into the PM-132 evidence bundle. The current non-admin identity can verify the required context and blocked PRs but receives HTTP 404 from the branch-protection export API.
+4. The owner supplied the classic Branch Protection configuration captures retained above. The current non-admin identity independently verified the required context on all three PRs; the admin-only REST export endpoint returns HTTP 404 to that identity.
 
 No production apply or runtime change is needed for this handoff. The post-merge Terraform Plan succeeded, but its bastion replacement remains under a separate no-apply safety hold.
