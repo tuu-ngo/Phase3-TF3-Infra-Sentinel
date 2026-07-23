@@ -18,6 +18,7 @@ locals {
   lambda_name       = "${local.name_prefix}-router"
   sns_topic_name    = "${local.name_prefix}-alerts"
   trail_arn         = "arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:trail/${local.trail_name}"
+  sns_topic_arn     = "arn:${data.aws_partition.current.partition}:sns:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${local.sns_topic_name}"
   detector_config = jsonencode({
     deployment_label                 = var.deployment_label
     allowed_principals               = var.allowed_automation_principal_arns
@@ -28,6 +29,93 @@ locals {
     critical_group_numbers           = [1, 2, 4]
     critical_group_6_target_keywords = ["cloudtrail", "kms", "secret", "rds", "elasticache", "s3"]
   })
+}
+
+data "aws_iam_policy_document" "audit_kms" {
+  statement {
+    sid    = "EnableAccountRootPermissions"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowSnsEncryption"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["sns.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = [local.sns_topic_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:EncryptionContext:aws:sns:topicArn"
+      values   = [local.sns_topic_arn]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.create_trail ? [1] : []
+
+    content {
+      sid    = "AllowCloudTrailEncryption"
+      effect = "Allow"
+
+      principals {
+        type        = "Service"
+        identifiers = ["cloudtrail.amazonaws.com"]
+      }
+
+      actions = [
+        "kms:DescribeKey",
+        "kms:GenerateDataKey*",
+      ]
+      resources = ["*"]
+
+      condition {
+        test     = "StringEquals"
+        variable = "aws:SourceArn"
+        values   = [local.trail_arn]
+      }
+
+      condition {
+        test     = "StringLike"
+        variable = "kms:EncryptionContext:aws:cloudtrail:arn"
+        values   = ["arn:${data.aws_partition.current.partition}:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"]
+      }
+    }
+  }
+}
+
+resource "aws_kms_key" "audit" {
+  description             = "Audit log and alert encryption for ${local.name_prefix}"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.audit_kms.json
+}
+
+resource "aws_kms_alias" "audit" {
+  name          = "alias/${local.name_prefix}-audit"
+  target_key_id = aws_kms_key.audit.key_id
 }
 
 resource "aws_s3_bucket" "trail_logs" {
@@ -80,7 +168,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "trail_logs" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      kms_master_key_id = aws_kms_key.audit.arn
+      sse_algorithm     = "aws:kms"
     }
   }
 }
@@ -205,6 +294,7 @@ resource "aws_cloudtrail" "audit" {
   is_multi_region_trail         = var.is_multi_region_trail
   enable_logging                = true
   enable_log_file_validation    = true
+  kms_key_id                    = aws_kms_key.audit.arn
 
   event_selector {
     include_management_events = true
@@ -215,7 +305,8 @@ resource "aws_cloudtrail" "audit" {
 }
 
 resource "aws_sns_topic" "audit_alerts" {
-  name = local.sns_topic_name
+  name              = local.sns_topic_name
+  kms_master_key_id = aws_kms_key.audit.arn
 }
 
 resource "aws_sns_topic_subscription" "email" {
@@ -281,6 +372,14 @@ resource "aws_iam_role" "audit_alert_router" {
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
 }
 
+# PM-126 exception metadata:
+# rule=AVD-AWS-0057
+# resource=data.aws_iam_policy_document.audit_alert_router
+# reason=CloudWatch Logs authorizes child log streams with the required log-group ARN suffix :*; the actions are limited to CreateLogStream and PutLogEvents.
+# owner=tuu-ngo
+# ticket=PM-126
+# review_date=2026-08-22
+#tfsec:ignore:aws-iam-no-policy-wildcards:exp:2026-08-22
 data "aws_iam_policy_document" "audit_alert_router" {
   statement {
     sid    = "WriteLambdaLogs"

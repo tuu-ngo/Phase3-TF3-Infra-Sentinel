@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "rule": "AVD-AWS-0013",
+      "tfsecIgnore": "aws-cloudfront-use-secure-tls-policy",
+      "resource": "aws_cloudfront_distribution.staging",
+      "reason": "The staging distribution intentionally uses the cloudfront.net hostname and CloudFront default certificate. Aqua documents that this certificate mode only permits TLSv1 and that setting TLSv1.2_2021 causes a perpetual Terraform diff; HTTPS redirect remains enforced.",
+      "owner": "tuu-ngo",
+      "ticket": "PM-126",
+      "reviewDate": "2026-08-22",
+      "source": "infra/modules/edge/main.tf",
+      "status": "approved-operational-necessity"
+    },
+    {
+      "rule": "AVD-AWS-0013",
+      "tfsecIgnore": "aws-cloudfront-use-secure-tls-policy",
+      "resource": "aws_cloudfront_distribution.frontend",
+      "reason": "The production distribution intentionally uses the cloudfront.net hostname and CloudFront default certificate. Aqua documents that this certificate mode only permits TLSv1 and that setting TLSv1.2_2021 causes a perpetual Terraform diff; HTTPS redirect remains enforced.",
+      "owner": "tuu-ngo",
+      "ticket": "PM-126",
+      "reviewDate": "2026-08-22",
+      "source": "infra/modules/edge/main.tf",
+      "status": "approved-operational-necessity"
+    },
+    {
+      "rule": "AVD-AWS-0057",
+      "tfsecIgnore": "aws-iam-no-policy-wildcards",
+      "resource": "data.aws_iam_policy_document.audit_alert_router",
+      "reason": "CloudWatch Logs authorizes child log streams with the required log-group ARN suffix :*; the allowed actions are limited to logs:CreateLogStream and logs:PutLogEvents.",
+      "owner": "tuu-ngo",
+      "ticket": "PM-126",
+      "reviewDate": "2026-08-22",
+      "source": "infra/modules/audit-detection/main.tf",
+      "status": "approved-false-positive"
+    }
+  ]
+}
