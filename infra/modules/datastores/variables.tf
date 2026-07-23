@@ -58,9 +58,13 @@ variable "tags" {
 # theo tiền tố khi giá trị chỉ có major, nên "17" hết va với auto minor upgrade.
 # Đổi major (18) vẫn là thay đổi tường minh trong plan.
 variable "rds_engine_version" {
-  description = "Major version PostgreSQL cho RDS. Chỉ ghim major để auto minor upgrade không tạo diff."
+  # Khởi tạo 17.6 (khớp store in-cluster lúc migrate Mandate #8); store cũ đã tắt (§8)
+  # nên ràng buộc "khớp 1:1" không còn. AWS auto minor upgrade đã nâng lên 17.9 —
+  # đặt default = 17.9 để khớp thực tế; engine_version được ignore_changes ở rds.tf
+  # nên chỉ có tác dụng khi tạo mới instance.
+  description = "Phiên bản PostgreSQL khởi tạo. Drift minor do AWS được ignore ở rds.tf."
   type        = string
-  default     = "17"
+  default     = "17.9"
 }
 
 variable "rds_instance_class" {
