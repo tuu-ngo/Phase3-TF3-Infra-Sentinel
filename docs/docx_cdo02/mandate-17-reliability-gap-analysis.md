@@ -39,7 +39,8 @@ CDO02 (Platform — trụ Reliability + Cost Optimization)
 | --------- | ------- | ----------------------------------------------------------------------------------------- | ------- | ---------------- |
 | REL-17-01 | **CAO** | Dual-write của `cart` chặn đồng bộ 2s trong `lock` → mất AZ 1a làm cart nghẽn ~40–60s **đúng lúc mentor bấm giờ RTO** | #2      | ✅ **ĐÃ XỬ** — `b881bf1` gỡ dual-write |
 | REL-17-06 | **CAO** | initContainer `wait-for-kafka` khoá khởi động checkout vào Kafka CŨ (PV gp2 ghim AZ 1b) → mọi restart cần kho sắp xoá còn sống | #2 | ✅ **ĐÃ XỬ** — `b881bf1` gỡ init |
-| REL-17-02 | **CAO** | Frontend gọi `ad`/`recommendation` **không deadline, không fallback** → dependency treo kéo theo frontend | #1      | 🔴 **CÒN HỞ — ưu tiên #1** |
+| REL-17-02 | **CAO** | Frontend gọi `ad`/`recommendation` **không deadline, không fallback** → dependency treo kéo theo frontend | #1      | 🛠️ **ĐANG XỬ** — PR này (deadline 5 gateway + fallback + span attr; đã sửa theo review leader) |
+| REL-17-02b | TRUNG BÌNH | `Cart`/`Checkout` gateway frontend **cũng thiếu deadline** (cùng failure mode, nhưng là lõi luồng) | #1 | 🟡 **Theo dõi — cố ý ngoài scope PR** |
 | REL-17-05 | **CAO** (23/07) | 9/9 service ra tiền vẫn trải 2 AZ, nhưng **dồn hết lên 2 spot node** sau batch Karpenter mandate-13 → mất AZ = dồn lên 1 spot node duy nhất | #2 | 🔴 **CÒN — sync mandate-13** |
 | REL-17-04 | TRUNG BÌNH (nâng 23/07) | `grafana`+`prometheus` cùng 1 node ở **AZ 1a**, prometheus `emptyDir` → mất AZ 1a = mất dashboard **+ lịch sử metric** đúng lúc demo | #2      | 🟡 CÒN |
 | REL-17-03 | TRUNG BÌNH | `flagd` 1 replica — mất AZ chứa flagd = mất cơ chế đọc flag toàn hệ (vị trí AZ đổi theo lập lịch) | #1, #2  | 🟡 CÒN — cần xin phép |
@@ -282,6 +283,14 @@ nào → restart → kẹt `Init:0/1` nếu Kafka cũ có vấn đề. Sự cố
 
 ## REL-17-02 (CAO) — Không có timeout/fallback với dependency
 
+> 🛠️ **ĐANG XỬ trong chính PR này (23/07).** Đã thêm **deadline (fail-fast) cho 5 gateway hot-path**
+> (`ad` 300ms, `recommendation`/`product-catalog`/`currency`/`product-review` 500ms; AI-assistant 15s vì gọi
+> LLM chậm theo thiết kế) + **fallback degrade** ở route (`ad`/`recommendation` trả 200 rỗng, `Promise.all`
+> → `allSettled`) + **span attribute** (`app.*.degraded`/`dropped`) để không mất quan sát khi route trả 200.
+> Review leader đã bắt và đã sửa: (1) deadline **tầng 2** (product-catalog/currency) — nếu thiếu thì `allSettled`
+> vẫn treo vô hạn khi 2 tầng đó treo; (2) span attribute thay cho `console.warn`. **Còn Cart/Checkout — xem
+> REL-17-02b.** Bằng chứng gốc 21/07 giữ dưới để truy vết.
+
 ### Bằng chứng code
 
 `phase3 - information/techx-corp-platform/src/frontend/gateways/rpc/Ad.gateway.ts:14`:
@@ -320,6 +329,44 @@ Không phải dependency nào cũng fallback được. Trình bày theo phân lo
 Với hai cái cuối, thứ phải chứng minh **không phải** là "vẫn bán được", mà là **lỗi không lan ngược**:
 checkout fail nhanh, không treo, không làm cạn connection pool của frontend, không kéo sập browse cho các
 SKU khác.
+
+---
+
+## REL-17-02b (TRUNG BÌNH) — Cart/Checkout gateway frontend cũng thiếu deadline
+
+> **Phát hiện khi verify PR REL-17-02 (23/07). CỐ Ý để NGOÀI scope PR này** — ghi lại làm việc theo dõi,
+> không tự sửa (đụng đường tối quan trọng giữa lúc cluster động = rủi ro 0012).
+
+### Bằng chứng
+
+Quét toàn bộ 7 gateway rpc của frontend. Sau khi PR REL-17-02 bound 5 cái, **còn đúng 2 cái chưa deadline**,
+và cả hai nằm trên **đường tối quan trọng** (không phải enrichment):
+
+```bash
+$ for f in gateways/rpc/*.ts; do grep -q "deadline: Date.now()" "$f" && echo "$f CO" || echo "$f KHONG"; done
+Ad / Recommendations / ProductCatalog / Currency / ProductReview  → CO deadline (PR REL-17-02)
+Cart.gateway.ts        → KHONG
+Checkout.gateway.ts    → KHONG
+```
+
+Cùng **failure mode** với REL-17-02: gRPC-js không có deadline mặc định → `cart`/`checkout` service treo
+(chứ không chết) thì promise chờ vô hạn, giữ luôn request Next.js.
+
+### Vì sao TÁCH khỏi PR REL-17-02
+
+| | ad/reco/review (REL-17-02) | cart/checkout (REL-17-02b) |
+|---|---|---|
+| Vai trò | **enrichment** không tối quan trọng | **lõi luồng** browse→cart→checkout |
+| req#1 nêu đích danh? | ✅ "ad / recommendation …" | ❌ không (req#1 nói *downstream*, không nói lõi) |
+| Cách xử khi timeout | deadline + **degrade rỗng** (giỏ rỗng giả = sai) | chỉ deadline **fail-fast**, KHÔNG degrade rỗng được |
+| Rủi ro deploy | thấp (không đụng đường tiền) | cao (đụng thẳng checkout, giữa lúc cluster động) |
+
+### Đề xuất (việc theo dõi, chưa làm)
+
+Thêm **deadline fail-fast** (không degrade rỗng) cho `Cart.gateway` + `Checkout.gateway`, cùng pattern.
+Đây là hygiene resilience tốt nhưng: (a) không phải thứ req#1 nêu đích danh; (b) backend `cart`→ElastiCache
+và `checkout`→MSK đã có resilience riêng (REL-09 acks, ElastiCache auto-failover); (c) nên deploy trong cửa
+sổ riêng, không gộp với PR enrichment. **Ưu tiên: sau khi cluster ổn định + sau buổi sync mandate-13.**
 
 ---
 
@@ -435,12 +482,13 @@ Sắp theo **tỷ lệ (giảm rủi ro thật) / (công sức)**, không theo t
 | # | Việc                                                                     | Gap        | Công sức | Trạng thái |
 | - | ------------------------------------------------------------------------ | ---------- | -------- | ---------- |
 | 1 | **Sync mandate-13 ↔ 17: gỡ tập trung 2 spot node** (mỏ neo on-demand cho checkout, hoặc ép elastic trải >2 node) | REL-17-05 | cần bàn với turuong | 🔴 **rủi ro cao nhất req#2** |
-| 2 | Timeout + fallback rỗng cho `ad` / `recommendation`; bỏ `Promise.all` cứng | REL-17-02  | ~1 ngày   | 🔴 CÒN — lỗ hở chắc chắn của CDO02 |
+| 2 | Timeout + fallback rỗng cho `ad` / `recommendation` (+product-catalog/currency/review); bỏ `Promise.all` cứng | REL-17-02  | ~1 ngày   | 🛠️ **ĐANG XỬ — PR này, đã sửa theo review leader** |
 | 3 | **Anti-affinity grafana ≠ prometheus (khác node + AZ)**                   | REL-17-04  | ~1 giờ    | 🔴 CÒN — nâng ưu tiên 23/07 |
 | 4 | Đóng gói bằng chứng AZ (kèm caveat spot) thành artifact demo              | REL-17-05  | ~1 giờ    | 🟡 Đang làm |
 | 5 | Bàn giao chuỗi leo thang `default` SA cho CDO01                           | yêu cầu #4 | 5 phút    | 🔴 CÒN (verify 22/07 vẫn thủng) |
-| 6 | flagd HA                                                                 | REL-17-03  | ~1 giờ    | 🟡 Cần xin phép leader/mentor |
-| 7 | prometheus PVC/HA để không mất history (quyết định riêng)                 | REL-17-04  | vừa       | 🟡 Cân nhắc |
+| 6 | Deadline fail-fast cho `Cart`/`Checkout` gateway (KHÔNG degrade rỗng)     | REL-17-02b | ~2 giờ    | 🟡 Theo dõi — sau khi cluster ổn + sync mandate-13 |
+| 7 | flagd HA                                                                 | REL-17-03  | ~1 giờ    | 🟡 Cần xin phép leader/mentor |
+| 8 | prometheus PVC/HA để không mất history (quyết định riêng)                 | REL-17-04  | vừa       | 🟡 Cân nhắc |
 | ~~—~~ | ~~Circuit breaker dual-write cart~~                                   | REL-17-01  | —        | ✅ **HUỶ** — `b881bf1` gỡ hẳn dual-write, không cần |
 | ~~—~~ | ~~Gỡ initContainer `wait-for-kafka`~~                                 | REL-17-06  | —        | ✅ **XONG** — `b881bf1` |
 
