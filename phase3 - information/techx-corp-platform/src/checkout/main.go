@@ -20,8 +20,6 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log/global"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
