@@ -78,6 +78,33 @@ Nếu có thể, mở thêm:
 kubectl get nodepool,nodeclaim -w
 ```
 
+## 4.1. Bảng inventory bắt buộc trước khi diễn tập
+
+Trước khi bấm diễn tập, nên chụp hoặc điền nhanh một bảng inventory tối thiểu để tránh nhầm node:
+
+| Node | Lifecycle | Instance type | Zone | Architecture | Vai trò dự kiến |
+|---|---|---|---|---|---|
+| `<node-1>` | `spot` / `on-demand` | `t3.medium`... | `ap-southeast-1a/b/c` | `amd64` / `arm64` | target / baseline / stateful |
+
+Tối thiểu phải phân loại được:
+
+- node nào là `spot`
+- node nào là `on-demand`
+- node nào đang là node stateful hoặc không được phép đụng vào
+
+Ví dụ lệnh thu thập:
+
+```bash
+kubectl get nodes \
+  -L karpenter.sh/capacity-type,node.kubernetes.io/instance-type,kubernetes.io/arch,topology.kubernetes.io/zone
+```
+
+Với hệ thống hiện tại, bảng này còn giúp chứng minh một gap thật của Mandate 13:
+
+- cluster đã có node `spot`
+- nhưng spot node pool hiện vẫn khóa `amd64`
+- nên phần `Graviton` chưa đạt và phải được ghi nhận trung thực
+
 ## 5. Pre-flight check bắt buộc
 
 ### 5.1. Xác định node spot hiện tại
@@ -102,6 +129,12 @@ kubectl -n techx-tf3 get pods -o wide --field-selector spec.nodeName=$NODE
 
 - chỉ có workload stateless hoặc workload được chấp nhận diễn tập
 - không có pod stateful quan trọng
+
+Nên chụp thêm một bảng ngắn:
+
+| Node target | Lifecycle | Critical pods on node | Có replica Ready ở node khác? | GO / NO-GO |
+|---|---|---|---|---|
+| `<node-spot>` | `spot` | `checkout`, `cart`... | `Có/Không` | `GO/NO-GO` |
 
 ### 5.3. Kiểm tra replica an toàn ở node khác
 
@@ -293,6 +326,17 @@ Phải trả lời được 4 câu hỏi:
 2. service nào bị ảnh hưởng trên node đó
 3. trong cửa sổ disruption SLO có giữ hay không
 4. cluster có co/bù node đúng như kỳ vọng hay không
+
+Ngoài ra nên chốt lại bảng evidence tối thiểu sau buổi diễn tập:
+
+| Hạng mục | Evidence cần lưu |
+|---|---|
+| Inventory node | danh sách node `spot` / `on-demand`, instance type, zone, architecture |
+| Node mục tiêu | node spot nào đã được chọn và vì sao |
+| Safety check | pod critical trên node mục tiêu có replica ở node khác |
+| Disruption window | thời điểm cordon, drain, reschedule |
+| SLO window | checkout success, browse/cart success, storefront p95 |
+| Kết luận | PASS / NO-GO / cần khắc phục gì trước lần sau |
 
 ## 12. Tiêu chí PASS cho Mandate 13 phần interruption
 
