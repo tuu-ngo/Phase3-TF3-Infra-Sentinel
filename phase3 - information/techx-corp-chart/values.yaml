@@ -64,7 +64,6 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
-
 components:
   ## Demo Components are named objects (services) with several properties
   # demoService:
@@ -1671,6 +1670,9 @@ prometheus:
 grafana:
   enabled: true
   fullnameOverride: grafana
+  rbac:
+    create: true
+    namespaced: true
   testFramework:
     enabled: false
   grafana.ini:
