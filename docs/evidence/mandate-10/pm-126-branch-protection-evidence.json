@@ -1,0 +1,44 @@
+{
+  "captured_at": "2026-07-23",
+  "protection_type": "classic_branch_protection",
+  "branch_pattern": "main",
+  "applies_to_branch": "main",
+  "require_pull_request_before_merging": true,
+  "required_approvals": 1,
+  "require_status_checks_to_pass": true,
+  "require_branches_up_to_date": true,
+  "required_status_checks": [
+    {
+      "context": "Secure delivery gate",
+      "source": "GitHub Actions"
+    }
+  ],
+  "owner_provided_captures": [
+    "assets/pm-126-classic-branch-protection-main.png",
+    "assets/pm-126-required-secure-delivery-gate.png"
+  ],
+  "runtime_rejection_evidence": [
+    {
+      "control": "iac_critical",
+      "pull_request": 350,
+      "required_check": "Secure delivery gate",
+      "required_check_result": "failure",
+      "merge_state": "BLOCKED"
+    },
+    {
+      "control": "synthetic_secret_high",
+      "pull_request": 351,
+      "required_check": "Secure delivery gate",
+      "required_check_result": "failure",
+      "merge_state": "BLOCKED"
+    },
+    {
+      "control": "sast_high",
+      "pull_request": 352,
+      "required_check": "Secure delivery gate",
+      "required_check_result": "failure",
+      "merge_state": "BLOCKED"
+    }
+  ],
+  "verification_note": "The current non-admin execution identity receives HTTP 404 from the admin-only classic branch-protection REST export endpoint; configuration values are retained from owner-provided captures and independently verified through required-check and blocked-merge behavior."
+}

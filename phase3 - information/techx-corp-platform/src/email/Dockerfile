@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-FROM docker.io/library/ruby:3.4.7-alpine3.22 AS builder
+FROM docker.io/library/ruby:3.4.10-alpine3.23@sha256:aee2f8ad808abff4aecaa1d36340dce22e6b1eb9b88216ed18be4245c4324d9b AS builder
 
 COPY ./src/email/Gemfile Gemfile
 COPY ./src/email/Gemfile.lock Gemfile.lock
@@ -11,7 +11,9 @@ RUN apk update && \
     apk add make gcc musl-dev gcompat && \
     bundle install
 
-FROM docker.io/library/ruby:3.4.7-alpine3.22
+FROM docker.io/library/ruby:3.4.10-alpine3.23@sha256:aee2f8ad808abff4aecaa1d36340dce22e6b1eb9b88216ed18be4245c4324d9b
+
+RUN apk upgrade --no-cache
 
 COPY --from=builder /usr/local/bundle/ /usr/local/bundle/
 
@@ -23,6 +25,10 @@ COPY ./src/email/.ruby-version .ruby-version
 COPY ./src/email/Gemfile Gemfile
 COPY ./src/email/Gemfile.lock Gemfile.lock
 COPY ./src/email/email_server.rb email_server.rb
+RUN addgroup -S -g 65532 nonroot \
+    && adduser -S -u 65532 -G nonroot nonroot \
+    && chown -R 65532:65532 /email_server
+USER 65532:65532
 
 EXPOSE ${EMAIL_PORT}
 ENTRYPOINT ["bundle", "exec", "ruby", "email_server.rb"]

@@ -43,3 +43,12 @@ variable "stateful_node_instance_type" {
 variable "eks_admin_principal_arns" {
   type = list(string)
 }
+
+variable "eks_kubernetes_group_principals" {
+  description = "IAM principal ARNs mapped to Kubernetes groups without an EKS cluster access policy."
+  type = map(object({
+    principal_arn     = string
+    kubernetes_groups = list(string)
+  }))
+  default = {}
+}

@@ -29,7 +29,7 @@ Grafana SLO dashboard (mở sẵn trên màn hình cho mentor xem suốt demo):
 ```sh
 # a) Mỗi service revenue có 2 replica ở 2 node/AZ khác nhau (nhờ topologySpread)
 kubectl -n techx-tf3 get pods -o wide \
-  -l 'opentelemetry.io/name in (frontend,frontend-proxy,product-catalog,cart,payment,currency,shipping,quote,product-reviews)' \
+  -l 'opentelemetry.io/name in (frontend,frontend-proxy,product-catalog,cart,checkout,payment,currency,shipping,quote,product-reviews)' \
   --sort-by=.spec.nodeName
 
 # b) PDB đều ALLOWED DISRUPTIONS >= 1

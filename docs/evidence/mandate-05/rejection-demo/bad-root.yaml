@@ -1,0 +1,31 @@
+# Mandate 5 rejection demo — vi phạm yêu cầu #1 (không container nào chạy root).
+# Không set securityContext gì cả -> vi phạm nhiều rule của custom-baseline-security-context
+# cùng lúc: require-effective-non-root, require-run-as-non-root,
+# require-allow-privilege-escalation-false, drop-all-capabilities,
+# require-seccomp-profile-runtime-default. Dùng kind: Deployment (không phải Pod trần)
+# để đi qua đúng đường admission thật mà production dùng.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mandate5-demo-bad-root
+  namespace: techx-tf3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mandate5-demo-bad-root
+  template:
+    metadata:
+      labels:
+        app: mandate5-demo-bad-root
+    spec:
+      containers:
+        - name: app
+          image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:801b602b7ac4afc3887a27cb3a97b13ea10ce35bce64afe047e3dd2b42ae5f1d
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi

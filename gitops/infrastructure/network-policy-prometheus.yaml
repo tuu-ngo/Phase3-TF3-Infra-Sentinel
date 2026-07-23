@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-access
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+        - podSelector:
+            matchLabels:
+              app: aiops-engine
+        # otel-collector ghi metrics OTLP vào /api/v1/otlp/v1/metrics — thiếu là
+        # toàn bộ app metrics dừng khi pod collector bị tạo lại (sự cố 17/07 11:44)
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-gateway
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-node-agent
+        # jaeger SPM (Monitor tab) query PROMETHEUS_ADDR=prometheus:9090
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: jaeger
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: argo-rollouts
+      ports:
+        - protocol: TCP
+          port: 9090

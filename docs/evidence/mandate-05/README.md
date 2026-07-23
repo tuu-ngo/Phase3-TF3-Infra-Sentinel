@@ -1,0 +1,57 @@
+# Mandate 05 Evidence Pack
+
+This directory stores non-secret evidence for Mandate 05 runtime admission hardening.
+
+## Working set
+
+- `exception-register.yaml` - approved exact-label exceptions retained through
+  Enforce review.
+- PR #194 introduced or updated four Audit policies:
+  `require-resource-requests`, `custom-baseline-security-context`,
+  `disallow-latest-tag`, and `require-first-party-image-digest`.
+- PRs #224 through #230 fixed and promoted those policies one at a time. All
+  four are now `Enforce` and `Ready=True`.
+- `enforce-cutover-20260718.md` records the live deny/allow and health evidence.
+- The current exception register contains 2 time-bounded exceptions that must be
+  remediated or accepted before final closure: Kafka PVC ownership init and the
+  out-of-tree `aiops-engine` runtime hardening gap.
+- PR #222 added explicit `flagd-ui` resources and removed the resource-policy
+  exception for `flagd`, so resource enforcement no longer relies on namespace
+  `LimitRange` defaulting for that sidecar.
+
+## Local verification flow
+
+1. Render production with all four Argo CD values files.
+2. Run `scripts/ci/verify-runtime-hardening.py` in `inventory` mode.
+3. Run Kyverno CLI tests from `tests/kyverno/mandate-05/`.
+4. After any policy change is synced by Argo CD, export live PolicyReports and
+   active Pods, then reconcile them against `exception-register.yaml`.
+5. Collect server-side admission denial evidence only after the relevant policy
+   has been promoted from Audit to Enforce.
+
+Example live reconciliation commands:
+
+```sh
+kubectl get policyreport -A -o yaml > /tmp/mandate-05-policyreport-live.yaml
+kubectl -n techx-tf3 get pods -o json > /tmp/mandate-05-pods-live.json
+python3 scripts/ci/reconcile-active-policy-reports.py \
+  --policyreports /tmp/mandate-05-policyreport-live.yaml \
+  --pods /tmp/mandate-05-pods-live.json \
+  --exceptions docs/evidence/mandate-05/exception-register.yaml \
+  --output /tmp/mandate-05-reconcile-live.json
+```
+
+Expected post-sync gate: `activeFailures` and `unresolvedResults` are empty.
+Historical `staleResults` from old ReplicaSets are acceptable only when they are
+not tied to an active Pod UID.
+
+Current post-Enforce gate at `677e74b`: `activeFailures=0`,
+`staleResults=0`, `unresolvedResults=0`, 20 first-party ECR digests are running
+without tag-only references, and all 20 verify with the GitHub OIDC Cosign
+identity used by `build-push-ecr.yml`.
+
+## Non-goals
+
+- No kubeconfig, tokens, or secrets are stored here.
+- No imperative cluster mutation is recorded here.
+- Evidence files do not apply policy or workload changes imperatively.

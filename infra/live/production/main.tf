@@ -23,6 +23,16 @@ module "eks_platform" {
   stateful_node_subnet_id     = module.network.private_subnet_ids[index(var.azs, var.stateful_node_availability_zone)]
   stateful_node_instance_type = var.stateful_node_instance_type
   eks_admin_principal_arns    = var.eks_admin_principal_arns
+  eks_kubernetes_group_principals = {
+    operator = {
+      principal_arn     = aws_iam_role.tf3_production_operator.arn
+      kubernetes_groups = ["tf3-production-operators"]
+    }
+    readonly = {
+      principal_arn     = aws_iam_role.tf3_production_readonly.arn
+      kubernetes_groups = ["tf3-production-readers"]
+    }
+  }
 }
 
 module "access" {
@@ -31,9 +41,33 @@ module "access" {
   region                    = var.region
   cluster_name              = var.cluster_name
   vpc_id                    = module.network.vpc_id
+  vpc_cidr                  = var.vpc_cidr
   private_subnet_ids        = module.network.private_subnet_ids
   cluster_security_group_id = module.eks_platform.cluster_security_group_id
   cluster_endpoint          = module.eks_platform.cluster_endpoint
+}
+
+module "datastores" {
+  source = "../../modules/datastores"
+
+  enabled      = var.enable_managed_datastores
+  cluster_name = var.cluster_name
+  name_prefix  = var.datastores_name_prefix
+
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+
+  # Pod EKS đi ra qua NODE security group (VPC CNI gắn SG này lên ENI của node/pod) — đây mới là
+  # SG traffic pod thực sự dùng. Cluster SG (aws_security_group.cluster) KHÔNG nằm trên node ENI nên
+  # allow mình nó thì pod timeout khi nối datastore. Giữ cả 2 cho đủ (cluster SG dùng cho control-plane).
+  allowed_client_security_group_ids = [
+    module.eks_platform.node_security_group_id,
+    module.eks_platform.cluster_security_group_id,
+  ]
+  bastion_security_group_id  = module.access.bastion_security_group_id
+  external_secrets_role_name = module.eks_platform.external_secrets_role_name
+
+  # Thông số right-size + Multi-AZ mặc định trong module (ADR 0009). Override qua tfvars nếu cần.
 }
 
 module "edge" {

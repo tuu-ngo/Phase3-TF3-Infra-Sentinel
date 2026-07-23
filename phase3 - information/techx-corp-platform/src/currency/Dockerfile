@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM docker.io/library/alpine:3.21 AS base
+FROM docker.io/library/alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS base
 
 RUN apk update && \
     apk add grpc-dev protobuf-dev
@@ -52,6 +52,9 @@ RUN mkdir -p build && cd build \
 FROM base AS release
 
 COPY --from=builder /usr/local /usr/local
+RUN addgroup -S -g 65532 nonroot \
+    && adduser -S -u 65532 -G nonroot nonroot
+USER 65532:65532
 
 EXPOSE ${CURRENCY_PORT}
 

@@ -128,19 +128,27 @@ module "eks" {
     }
   }
 
-  access_entries = {
-    for arn in var.eks_admin_principal_arns : arn => {
-      principal_arn = arn
-      policy_associations = {
-        admin = {
-          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-          access_scope = {
-            type = "cluster"
+  access_entries = merge(
+    {
+      for arn in var.eks_admin_principal_arns : arn => {
+        principal_arn = arn
+        policy_associations = {
+          admin = {
+            policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+            access_scope = {
+              type = "cluster"
+            }
           }
         }
       }
+    },
+    {
+      for name, entry in var.eks_kubernetes_group_principals : name => {
+        principal_arn     = entry.principal_arn
+        kubernetes_groups = entry.kubernetes_groups
+      }
     }
-  }
+  )
 }
 
 module "cluster_autoscaler_irsa" {

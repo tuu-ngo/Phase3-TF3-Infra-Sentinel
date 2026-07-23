@@ -7,6 +7,10 @@ data "aws_iam_openid_connect_provider" "github" {
 resource "aws_iam_role" "terraform_plan" {
   name = "${var.cluster_name}-gha-terraform-plan"
 
+  # Mandate 12: role này chỉ có ReadOnlyAccess nên boundary không đổi hành vi
+  # hiện tại — gắn để chặn privilege creep về sau. Xem ci-audit-boundary.tf.
+  permissions_boundary = var.enable_ci_audit_boundary ? aws_iam_policy.ci_audit_boundary.arn : null
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -57,6 +61,12 @@ resource "aws_iam_role_policy" "terraform_plan_state_access" {
 resource "aws_iam_role" "terraform_apply" {
   name = "${var.cluster_name}-gha-terraform-apply"
 
+  # Mandate 12: role này giữ AdministratorAccess. Boundary cho phép IAM CRUD
+  # chung để Terraform vẫn quản được audit foundation, nhưng deny các kill
+  # switch tức thời (StopLogging, xoá archive object, DisableRule, DeleteTopic,
+  # PutFunctionConcurrency...) và chặn nó tự gỡ boundary. Xem ci-audit-boundary.tf.
+  permissions_boundary = var.enable_ci_audit_boundary ? aws_iam_policy.ci_audit_boundary.arn : null
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -95,7 +105,9 @@ resource "aws_iam_role_policy" "github_actions_ecr_trivy_pull" {
         Effect = "Allow"
 
         Action = [
+          "ecr:BatchCheckLayerAvailability",
           "ecr:BatchGetImage",
+          "ecr:DescribeImages",
           "ecr:GetDownloadUrlForLayer",
         ]
 

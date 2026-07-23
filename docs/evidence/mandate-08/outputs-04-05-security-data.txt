@@ -1,0 +1,17 @@
+# OUTPUT-04: bao mat
+# Do: 2026-07-22T06:10:16Z UTC
+
+## 1. Credential plaintext trong values/manifest (mong doi: RONG)
+(rong - khong con plaintext)
+
+## 2. Secret trong cluster (chi in TEN, khong in gia tri)
+   techx-tf3-postgres-conn type=Opaque keys=3
+   techx-tf3-valkey-auth type=Opaque keys=1
+   techx-tf3-kafka-scram type=Opaque keys=2
+
+## 3. RDS khong public
+{
+    "Public": false,
+    "Encrypted": true,
+    "KmsKey": "arn:aws:kms:ap-southeast-1:197826770971:key/3c6f7587-f647-4f96-a3ba-411d8880f1c9"
+}

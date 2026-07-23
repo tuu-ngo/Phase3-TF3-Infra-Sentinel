@@ -48,12 +48,12 @@ variable "node_instance_type" {
 
 variable "node_desired_size" {
   type    = number
-  default = 3
+  default = 4
 }
 
 variable "node_min_size" {
   type    = number
-  default = 3
+  default = 4
 }
 
 variable "node_max_size" {
@@ -158,4 +158,71 @@ variable "cloudflare_allowed_emails" {
   description = "Explicit allowlist of emails permitted to authenticate, used when cloudflare_allowed_email_domain is empty."
   type        = list(string)
   default     = []
+}
+
+# ---------- Mandate #8: managed datastores (RDS / ElastiCache / MSK) ----------
+variable "enable_managed_datastores" {
+  description = "Bật tầng datastore managed (Mandate #8). false = không tạo gì (giữ in-cluster)."
+  type        = bool
+  default     = false
+}
+
+variable "datastores_name_prefix" {
+  description = "Prefix ngắn cho tên tài nguyên/secret datastore (vd techx-tf3)."
+  type        = string
+  default     = "techx-tf3"
+}
+
+variable "audit_detection_email_subscriptions" {
+  description = "Email recipients for Mandate 11 audit alerts."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_additional_human_principal_arns" {
+  description = "Extra human principal ARNs reviewed by the detector, for example mentor or admin users not already modeled in iam-production-access.tf."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_additional_allowed_automation_principal_arns" {
+  description = "Extra automation principal ARNs allowlisted by the detector."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_additional_secret_reader_principal_arns" {
+  description = "Extra automation principal ARNs that may read watched secrets without paging."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_additional_sensitive_secret_names" {
+  description = "Extra Secrets Manager names that should be watched for human reads."
+  type        = list(string)
+  default     = []
+}
+
+variable "audit_detection_suppressions" {
+  description = "Time-bounded suppressions evaluated by the audit alert Lambda."
+  type = list(object({
+    actor    = string
+    resource = string
+    start    = string
+    end      = string
+    reason   = string
+  }))
+  default = []
+}
+
+variable "audit_detection_lambda_log_retention_days" {
+  description = "Retention for audit detection Lambda logs."
+  type        = number
+  default     = 14
+}
+
+variable "audit_detection_trail_s3_retention_days" {
+  description = "Retention for audit CloudTrail objects in S3."
+  type        = number
+  default     = 30
 }

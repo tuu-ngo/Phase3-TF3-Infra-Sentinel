@@ -82,8 +82,12 @@ spec:
           {{- end }}
           env:
             {{- include "techx-corp.pod.env" . | nindent 12 }}
+          {{- $resources := .resources | default .defaultValues.resources }}
+          {{- if not $resources }}
+          {{- fail (printf "resources are required for component %s" .name) }}
+          {{- end }}
           resources:
-            {{- .resources | toYaml | nindent 12 }}
+            {{- $resources | toYaml | nindent 12 }}
           {{- if or .defaultValues.securityContext .securityContext }}
           securityContext:
             {{- .securityContext | default .defaultValues.securityContext | toYaml | nindent 12 }}
@@ -145,10 +149,12 @@ spec:
           {{- end }}
           env:
             {{- include "techx-corp.pod.env" . | nindent 12 }}
-          {{- if .resources }}
-          resources:
-            {{- .resources | toYaml | nindent 12 }}
+          {{- $sidecarResources := .resources | default .defaultValues.resources }}
+          {{- if not $sidecarResources }}
+          {{- fail (printf "resources are required for sidecar %s" .name) }}
           {{- end }}
+          resources:
+            {{- $sidecarResources | toYaml | nindent 12 }}
           {{- if or .defaultValues.securityContext .securityContext }}
           securityContext:
             {{- .securityContext | default .defaultValues.securityContext | toYaml | nindent 12 }}

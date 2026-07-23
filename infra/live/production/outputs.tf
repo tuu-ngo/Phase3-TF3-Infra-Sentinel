@@ -69,6 +69,27 @@ output "ssm_tunnel_command" {
   value       = module.access.ssm_tunnel_command
 }
 
+# ---------- Mandate #8: managed datastores ----------
+output "rds_endpoint_address" {
+  description = "RDS PostgreSQL host (Mandate #8). Null khi enable_managed_datastores=false."
+  value       = module.datastores.rds_endpoint_address
+}
+
+output "rds_master_user_secret_arn" {
+  description = "ARN secret master RDS tự quản (ESO đọc). Null khi tắt."
+  value       = module.datastores.rds_master_user_secret_arn
+}
+
+output "elasticache_primary_endpoint" {
+  description = "ElastiCache Valkey primary endpoint (Mandate #8). Null khi tắt."
+  value       = module.datastores.elasticache_primary_endpoint
+}
+
+output "msk_bootstrap_brokers_sasl_scram" {
+  description = "MSK bootstrap SASL/SCRAM (cổng 9096). Null khi tắt."
+  value       = module.datastores.msk_bootstrap_brokers_sasl_scram
+}
+
 output "cloudfront_domain_name" {
   description = "Public HTTPS address for the storefront."
   value       = module.edge.cloudfront_domain_name
@@ -103,4 +124,20 @@ output "cloudflare_client_access_command" {
 output "cloudflare_ui_urls" {
   description = "REL-17: direct browser URLs for Grafana/Jaeger/ArgoCD, no kubectl/IAM needed. Empty when enable_cloudflare_access = false."
   value       = var.enable_cloudflare_access ? { for k, v in module.cloudflare_access[0].internal_ui_routes : k => "https://${v.hostname}" } : null
+}
+
+output "audit_detection_trails" {
+  description = "Mandate 11 CloudTrail trail names."
+  value = {
+    ap_southeast_1 = module.audit_detection_ap_southeast_1.trail_name
+    us_east_1      = module.audit_detection_us_east_1.trail_name
+  }
+}
+
+output "audit_detection_sns_topics" {
+  description = "Mandate 11 SNS topics used for audit alerts."
+  value = {
+    ap_southeast_1 = module.audit_detection_ap_southeast_1.sns_topic_arn
+    us_east_1      = module.audit_detection_us_east_1.sns_topic_arn
+  }
 }

@@ -1,0 +1,14 @@
+# Mandate 5 cluster-wide expansion (native, 22/07): pre-flight verify sạch
+# (kubectl label --dry-run=server + kiểm tra latest-tag/thiếu resources trực
+# tiếp trên pod sống) trước khi ghi file này - không có vi phạm nào.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.35
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.35
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.35

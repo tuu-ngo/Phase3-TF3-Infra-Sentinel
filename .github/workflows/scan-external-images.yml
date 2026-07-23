@@ -1,0 +1,59 @@
+name: Periodic Trivy review for external images
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Monday 02:15 UTC. This is a review signal, not a release gate.
+    - cron: "15 2 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout catalog
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.10"
+
+      - name: Install catalog parser
+        run: python -m pip install --disable-pip-version-check --no-cache-dir PyYAML==6.0.2
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+
+      - name: Scan pinned external images (non-blocking review)
+        run: |
+          set -euo pipefail
+          mkdir -p external-trivy-reports
+          mapfile -t external_images < <(
+            python scripts/ci/read-external-image-catalog.py \
+              --allowlist docs/evidence/mandate-10/external-image-allowlist.yaml
+          )
+          [ "${#external_images[@]}" -gt 0 ] || {
+            echo "FAIL: external catalog produced no scan inputs" >&2
+            exit 1
+          }
+          for image in "${external_images[@]}"; do
+            name=$(echo "$image" | sed 's#^[^/]*/##; s#[/:@]#-#g')
+            report="external-trivy-reports/${name}.json"
+            echo "Reviewing $image"
+            # Do not use --exit-code 1: external images are exceptions to the
+            # first-party release gate. Findings create review evidence only.
+            trivy image --scanners vuln --format json --output "$report" --no-progress "$image"
+          done
+
+      - name: Upload external-image Trivy reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trivy-external-images-${{ github.run_id }}
+          path: external-trivy-reports/
+          if-no-files-found: warn
+          retention-days: 90

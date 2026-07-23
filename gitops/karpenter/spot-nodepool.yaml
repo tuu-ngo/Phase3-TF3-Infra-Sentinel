@@ -3,11 +3,17 @@ kind: NodePool
 metadata:
   name: flash-sale-spot
 spec:
+  weight: 100
   template:
     metadata:
       labels:
         techx.io/capacity: spot
+        techx.io/workload: elastic
     spec:
+      taints:
+        - key: techx.io/workload
+          value: elastic
+          effect: NoSchedule
       requirements:
         - key: kubernetes.io/arch
           operator: In
@@ -27,20 +33,28 @@ spec:
         - key: karpenter.k8s.aws/instance-cpu
           operator: In
           values: ["2", "4"]
+        - key: karpenter.k8s.aws/instance-memory
+          operator: Gt
+          values: ["3072"]
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: flash-sale-spot
-      expireAfter: 24h
+      expireAfter: 168h
+      terminationGracePeriod: 10m
   limits:
     cpu: "12"
     memory: 48Gi
+    nodes: 6
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
-    # PM-108 cleanup: trả về giá trị gốc trước Mandate 2 (2m) sau khi load test 200 user đã
-    # chạy xong + xác nhận co xuống ổn định + gỡ hết karpenter.sh/do-not-disrupt tạm thời khỏi
-    # 7 component (xem values-prod.yaml + mandate-02-load-test-remediation-plan.md mục 4).
-    consolidateAfter: 2m
+    consolidateAfter: 10m
+    # Freeze voluntary replacements until elastic workload placement and N-1 gates pass.
+    budgets:
+      - nodes: "0"
+        reasons:
+          - Drifted
+          - Underutilized
 ---
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass

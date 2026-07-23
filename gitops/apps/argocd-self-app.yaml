@@ -1,0 +1,35 @@
+# ArgoCD tự quản lý chính nó (Mandate 5 hướng B2, 19/07) - trỏ vào
+# gitops/bootstrap/argocd (base install.yaml v3.4.5 vendor lại + kustomize
+# patch thêm resources cho 7 Deployment/StatefulSet). Được techx-corp-bootstrap
+# (app-of-apps, quét thư mục gitops/apps) tự phát hiện và apply, không cần
+# ai chạy tay `kubectl apply -k` nữa từ giờ trở đi.
+#
+# Đã verify TRƯỚC khi bật prune: `kubectl diff -n argocd -f base/install.yaml`
+# ra 0 khác biệt với cluster sống (19/07) - bao gồm cả Secret (argocd-secret,
+# argocd-notifications-secret) đã khớp sẵn nội dung, không có rủi ro prune xoá
+# nhầm gì ở lần sync đầu. Dù vậy, nên theo dõi kỹ lần sync ĐẦU TIÊN sau khi
+# Application này được apply - đúng nguyên tắc rủi ro "tự-deadlock" đã ghi ở
+# docs/mandate-05-cluster-wide-scope-expansion.md mục 4.3.1: nếu 1 lần sửa
+# sau này trong gitops/bootstrap/argocd làm hỏng chính ArgoCD, sẽ không có gì
+# tự sửa được nó vì chính nó đang hỏng - luôn kubectl diff -k trước khi merge
+# bất kỳ PR nào đụng thư mục này.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-self
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git
+    targetRevision: main
+    path: gitops/bootstrap/argocd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

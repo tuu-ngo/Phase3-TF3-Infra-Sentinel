@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -64,6 +65,13 @@ import (
 //go:generate protoc --go_out=./ --go-grpc_out=./ --proto_path=../../pb ../../pb/demo.proto
 
 var logger *slog.Logger
+
+// stderrLog viết thẳng ra STDERR (kubectl logs). logger chính (otelslog) đẩy log
+// qua OTel Collector -> OpenSearch, KHÔNG hiện trong `kubectl logs` và phụ thuộc
+// telemetry pipeline khoẻ. Trong sự cố cutover MSK (postmortem 0010) đúng lúc cần
+// đọc lỗi sarama thì không thấy gì. stderrLog để lỗi bootstrap/produce Kafka luôn
+// đọc được trực tiếp từ pod, không lệ thuộc pipeline.
+var stderrLog *slog.Logger
 var tracer trace.Tracer
 var resource *sdkresource.Resource
 var initResourcesOnce sync.Once
@@ -211,6 +219,10 @@ func main() {
 	logger = otelslog.NewLogger("checkout")
 	slog.SetDefault(logger)
 
+	// Logger STDERR song song để lỗi Kafka/MSK đọc được qua `kubectl logs` ngay cả
+	// khi telemetry pipeline (OTel Collector/OpenSearch) không sẵn sàng.
+	stderrLog = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
 	err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(time.Second))
 	if err != nil {
 		logger.Error((err.Error()))
@@ -261,9 +273,39 @@ func main() {
 	svc.kafkaBrokerSvcAddr = os.Getenv("KAFKA_ADDR")
 
 	if svc.kafkaBrokerSvcAddr != "" {
-		svc.KafkaProducerClient, err = kafka.CreateKafkaProducer([]string{svc.kafkaBrokerSvcAddr}, logger)
+		// Mandate #8: cấu hình TLS + SASL/SCRAM cho MSK, đọc từ env. Mặc định rỗng =
+		// PLAINTEXT = hành vi cũ với Kafka in-cluster. Cutover chỉ cần đổi env, không rebuild.
+		secCfg := kafka.SecurityConfig{
+			Protocol: os.Getenv("KAFKA_SECURITY_PROTOCOL"),
+			Username: os.Getenv("KAFKA_SASL_USERNAME"),
+			Password: os.Getenv("KAFKA_SASL_PASSWORD"),
+		}
+		// NGUYÊN NHÂN GỐC sự cố 0010: KAFKA_ADDR có thể chứa NHIỀU broker phân tách bằng
+		// dấu phẩy (MSK trả 3 bootstrap broker). Phải tách thành từng phần tử. Trước đây
+		// nhét cả chuỗi CSV vào một phần tử ([]string{addr}) -> sarama net.Dial nguyên
+		// chuỗi "b-1:9096,b-2:9096,b-3:9096" -> lỗi "too many colons in address",
+		// không bao giờ tới bước TLS/SASL. Kafka in-cluster cũ chỉ có 1 broker nên bug
+		// này bị ẩn hoàn toàn cho tới khi lên MSK.
+		brokers := make([]string, 0, 3)
+		for _, b := range strings.Split(svc.kafkaBrokerSvcAddr, ",") {
+			if b = strings.TrimSpace(b); b != "" {
+				brokers = append(brokers, b)
+			}
+		}
+		// Truyền stderrLog để chẩn đoán kết nối của sarama (metadata/SASL/TLS) rơi vào
+		// `kubectl logs`, không chỉ OTel. Đây chính là log đã biến mất trong sự cố 0010.
+		svc.KafkaProducerClient, err = kafka.CreateKafkaProducer(brokers, stderrLog, secCfg)
 		if err != nil {
-			logger.Error(err.Error())
+			// FAIL FAST. checkout không được nhận đơn nếu không phát được order event
+			// (REL-09: order là dữ liệu tài chính, không được charge mà mất bản ghi).
+			// Trước đây lỗi này bị nuốt -> producer nil -> PlaceOrder panic khi có
+			// traffic thật -> outage (postmortem 0010). Thoát ngay để pod KHÔNG BAO GIỜ
+			// Ready: Argo Rollouts dừng canary thay vì promote pod sẽ panic. Config sai =
+			// rollout đứng an toàn, không phải sự cố khách hàng.
+			stderrLog.Error(fmt.Sprintf("FATAL: khong tao duoc Kafka producer cho %q (protocol=%q): %v",
+				svc.kafkaBrokerSvcAddr, secCfg.Protocol, err))
+			logger.Error(fmt.Sprintf("FATAL: khong tao duoc Kafka producer: %v", err))
+			os.Exit(1)
 		}
 	}
 
@@ -358,7 +400,7 @@ func (cs *checkout) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (
 
 	prep, err := cs.prepareOrderItemsAndShippingQuoteFromCart(ctx, req.UserId, req.UserCurrency, req.Address)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	span.AddEvent("prepared")
 
@@ -460,14 +502,35 @@ func (cs *checkout) prepareOrderItemsAndShippingQuoteFromCart(ctx context.Contex
 	if err != nil {
 		return out, fmt.Errorf("cart failure: %+v", err)
 	}
-	orderItems, err := cs.prepOrderItems(ctx, cartItems, userCurrency)
-	if err != nil {
-		return out, fmt.Errorf("failed to prepare order: %+v", err)
+
+	// Mandate #16: after the cart is loaded, item enrichment and shipping quote do
+	// not depend on each other. Run them in parallel to shorten the checkout
+	// critical path without adding capacity.
+	var (
+		orderItems  []*pb.OrderItem
+		shippingUSD *pb.Money
+		orderErr    error
+		shippingErr error
+		wg          sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		orderItems, orderErr = cs.prepOrderItems(ctx, cartItems, userCurrency)
+	}()
+	go func() {
+		defer wg.Done()
+		shippingUSD, shippingErr = cs.quoteShipping(ctx, address, cartItems)
+	}()
+	wg.Wait()
+
+	if orderErr != nil {
+		return out, fmt.Errorf("failed to prepare order: %+v", orderErr)
 	}
-	shippingUSD, err := cs.quoteShipping(ctx, address, cartItems)
-	if err != nil {
-		return out, fmt.Errorf("shipping quote failure: %+v", err)
+	if shippingErr != nil {
+		return out, fmt.Errorf("shipping quote failure: %+v", shippingErr)
 	}
+
 	shippingPrice, err := cs.convertCurrency(ctx, shippingUSD, userCurrency)
 	if err != nil {
 		return out, fmt.Errorf("failed to convert shipping cost to currency: %+v", err)
@@ -555,26 +618,61 @@ func (cs *checkout) emptyUserCart(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (cs *checkout) prepOrderItems(ctx context.Context, items []*pb.CartItem, userCurrency string) ([]*pb.OrderItem, error) {
-	out := make([]*pb.OrderItem, len(items))
+func (cs *checkout) prepOrderItems(
+	ctx context.Context,
+	items []*pb.CartItem,
+	userCurrency string,
+) ([]*pb.OrderItem, error) {
 
+	out := make([]*pb.OrderItem, len(items))
+	errCh := make(chan error, len(items))
+	var wg sync.WaitGroup
+
+	// Mandate #16: each cart line is independent, so enrich them concurrently to
+	// reduce tail latency on larger carts while keeping response ordering stable.
 	for i, item := range items {
-		product, err := cs.productCatalogSvcClient.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get product #%q", item.GetProductId())
-		}
-		price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
-		}
-		out[i] = &pb.OrderItem{
-			Item: item,
-			Cost: price}
+		wg.Add(1)
+		go func(i int, item *pb.CartItem) {
+			defer wg.Done()
+
+			product, err := cs.productCatalogSvcClient.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})
+			if err != nil {
+				errCh <- fmt.Errorf("failed to get product #%q", item.GetProductId())
+				return
+			}
+
+			price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to convert price of %q to %s", item.GetProductId(), userCurrency)
+				return
+			}
+
+			out[i] = &pb.OrderItem{
+				Item: item,
+				Cost: price,
+			}
+		}(i, item)
 	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return out, nil
 }
 
 func (cs *checkout) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
+	// Mandate #16: USD is already the source currency for catalog/shipping
+	// prices. Skip the RPC when no conversion is needed.
+	if from == nil || toCurrency == "" || from.GetCurrencyCode() == toCurrency {
+		return from, nil
+	}
+
 	result, err := cs.currencySvcClient.Convert(ctx, &pb.CurrencyConversionRequest{
 		From:   from,
 		ToCode: toCurrency})
@@ -661,6 +759,15 @@ func (cs *checkout) shipOrder(ctx context.Context, address *pb.Address, items []
 }
 
 func (cs *checkout) sendToPostProcessor(ctx context.Context, result *pb.OrderResult) {
+	// Phòng thủ nhiều lớp: bootstrap đã fail-fast (xem main) nên producer không thể
+	// nil ở production. Vẫn guard để nếu có bug logic khiến producer nil thì degrade
+	// thành log lỗi ồn ào thay vì panic giữa đơn hàng (nguyên nhân outage 0010).
+	if cs.KafkaProducerClient == nil {
+		stderrLog.Error("order event KHONG duoc phat: Kafka producer nil")
+		logger.Error("order event KHONG duoc phat: Kafka producer nil")
+		return
+	}
+
 	message, err := proto.Marshal(result)
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to marshal message to protobuf: %+v", err))
@@ -691,6 +798,8 @@ func (cs *checkout) sendToPostProcessor(ctx context.Context, result *pb.OrderRes
 		)
 		span.SetStatus(otelcodes.Error, err.Error())
 		logger.Error(fmt.Sprintf("Failed to write message: %v", err))
+		// Không nuốt: tee ra stderr để lỗi produce hiện trong `kubectl logs` khi cutover.
+		stderrLog.Error(fmt.Sprintf("Failed to write order event to Kafka: %v", err))
 	} else {
 		span.SetAttributes(
 			attribute.Bool("messaging.kafka.producer.success", true),

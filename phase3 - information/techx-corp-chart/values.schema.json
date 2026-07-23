@@ -26,6 +26,12 @@
     "opentelemetry-collector": {
       "type": "object"
     },
+    "otelGateway": {
+      "type": "object"
+    },
+    "otel-node-agent": {
+      "type": "object"
+    },
     "jaeger": {
       "type": "object"
     },
@@ -397,12 +403,16 @@
         },
         "podSecurityContext": {
           "type": "object"
+        },
+        "resources": {
+          "$ref": "#/definitions/ContainerResources"
         }
       },
       "required": [
         "image",
         "schedulingRules",
-        "securityContext"
+        "securityContext",
+        "resources"
       ],
       "title": "Default"
     },
@@ -528,7 +538,8 @@
           "type": "string"
         },
         "digest": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
         },
         "pullPolicy": {
           "type": "string"
@@ -542,6 +553,7 @@
     },
     "ContainerResources": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "limits": {
           "$ref": "#/definitions/ContainerResourceDef"
@@ -549,10 +561,15 @@
         "requests": {
           "$ref": "#/definitions/ContainerResourceDef"
         }
-      }
+      },
+      "required": [
+        "limits",
+        "requests"
+      ]
     },
     "ContainerResourceDef": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "cpu": {
           "type": "string"
@@ -560,7 +577,11 @@
         "memory": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "cpu",
+        "memory"
+      ]
     },
     "SchedulingRules": {
       "title": "SchedulingRules",

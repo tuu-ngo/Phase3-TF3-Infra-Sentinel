@@ -2,10 +2,45 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-FROM apache/kafka:3.9.1
+FROM apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
 
 USER root
 ARG OTEL_JAVA_AGENT_VERSION
+
+# Keep the supported Alpine base current at build time. Kafka 4.3.1 is the
+# latest supported bug-fix release and contains the patched dependency set.
+RUN apk upgrade --no-cache
+
+# Kafka 4.3.1 predates the patched Jackson and Jetty patch levels. Replace only
+# the vulnerable jars and verify each Maven Central payload at build time.
+ADD --checksum=sha256:3888e9e69ab66fbacaacc9aea0e9ffbf15368288e4aca468b024dba11c09fbf9 \
+    https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.21.4/jackson-databind-2.21.4.jar \
+    /tmp/jackson-databind-2.21.4.jar
+ADD --checksum=sha256:4b40a06396f239f8de2da57419adde6e94e5edc18a2171d471ea05eeed4e5c2d \
+    https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.21.4/jackson-core-2.21.4.jar \
+    /tmp/jackson-core-2.21.4.jar
+ADD --checksum=sha256:e6fb70974291312c58ac84d8bf28c909d1800d1b3104020e7cd4db77391f9fb2 \
+    https://repo.maven.apache.org/maven2/org/eclipse/jetty/jetty-security/12.0.36/jetty-security-12.0.36.jar \
+    /tmp/jetty-security-12.0.36.jar
+
+# The broker does not expose JLine's optional Telnet server. Remove that module
+# (classes and Maven metadata) from the otherwise retained JLine CLI bundle.
+RUN apk add --no-cache zip \
+  && rm /opt/kafka/libs/jackson-databind-*.jar \
+  && rm /opt/kafka/libs/jackson-core-*.jar \
+  && rm /opt/kafka/libs/jetty-security-*.jar \
+  && mv /tmp/jackson-databind-2.21.4.jar \
+        /tmp/jackson-core-2.21.4.jar \
+        /tmp/jetty-security-12.0.36.jar \
+        /opt/kafka/libs/ \
+  && zip -q -d /opt/kafka/libs/jline-3.30.4.jar \
+       'org/jline/builtins/telnet/*' \
+       'META-INF/maven/org.jline/jline-remote-telnet/*' \
+  && apk del zip \
+  && chown appuser:appuser /opt/kafka/libs/jackson-databind-2.21.4.jar \
+                           /opt/kafka/libs/jackson-core-2.21.4.jar \
+                           /opt/kafka/libs/jetty-security-12.0.36.jar \
+                           /opt/kafka/libs/jline-3.30.4.jar
 
 USER appuser
 
