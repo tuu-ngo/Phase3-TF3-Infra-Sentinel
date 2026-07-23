@@ -96,9 +96,76 @@ Residual risks:
 - Items handed off to another owner.
 ```
 
-## 4. Read-only inventory before action
+## 4. Current cutdown snapshot
 
-### 4.1. EBS volumes
+Snapshot này là baseline live đã kiểm tra bằng AWS CLI read-only trong account `197826770971`, region `ap-southeast-1`, ngày 2026-07-23. Trước khi cleanup thật, phải chạy lại các lệnh inventory ở phần sau vì hạ tầng thay đổi nhanh.
+
+| Nhóm | Snapshot hiện tại | Cutdown candidate | Evidence để pass |
+|---|---|---|---|
+| EBS `available` | 3 volume `gp2`, tổng 6GiB, có tag PVC cũ `valkey-cart`, `kafka-data`, `postgresql-data` | Có, candidate rõ nhất | Verify không còn PV/PVC/workload live, approval owner, delete sau approval, after evidence volume not found |
+| EIP unattached | Không thấy; EIP `13.213.127.91` đang gắn NAT | Không | Screenshot/CLI chứng minh EIP có `AssociationId` |
+| Snapshot self-owned | 0 | Không | CLI count/output bằng 0 |
+| AMI self-owned | 0 | Không | CLI count/output bằng 0 |
+| ALB/TG orphan | 1 internal ALB `techx-tf3-frontend-internal`, 1 TG attached | Không thấy orphan | CLI chứng minh TG có attached ALB |
+| NAT | 1 public NAT `nat-0b963ceaf95a7817f` | Không cleanup ngay | Decision record: NAT còn phục vụ private egress, chỉ tối ưu khi có route/endpoint analysis |
+| VPC endpoints | S3 Gateway + 5 Interface endpoints x 3 subnets | Có thể là optimization candidate | Decision record endpoint-hour vs NAT data, không phá SSM/ECR/private access |
+| S3 lifecycle | Audit trail 30 ngày, sosflow ALB logs 7 ngày, bucket khác cần owner | Có owner-matrix candidate | Bucket owner matrix, lifecycle hoặc lý do giữ lại |
+| CloudWatch | EKS cluster log retention 90 ngày, stored ~4.38GB; audit Lambda 14 ngày | Không cắt mù audit | Decision record giữ audit log; nếu tối ưu phải nhắm ingestion/cardinality/sampling |
+
+### 4.1. Candidate cutdown đang rõ nhất
+
+Ba EBS volume sau là mũi có thể làm evidence nhanh nhất, vì chúng đang `available`, không attach instance nào, tổng 6GiB `gp2`:
+
+| Volume | AZ | Type | Size | PVC tag | PV tag |
+|---|---|---|---|---|---|
+| `vol-05d59d76c58a9d835` | `ap-southeast-1a` | `gp2` | 1GiB | `valkey-cart` | `pvc-564c4984-9b3e-488d-8b0a-7db0806a2edd` |
+| `vol-0a22f104910589929` | `ap-southeast-1b` | `gp2` | 3GiB | `kafka-data` | `pvc-3d2172ad-7068-4302-85e1-990195aafc9e` |
+| `vol-0f4b0c53ef8091d52` | `ap-southeast-1a` | `gp2` | 2GiB | `postgresql-data` | `pvc-65777d66-5c41-4186-80b7-a0931167a634` |
+
+Pass evidence tối thiểu cho mũi này:
+
+1. Before CLI/console cho thấy 3 volume ở trạng thái `available`.
+2. `kubectl get pv,pvc -A` và `kubectl -n techx-tf3 get pods -o wide` cho thấy không còn workload/PVC live phụ thuộc các PV/PVC tag đó.
+3. Có approval owner để cleanup.
+4. Sau cleanup, `describe-volumes --volume-ids ...` trả `InvalidVolume.NotFound` hoặc console không còn volume.
+5. Grafana/SLO và kubectl events không có regression sau cleanup.
+
+Nếu không có kubectl hoặc không verify được PV/PVC, không được xóa. Ghi `NO-GO` và để candidate ở trạng thái pending evidence.
+
+### 4.2. Candidate lớn hơn nhưng cần decision, không cleanup vội
+
+VPC Interface endpoints là mũi cost lớn hơn EBS nhưng rủi ro hơn. Snapshot hiện có 5 interface endpoints, mỗi endpoint gắn 3 subnet:
+
+- ECR DKR
+- ECR API
+- SSM
+- EC2 Messages
+- SSM Messages
+
+Theo cost breakdown hiện có, nhóm này ước tính khoảng `$32.8/tuần`. Tuy nhiên endpoint này có thể đang giữ cho ECR image pull và SSM/kubectl tunnel hoạt động trong private network. Vì vậy evidence pass ở đây không nhất thiết là xóa endpoint; pass tốt hơn là một decision record có số:
+
+- NAT data processing hiện thấp hay cao?
+- endpoint-hour đang tốn bao nhiêu?
+- endpoint nào là bắt buộc cho vận hành private?
+- nếu thu hẹp endpoint theo AZ hoặc bỏ endpoint, rollback thế nào?
+
+Không tối ưu VPC endpoint bằng tay trong lúc chưa có rollout plan, vì lỗi có thể làm mất đường vận hành hoặc image pull.
+
+### 4.3. Candidate không nên cắt bừa
+
+CloudWatch EKS audit log đang là cost driver do ingestion, nhưng cũng là dữ liệu điều tra cho Mandate 11/12 và incident response. Không nên claim Mandate 18 bằng cách tắt audit log.
+
+Pass evidence hợp lý:
+
+- ghi rõ retention hiện tại: `/aws/eks/techx-corp-tf3/cluster` retention 90 ngày, stored khoảng 4.38GB;
+- ghi rõ vì sao không tắt audit log;
+- nếu muốn tối ưu telemetry, đề xuất nhắm vào nguồn ingestion/cardinality/sampling thay vì làm mù audit.
+
+S3 bucket cũng không nên bị apply lifecycle chung. Bucket audit trail đã có lifecycle 30 ngày, `sosflow-alb-logs` có 7 ngày, bucket tfstate không được xóa current object. Các bucket AIO/SOSFlow/Tokyo phải phân owner trước.
+
+## 5. Read-only inventory before action
+
+### 5.1. EBS volumes
 
 Liệt kê EBS volumes đang `available`:
 
@@ -141,7 +208,7 @@ Saving nếu confirmed orphan và cleanup:
 
 Số tiền nhỏ, nhưng evidence đúng mandate vì giảm được `6 GiB-month` orphan storage.
 
-### 4.2. Verify EBS candidate không còn PV/PVC live
+### 5.2. Verify EBS candidate không còn PV/PVC live
 
 Chỉ cần chạy nếu kubectl đang vào được cluster:
 
@@ -171,7 +238,7 @@ Nếu thiếu một điều kiện, ghi:
 NO-GO: volume is not proven orphan yet.
 ```
 
-### 4.3. EIP unattached
+### 5.3. EIP unattached
 
 ```powershell
 aws ec2 describe-addresses `
@@ -193,7 +260,7 @@ EIP 13.213.127.91 đang gắn với NAT Gateway
 Không thấy EIP unattached
 ```
 
-### 4.4. Snapshot và AMI self-owned
+### 5.4. Snapshot và AMI self-owned
 
 ```powershell
 aws ec2 describe-snapshots `
@@ -219,7 +286,7 @@ Evidence pass:
 
 Snapshot 2026-07-23: chưa thấy self-owned snapshot/AMI trong `ap-southeast-1`.
 
-### 4.5. Load balancer và target group orphan
+### 5.5. Load balancer và target group orphan
 
 ```powershell
 aws elbv2 describe-load-balancers `
@@ -260,7 +327,7 @@ Target group: k8s-techxtf3-frontend-a9095982ec, attached to ALB
 Không thấy LB/TG orphan rõ ràng
 ```
 
-### 4.6. NAT gateway và VPC endpoints
+### 5.6. NAT gateway và VPC endpoints
 
 ```powershell
 aws ec2 describe-nat-gateways `
@@ -303,7 +370,7 @@ Decision cần ghi rõ:
 - với ECR/SSM interface endpoints, phải cân giữa chi phí endpoint-hour và nhu cầu private ECR pull/SSM tunnel;
 - nếu thu hẹp endpoint hoặc NAT, phải có rollback plan và cửa sổ quan sát.
 
-### 4.7. S3 lifecycle và owner matrix
+### 5.7. S3 lifecycle và owner matrix
 
 Liệt kê bucket:
 
@@ -347,7 +414,7 @@ Evidence pass:
 
 Không đặt lifecycle xóa current object của Terraform state. Nếu cần giảm tfstate storage, chỉ cân nhắc noncurrent version lifecycle sau approval.
 
-### 4.8. CloudWatch logs và telemetry
+### 5.8. CloudWatch logs và telemetry
 
 Liệt kê log group:
 
@@ -388,7 +455,7 @@ Evidence pass:
 - audit log được giữ có lý do rõ;
 - Grafana/Jaeger/CloudTrail vẫn đủ điều tra incident sau tối ưu.
 
-### 4.9. Top non-compute cost drivers
+### 5.9. Top non-compute cost drivers
 
 Cost Explorer chỉ để tham khảo vì account có credit. Dùng usage/cost breakdown chưa trừ credit nếu có.
 
@@ -415,7 +482,7 @@ Các nguồn đã có trong `docs/cost-breakdown-2026-07-22.md`:
 - CloudWatch EKS logs tốn do ingestion, không phải do retention storage;
 - AOSS/AI hoặc stack ngoài Phase 3 cần owner trước khi cleanup.
 
-## 5. Action gate trước khi cleanup hoặc optimize
+## 6. Action gate trước khi cleanup hoặc optimize
 
 Trước khi chạy bất kỳ lệnh thay đổi nào, phải có:
 
@@ -427,7 +494,7 @@ Trước khi chạy bất kỳ lệnh thay đổi nào, phải có:
 
 Các lệnh dưới đây là ví dụ để owner chạy sau approval, không chạy trong bước inventory.
 
-### 5.1. Delete EBS orphan sau approval
+### 6.1. Delete EBS orphan sau approval
 
 ```powershell
 # Chỉ chạy sau khi PV/PVC/workload đã verify không còn dùng.
@@ -453,7 +520,7 @@ Expected:
 - volume không còn tồn tại; hoặc
 - API trả `InvalidVolume.NotFound`.
 
-### 5.2. Release EIP unattached sau approval
+### 6.2. Release EIP unattached sau approval
 
 ```powershell
 # Chỉ chạy nếu EIP không có AssociationId và owner xác nhận cleanup.
@@ -465,7 +532,7 @@ aws ec2 release-address `
   --allocation-id $AllocationId
 ```
 
-### 5.3. Lifecycle S3 sau approval
+### 6.3. Lifecycle S3 sau approval
 
 Không áp dụng chung cho mọi bucket. Mỗi bucket cần lifecycle riêng theo owner.
 
@@ -488,7 +555,7 @@ Ví dụ chỉ minh họa:
 
 Không dùng rule này để xóa current Terraform state.
 
-## 6. SLO và vận hành sau cleanup
+## 7. SLO và vận hành sau cleanup
 
 Sau cleanup/optimization, theo dõi ít nhất 30-60 phút nếu action có thể ảnh hưởng runtime hoặc đường vận hành.
 
@@ -511,22 +578,39 @@ Dashboard cần kiểm:
 
 Nếu SLO tụt hoặc mất observability, rollback hoặc mở incident. Không claim Mandate 18 done khi hệ thống bị mù vận hành.
 
-## 7. Checklist evidence done
+## 8. Checklist evidence done
 
 Mandate 18 có thể coi là có evidence tốt khi có đủ:
 
-- [ ] before inventory EBS/EIP/snapshot/AMI/LB/TG;
-- [ ] before inventory NAT/VPC endpoint;
-- [ ] before inventory S3 lifecycle và owner matrix;
-- [ ] before inventory CloudWatch/telemetry retention;
-- [ ] top non-compute cost-driver được chỉ ra;
+- [ ] scope ghi rõ: non-compute hidden cost, không đếm trùng Mandate 13;
+- [ ] before inventory EBS/EIP/snapshot/AMI/LB/TG có timestamp;
+- [ ] before inventory NAT/VPC endpoint có timestamp;
+- [ ] before inventory S3 lifecycle và owner matrix có timestamp;
+- [ ] before inventory CloudWatch/telemetry retention có timestamp;
+- [ ] top non-compute cost-driver được chỉ ra bằng usage/cost breakdown;
+- [ ] với EBS candidate: đã verify PV/PVC/workload live trước khi delete;
+- [ ] với NAT/VPC endpoint: có decision record endpoint-hour vs NAT data, không làm mất private access;
+- [ ] với S3: bucket có owner, không đụng tfstate current object, audit trail có lý do retention;
+- [ ] với CloudWatch: giữ auditability hoặc có kế hoạch giảm ingestion không làm mù hệ thống;
 - [ ] ít nhất một cleanup/optimization thật hoặc decision record giữ lại có lý do;
-- [ ] after inventory chứng minh resource/usage đã giảm;
+- [ ] after inventory chứng minh resource/usage đã giảm hoặc lý do không cleanup;
 - [ ] SLO/observability sau action vẫn ổn;
-- [ ] phần compute node cost được loại khỏi scope để không đếm trùng Mandate 13;
 - [ ] residual risk và owner handoff được ghi rõ.
 
-## 8. Mẫu kết luận cho PR/Jira/mentor
+### 8.1. Checklist pass theo từng nhóm tài nguyên
+
+| Nhóm | Pass khi nào? | Fail khi nào? |
+|---|---|---|
+| EBS orphan | Không còn volume `available` không owner, hoặc còn nhưng có ticket/NO-GO rõ | Xóa volume khi chưa verify PV/PVC; còn volume orphan nhưng không giải thích |
+| EIP | Không có EIP unattached, hoặc đã release sau approval | Có EIP unattached tính tiền mà không owner |
+| Snapshot/AMI | Không có snapshot/AMI rác, hoặc có lifecycle/owner | Snapshot/AMI giữ vô hạn không owner |
+| LB/TG | Không có LB/TG orphan, TG đều attached hoặc có lý do | TG/LB không dùng vẫn tính tiền |
+| NAT/VPC endpoint | Có analysis usage và decision giữ/cắt rõ | Cắt endpoint/NAT làm mất private ops hoặc không có số liệu |
+| S3 | Bucket owned có lifecycle hoặc lý do giữ; bucket out-of-scope có handoff | Apply lifecycle bừa, đụng tfstate/audit sai |
+| Telemetry | Retention hữu hạn, auditability còn, ingestion/cardinality có hướng kiểm soát | Tắt log/trace làm mù điều tra |
+| SLO | Dashboard/kubectl/events sau action ổn | Cleanup làm tụt SLO hoặc mất observability |
+
+## 9. Mẫu kết luận cho PR/Jira/mentor
 
 ```text
 Mandate 18 tập trung hidden cost ngoài EC2 node compute.
@@ -555,7 +639,7 @@ Guardrail:
 - SLO và observability sau action vẫn ổn
 ```
 
-## 9. Câu trả lời oral ngắn
+## 10. Câu trả lời oral ngắn
 
 Nếu bị hỏi "Mandate 18 khác gì Mandate 13?":
 
