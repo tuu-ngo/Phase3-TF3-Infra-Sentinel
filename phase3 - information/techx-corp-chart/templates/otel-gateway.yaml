@@ -3,6 +3,54 @@
 {{- $collectorConfig := index .Values "opentelemetry-collector" "config" }}
 ---
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-gateway
+  labels:
+    helm.sh/chart: {{ include "techx-corp.chart" . }}
+    app.kubernetes.io/name: otel-gateway
+    app.kubernetes.io/component: otel-gateway
+    app.kubernetes.io/part-of: techx-corp
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-gateway
+  labels:
+    helm.sh/chart: {{ include "techx-corp.chart" . }}
+    app.kubernetes.io/name: otel-gateway
+    app.kubernetes.io/component: otel-gateway
+    app.kubernetes.io/part-of: techx-corp
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-gateway
+  labels:
+    helm.sh/chart: {{ include "techx-corp.chart" . }}
+    app.kubernetes.io/name: otel-gateway
+    app.kubernetes.io/component: otel-gateway
+    app.kubernetes.io/part-of: techx-corp
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-gateway
+subjects:
+  - kind: ServiceAccount
+    name: otel-gateway
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: otel-gateway
@@ -97,7 +145,7 @@ spec:
         app.kubernetes.io/part-of: techx-corp
         opentelemetry.io/name: otel-gateway
     spec:
-      serviceAccountName: {{ $gateway.serviceAccountName | default "otel-collector" }}
+      serviceAccountName: {{ $gateway.serviceAccountName | default "otel-gateway" }}
       terminationGracePeriodSeconds: {{ $gateway.terminationGracePeriodSeconds | default 45 }}
       securityContext:
         {{- toYaml $gateway.podSecurityContext | nindent 8 }}

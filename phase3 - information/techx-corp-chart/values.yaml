@@ -1259,6 +1259,7 @@ opentelemetry-collector:
             insecure: true
 
     processors:
+      batch: {}
       memory_limiter:
         check_interval: 5s
         limit_percentage: 80
@@ -1337,7 +1338,7 @@ otelGateway:
   replicas: 2
   minReadySeconds: 15
   revisionHistoryLimit: 5
-  serviceAccountName: otel-collector
+  serviceAccountName: otel-gateway
   terminationGracePeriodSeconds: 45
   image:
     repository: "otel/opentelemetry-collector-contrib"
