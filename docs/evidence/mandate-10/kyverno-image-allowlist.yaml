@@ -1,0 +1,28 @@
+schemaVersion: 1
+purpose: kyverno-controller-images
+chart: kyverno
+chartVersion: 3.8.2
+appVersion: v1.18.2
+images:
+  - image: reg.kyverno.io/kyverno/kyverno:v1.18.2@sha256:0a540e2ddf74d0d2d3d45f9ef248d7dbc96576accdbcc6a2dd7eaff9fea56504
+    components:
+      - admission-controller
+  - image: reg.kyverno.io/kyverno/kyvernopre:v1.18.2@sha256:cd8cb4a31d25b3992734fb8f24a90ef691c90ce49338c89bea96792160eacb98
+    components:
+      - admission-controller.init
+  - image: reg.kyverno.io/kyverno/background-controller:v1.18.2@sha256:d62566ce41bd0d4a32bf2cf44b9ebfc02c36374f821f83070890287f62f68671
+    components:
+      - background-controller
+  - image: reg.kyverno.io/kyverno/reports-controller:v1.18.2@sha256:f09cf305170014e191b94e1c54f5be73163d8824eefad49349675c4efe43159a
+    components:
+      - reports-controller
+  - image: reg.kyverno.io/kyverno/cleanup-controller:v1.18.2@sha256:b0395d29ae332276e6910eb40418be9bc127c068d659f90aa1bcddd6be99ccb4
+    components:
+      - cleanup-controller
+  - image: reg.kyverno.io/kyverno/kyverno-cli:v1.18.2@sha256:7224ed05508c24419c3df98114c28ba682ad0a940dcdb7b9fdba0a4b6bf943cf
+    components:
+      - crds-migration-hook
+  - image: ghcr.io/kyverno/readiness-checker:v1.18.2@sha256:4fb1870b1a4adfed0fa7a32b7c3bcaf736fb889c7e1947ee8b20710bc2f5a5ce
+    components:
+      - helm-test
+      - webhook-cleanup-hook

@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log/global"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -618,7 +620,12 @@ func (cs *checkout) emptyUserCart(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (cs *checkout) prepOrderItems(ctx context.Context, items []*pb.CartItem, userCurrency string) ([]*pb.OrderItem, error) {
+func (cs *checkout) prepOrderItems(
+	ctx context.Context,
+	items []*pb.CartItem,
+	userCurrency string,
+) ([]*pb.OrderItem, error) {
+
 	out := make([]*pb.OrderItem, len(items))
 	errCh := make(chan error, len(items))
 	var wg sync.WaitGroup

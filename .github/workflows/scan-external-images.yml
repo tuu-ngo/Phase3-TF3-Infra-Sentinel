@@ -9,25 +9,22 @@ on:
 permissions:
   contents: read
 
-env:
-  # Pinned production digests copied from docs/release-notes-v1.md.
-  # These images are owned by upstream projects, so TF3 must not claim a
-  # first-party Cosign signature for them.
-  EXTERNAL_IMAGES: >-
-    docker.io/library/postgres@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
-    docker.io/grafana/grafana@sha256:0f86bada30d65ef9d0183b90c1e2682ac92d53d95da8bed322b984ea78a4a73a
-    docker.io/jaegertracing/jaeger@sha256:6266573208d665ce5c17483bce0a75d0806480d92c84766d288d0aee885ce708
-    docker.io/opensearchproject/opensearch@sha256:b5dd1512af2a99748c942cfbbd7f32162623336b210667d0fc6333c6321f171d
-    quay.io/prometheus/prometheus@sha256:c0b857aead0d5793aa566adb8f49a9983d6f6031652098759d521a330cfa050f
-    docker.io/otel/opentelemetry-collector-contrib@sha256:d57bfe8eee2378f31cb1193239fbcac521d54a5a071fca2bfc106916a32b892d
-    docker.io/valkey/valkey@sha256:c106a0c03bcb23cbdf9febe693114cb7800646b11ca8b303aee7409de005faa8
-    ghcr.io/open-feature/flagd@sha256:e6cca86b29629a06806aa7954b4a9b5f291c30839c6ae4f815dc4ddcee4a0746
-
 jobs:
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Checkout catalog
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install catalog parser
+        run: python -m pip install --disable-pip-version-check --no-cache-dir PyYAML==6.0.2
+
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@v0.3.1
 
@@ -35,7 +32,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p external-trivy-reports
-          for image in $EXTERNAL_IMAGES; do
+          mapfile -t external_images < <(
+            python scripts/ci/read-external-image-catalog.py \
+              --allowlist docs/evidence/mandate-10/external-image-allowlist.yaml
+          )
+          [ "${#external_images[@]}" -gt 0 ] || {
+            echo "FAIL: external catalog produced no scan inputs" >&2
+            exit 1
+          }
+          for image in "${external_images[@]}"; do
             name=$(echo "$image" | sed 's#^[^/]*/##; s#[/:@]#-#g')
             report="external-trivy-reports/${name}.json"
             echo "Reviewing $image"

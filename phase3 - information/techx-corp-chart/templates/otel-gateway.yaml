@@ -101,15 +101,32 @@ spec:
       terminationGracePeriodSeconds: {{ $gateway.terminationGracePeriodSeconds | default 45 }}
       securityContext:
         {{- toYaml $gateway.podSecurityContext | nindent 8 }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: otel-gateway
-                topologyKey: kubernetes.io/hostname
+      # Mandate 13 elastic (batch 3, last/riskiest): opt-in NodePool flash-sale-spot
+      # + hard spread ca hostname va zone (minDomains:2), thay podAntiAffinity mem
+      # cu - cung pattern da fix o batch 1 (PR #319). otel-gateway khong dung co
+      # che schedulingRules chung (template rieng), nen sua truc tiep o day.
+      nodeSelector:
+        techx.io/workload: elastic
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: elastic
+          effect: NoSchedule
+      topologySpreadConstraints:
+        - maxSkew: 1
+          minDomains: 2
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-gateway
+        - maxSkew: 1
+          minDomains: 2
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-gateway
       containers:
         - name: opentelemetry-collector
           image: "{{ $gateway.image.repository }}:{{ $gateway.image.tag }}"

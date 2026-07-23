@@ -1,0 +1,76 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-first-party-signatures
+  annotations:
+    policies.kyverno.io/title: Verify TechX first-party signatures and SBOMs
+    policies.kyverno.io/category: Mandate 10 Secure Delivery
+    policies.kyverno.io/severity: high
+    pod-policies.kyverno.io/autogen-controllers: Deployment,DaemonSet,StatefulSet,Job,CronJob,ReplicaSet,ReplicationController
+spec:
+  validationFailureAction: Audit
+  background: true
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-techx-main-workflow-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - techx-tf3
+              operations:
+                - CREATE
+                - UPDATE
+      verifyImages:
+        - imageReferences:
+            - "197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp@sha256:*"
+          required: true
+          mutateDigest: false
+          verifyDigest: true
+          imageRegistryCredentials:
+            providers:
+              - amazon
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: >-
+                      https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/.github/workflows/build-push-ecr.yml@refs/heads/main
+                    issuer: https://token.actions.githubusercontent.com
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          attestations:
+            - type: https://cyclonedx.org/bom
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        subject: >-
+                          https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/.github/workflows/build-push-ecr.yml@refs/heads/main
+                        issuer: https://token.actions.githubusercontent.com
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ bomFormat }}"
+                      operator: Equals
+                      value: CycloneDX
+                    - key: "{{ length(components) }}"
+                      operator: GreaterThan
+                      value: 0
+                    - key: "{{ metadata.properties[?name == 'techx.platform'].value | [0] }}"
+                      operator: AnyIn
+                      value:
+                        - linux/amd64
+                        - linux/arm64
+                    - key: "{{ regex_match('^sha256:[0-9a-f]{64}$', metadata.properties[?name == 'techx.subjectDigest'].value | [0]) }}"
+                      operator: Equals
+                      value: true
+                    - key: "{{ metadata.properties[?name == 'techx.indexDigest'].value | [0] }}"
+                      operator: Equals
+                      value: "{{ image.digest }}"
+                    - key: "{{ regex_match('^[0-9a-f]{40}$', metadata.properties[?name == 'techx.sourceSha'].value | [0]) }}"
+                      operator: Equals
+                      value: true
