@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out untrusted PR source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out untrusted PR source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out untrusted PR source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
@@ -130,6 +130,18 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+  immutable_dependencies:
+    name: Immutable dependency pins
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out untrusted PR source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Verify immutable workflow pins
+        run: python3 scripts/ci/verify-immutable-pins.py --workflows
+
   secure_delivery_gate:
     name: Secure delivery gate
     if: ${{ always() }}
@@ -137,6 +149,7 @@ jobs:
       - iac_misconfiguration
       - secret_scan
       - sast
+      - immutable_dependencies
     runs-on: ubuntu-latest
     steps:
       - name: Publish aggregate verdict
@@ -144,6 +157,7 @@ jobs:
           IAC_RESULT: ${{ needs.iac_misconfiguration.result }}
           SECRET_RESULT: ${{ needs.secret_scan.result }}
           SAST_RESULT: ${{ needs.sast.result }}
+          IMMUTABLE_RESULT: ${{ needs.immutable_dependencies.result }}
         run: |
           set -euo pipefail
           {
@@ -154,13 +168,15 @@ jobs:
             echo "| IaC misconfiguration | $IAC_RESULT |"
             echo "| Repository secret scan | $SECRET_RESULT |"
             echo "| SAST | $SAST_RESULT |"
+            echo "| Immutable dependency pins | $IMMUTABLE_RESULT |"
             echo ""
             echo "This is a read-only pre-merge/pre-ECR-push gate; ECR scan-on-push is not used as merge evidence."
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$IAC_RESULT" != "success" || \
                 "$SECRET_RESULT" != "success" || \
-                "$SAST_RESULT" != "success" ]]; then
+                "$SAST_RESULT" != "success" || \
+                "$IMMUTABLE_RESULT" != "success" ]]; then
             echo "One or more PM-126 controls failed, were cancelled, or were skipped." >&2
             exit 1
           fi
