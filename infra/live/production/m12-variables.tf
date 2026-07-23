@@ -51,13 +51,21 @@ variable "audit_detection_bounded_principals" {
   }
 }
 
+# Bài tập kết thúc 31/07/2026 và account là của owner cá nhân, nên giữ WORM 365
+# ngày là bắt owner trả tiền lưu trữ suốt một năm sau khi không còn ai dùng.
+# 14 ngày phủ hết cửa sổ demo/nghiệm thu mà vẫn không rút ngắn được.
+#
+# Giữ COMPLIANCE (không hạ xuống GOVERNANCE): claim của mandate là "kể cả root
+# cũng không xoá được", và 4 IAM user đều AdministratorAccess nên GOVERNANCE
+# chỉ là WORM trên danh nghĩa. Rút ngắn thời hạn không làm mất claim đó; đổi
+# mode thì mất.
 variable "audit_detection_trail_object_lock_days" {
-  description = "Mandate 12: số ngày Object Lock cho object CloudTrail mới. Mandate yêu cầu tối thiểu 365."
+  description = "Mandate 12: số ngày Object Lock cho object CloudTrail mới. Đặt theo vòng đời bài tập, không phải theo chuẩn lưu trữ dài hạn."
   type        = number
-  default     = 365
+  default     = 14
 
   validation {
-    condition     = var.audit_detection_trail_object_lock_days >= 365
-    error_message = "Mandate 12 requires at least 365 days of Object Lock retention."
+    condition     = var.audit_detection_trail_object_lock_days >= 1
+    error_message = "audit_detection_trail_object_lock_days must be positive."
   }
 }

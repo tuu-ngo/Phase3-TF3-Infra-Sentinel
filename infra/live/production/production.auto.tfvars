@@ -64,12 +64,18 @@ audit_detection_additional_allowed_automation_principal_arns = [
   "arn:aws:iam::197826770971:user/gitlab-ci-deployer",
 ]
 
-# Mandate 12 — retention.
-# Lifecycle (400) phải DÀI HƠN Object Lock (365): object bị Compliance-lock
-# không xoá được, lifecycle ngắn hơn sẽ fail âm thầm. Module có precondition
-# chặn cấu hình sai. Lưu ý: 400 ngày áp cho CẢ object hiện có chưa bị xoá, nên
-# dung lượng lưu trữ tăng ngay sau apply — cần cost approval trước.
-audit_detection_trail_s3_retention_days = 400
+# Mandate 12 — retention. Bài tập kết thúc 31/07/2026, account của owner cá nhân,
+# nên cả hai con số đặt theo vòng đời bài tập: Object Lock COMPLIANCE 14 ngày
+# (xem m12-variables.tf), lifecycle 30 ngày — đúng giá trị M11 đang chạy.
+#
+# Lifecycle phải DÀI HƠN Object Lock: object còn bị lock thì lifecycle không xoá
+# được và S3 để rule fail âm thầm. Module có precondition chặn cấu hình sai.
+#
+# KHÔNG bỏ lifecycle. Lifecycle chính là thứ xoá object; bỏ nó đi thì log giữ
+# vĩnh viễn và hoá đơn tăng chứ không giảm. Nó cũng là đường dọn dẹp duy nhất:
+# hết 14 ngày lock, object hết hạn ở ngày 30, bucket rỗng rồi mới xoá được.
+# Heartbeat cũng đọc lifecycle như một invariant, không có là FAIL.
+audit_detection_trail_s3_retention_days = 30
 
 # Mandate 12 — S3 data events.
 #
