@@ -1,0 +1,29 @@
+# MSK (managed) — consumer group + LAG
+# Thoi diem do: 2026-07-21T15:41:33Z UTC
+# Mong doi: accounting + fraud-detection, topic orders, CURRENT-OFFSET == LOG-END-OFFSET (LAG=0)
+
+=== MSK consumer groups ===
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                  HOST            CLIENT-ID
+accounting      orders          0          7703            7703            0               rdkafka-6e95bf35-b5d7-467a-9df6-ad9d38b25c79 /10.0.47.62     rdkafka
+
+
+accounting      orders          1          7610            7610            0               rdkafka-6e95bf35-b5d7-467a-9df6-ad9d38b25c79 /10.0.47.62     rdkafka
+accounting      orders          2          7566            7566            0               rdkafka-6e95bf35-b5d7-467a-9df6-ad9d38b25c79 /10.0.47.62     rdkafka
+
+GROUP                            TOPIC               PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+
+GROUP                            TOPIC               PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+
+
+GROUP                            TOPIC               PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                                     HOST            CLIENT-ID
+fraud-detection orders          0          7703            7703            0               consumer-fraud-detection-1-e98c17e9-acb3-49eb-bbd5-92d986254a2b /10.0.26.137    consumer-fraud-detection-1
+fraud-detection orders          1          7610            7610            0               consumer-fraud-detection-1-e98c17e9-acb3-49eb-bbd5-92d986254a2b /10.0.26.137    consumer-fraud-detection-1
+fraud-detection orders          2          7566            7566            0               consumer-fraud-detection-1-e98c17e9-acb3-49eb-bbd5-92d986254a2b /10.0.26.137    consumer-fraud-detection-1
+=== MSK orders offset ===
+orders:0:7704
+orders:1:7610
+orders:2:7568
+DONE
