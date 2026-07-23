@@ -4,7 +4,26 @@ Chào anh em CDO,
 
 Bên AIO/AIE1 đã hoàn thành nâng cấp dịch vụ `product-reviews` kết nối trực tiếp với AWS Bedrock, đồng thời hoàn thiện hệ thống Caching 2 tầng, bộ điều khiển sự cố (Actuator) phục vụ kịch bản Closed-Loop Mitigation.
 
+> [!WARNING]
+> **LƯU Ý QUAN TRỌNG KHI MERGE CODE (TRÁNH XOÁ MẤT CODE CÁC DỊCH VỤ KHÁC):**
+> 
+> Nhánh `feature/product-review` đã được tối giản hóa bằng việc xóa các thư mục của 16 dịch vụ khác để thuận tiện phát triển dịch vụ `product-reviews`. Do đó, **KHÔNG MERGE TRỰC TIẾP** nhánh này vào `main` vì sẽ gây xung đột và xóa mất code các dịch vụ khác trên `main`.
+> 
+> **Cách merge an toàn (chỉ lấy thay đổi của product-reviews & hạ tầng):**
+> ```bash
+> git checkout main
+> git pull origin main
+> git checkout feature/product-review -- "phase3 - information/techx-corp-platform/src/product-reviews/"
+> git checkout feature/product-review -- "phase3 - information/deploy/values-aio-llm.yaml"
+> git checkout feature/product-review -- "infra/iam.tf" "infra/outputs.tf"
+> git checkout feature/product-review -- "CDO_DEPLOYMENT_MESSAGE.md"
+> git add .
+> git commit -m "feat: deploy bigupdate product-reviews from AIE1 (caching, actuator, IRSA)"
+> git push origin main
+> ```
+
 Dưới đây là các đầu việc chi tiết nhờ anh em CDO hỗ trợ triển khai khi deploy phiên bản mới này lên EKS:
+
 
 ### 1. Database Migration (Quan trọng - thực hiện trước khi deploy app):
 * Dịch vụ cần bổ sung cấu trúc dữ liệu mới để lọc review sạch. Nhờ anh em chạy tệp migration:
