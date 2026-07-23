@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { context, trace } from '@opentelemetry/api';
 import InstrumentationMiddleware from '../../utils/telemetry/InstrumentationMiddleware';
 import RecommendationsGateway from '../../gateways/rpc/Recommendations.gateway';
 import { Empty, Product } from '../../protos/demo';
@@ -28,10 +29,18 @@ const handler = async ({ method, query }: NextApiRequest, res: NextApiResponse<T
         const recommendedProductList = settled.flatMap(result =>
           result.status === 'fulfilled' ? [result.value] : []
         );
+        // Mark a PARTIAL degrade so a product-catalog/currency timeout (layer 2) stays
+        // observable at the API layer even though the route returns 200.
+        const dropped = settled.length - recommendedProductList.length;
+        if (dropped > 0) {
+          trace.getSpan(context.active())?.setAttribute('app.recommendations.dropped', dropped);
+        }
         return res.status(200).json(recommendedProductList);
       } catch (error) {
         // Recommendation service itself down/slow → degrade to no recommendations
-        // (200 + empty). Non-critical enrichment must not 5xx the page.
+        // (200 + empty). Non-critical enrichment must not 5xx the page. Mark the route
+        // span so 5xx-based alerts still see the degrade.
+        trace.getSpan(context.active())?.setAttribute('app.recommendations.degraded', true);
         console.warn('api/recommendations: degraded to none —', (error as Error)?.message);
         return res.status(200).json([]);
       }
