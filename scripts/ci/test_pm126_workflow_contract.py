@@ -42,11 +42,11 @@ class SecureDeliveryWorkflowContractTests(unittest.TestCase):
             "docker push",
         ):
             self.assertNotIn(forbidden, WORKFLOW_TEXT.lower())
-        self.assertEqual(WORKFLOW_TEXT.count("persist-credentials: false"), 3)
+        self.assertEqual(WORKFLOW_TEXT.count("persist-credentials: false"), 4)
 
     def test_all_external_actions_and_scanner_images_are_immutable(self):
         action_refs = re.findall(r"^\s*uses:\s*([^\s#]+)", WORKFLOW_TEXT, re.MULTILINE)
-        self.assertEqual(len(action_refs), 6)
+        self.assertEqual(len(action_refs), 7)
         for action_ref in action_refs:
             self.assertRegex(action_ref, r"^[^@]+@[0-9a-f]{40}$")
         scanner_refs = re.findall(

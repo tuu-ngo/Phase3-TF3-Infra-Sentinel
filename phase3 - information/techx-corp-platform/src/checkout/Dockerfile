@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-FROM golang:1.26.5-bookworm AS builder
+FROM golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651 AS builder
 
 WORKDIR /usr/src/app/
 
@@ -21,7 +21,7 @@ RUN go mod tidy
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-s -w" -o checkout main.go
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35
 
 WORKDIR /usr/src/app/
 

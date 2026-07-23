@@ -1,0 +1,55 @@
+origin/main:phase3 - information/techx-corp-platform/src/accounting/Dockerfile:4:FROM --platform=${BUILDPLATFORM} mcr.microsoft.com/dotnet/sdk:10.0 AS builder
+origin/main:phase3 - information/techx-corp-platform/src/accounting/Dockerfile:17:FROM builder AS publish
+origin/main:phase3 - information/techx-corp-platform/src/accounting/Dockerfile:24:FROM mcr.microsoft.com/dotnet/aspnet:10.0
+origin/main:phase3 - information/techx-corp-platform/src/ad/Dockerfile:5:FROM --platform=${BUILDPLATFORM} eclipse-temurin:21-jdk AS builder
+origin/main:phase3 - information/techx-corp-platform/src/ad/Dockerfile:23:FROM eclipse-temurin:21-jre-alpine-3.23
+origin/main:phase3 - information/techx-corp-platform/src/cart/src/Dockerfile:18:FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
+origin/main:phase3 - information/techx-corp-platform/src/cart/src/Dockerfile:33:FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine3.23
+origin/main:phase3 - information/techx-corp-platform/src/checkout/Dockerfile:5:FROM golang:1.26.5-bookworm AS builder
+origin/main:phase3 - information/techx-corp-platform/src/checkout/Dockerfile:24:FROM gcr.io/distroless/static-debian12:nonroot
+origin/main:phase3 - information/techx-corp-platform/src/checkout/genproto/Dockerfile:4:FROM golang:1.24-alpine
+origin/main:phase3 - information/techx-corp-platform/src/currency/Dockerfile:17:FROM docker.io/library/alpine:3.21 AS base
+origin/main:phase3 - information/techx-corp-platform/src/currency/Dockerfile:22:FROM base AS builder
+origin/main:phase3 - information/techx-corp-platform/src/currency/Dockerfile:52:FROM base AS release
+origin/main:phase3 - information/techx-corp-platform/src/currency/genproto/Dockerfile:17:FROM docker.io/library/alpine:3.21 AS builder
+origin/main:phase3 - information/techx-corp-platform/src/email/Dockerfile:5:FROM docker.io/library/ruby:3.4.10-alpine3.23 AS builder
+origin/main:phase3 - information/techx-corp-platform/src/email/Dockerfile:14:FROM docker.io/library/ruby:3.4.10-alpine3.23
+origin/main:phase3 - information/techx-corp-platform/src/flagd-ui/Dockerfile:29:FROM scratch AS tailwind-amd64
+origin/main:phase3 - information/techx-corp-platform/src/flagd-ui/Dockerfile:34:FROM scratch AS tailwind-arm64
+origin/main:phase3 - information/techx-corp-platform/src/flagd-ui/Dockerfile:40:FROM tailwind-${TARGETARCH} AS tailwind-bin
+origin/main:phase3 - information/techx-corp-platform/src/flagd-ui/Dockerfile:42:FROM ${BUILDER_IMAGE} AS builder
+origin/main:phase3 - information/techx-corp-platform/src/flagd-ui/Dockerfile:118:FROM ${RUNNER_IMAGE} AS final-amd64
+origin/main:phase3 - information/techx-corp-platform/src/flagd-ui/Dockerfile:123:FROM ${RUNNER_IMAGE} AS final-arm64
+origin/main:phase3 - information/techx-corp-platform/src/flagd-ui/Dockerfile:129:FROM final-${TARGETARCH} AS final
+origin/main:phase3 - information/techx-corp-platform/src/fraud-detection/Dockerfile:5:FROM --platform=${BUILDPLATFORM} gradle:8-jdk17 AS builder
+origin/main:phase3 - information/techx-corp-platform/src/fraud-detection/Dockerfile:16:FROM eclipse-temurin:17.0.19_10-jre-noble
+origin/main:phase3 - information/techx-corp-platform/src/frontend-proxy/Dockerfile:4:FROM envoyproxy/envoy:v1.34.10
+origin/main:phase3 - information/techx-corp-platform/src/frontend/Dockerfile:10:FROM --platform=$BUILDPLATFORM docker.io/library/node:22-slim AS builder
+origin/main:phase3 - information/techx-corp-platform/src/frontend/Dockerfile:55:FROM --platform=$BUILDPLATFORM docker.io/library/node:22-slim AS deps
+origin/main:phase3 - information/techx-corp-platform/src/frontend/Dockerfile:83:FROM docker.io/library/node:22-alpine3.23
+origin/main:phase3 - information/techx-corp-platform/src/frontend/Dockerfile.cypress:1:FROM cypress/included:14.5.0
+origin/main:phase3 - information/techx-corp-platform/src/frontend/genproto/Dockerfile:4:FROM node:22-alpine
+origin/main:phase3 - information/techx-corp-platform/src/image-provider/Dockerfile:4:FROM nginxinc/nginx-unprivileged:1.29.0-alpine3.22-otel
+origin/main:phase3 - information/techx-corp-platform/src/kafka/Dockerfile:5:FROM apache/kafka:4.3.1
+origin/main:phase3 - information/techx-corp-platform/src/llm/Dockerfile:5:FROM docker.io/library/python:3.12.13-alpine3.23 AS build-venv
+origin/main:phase3 - information/techx-corp-platform/src/llm/Dockerfile:12:FROM docker.io/library/python:3.12.13-alpine3.23
+origin/main:phase3 - information/techx-corp-platform/src/load-generator/Dockerfile:5:FROM python:3.12.13-alpine3.23 AS base
+origin/main:phase3 - information/techx-corp-platform/src/load-generator/Dockerfile:7:FROM base AS builder
+origin/main:phase3 - information/techx-corp-platform/src/load-generator/Dockerfile:23:FROM base
+origin/main:phase3 - information/techx-corp-platform/src/opensearch/Dockerfile:4:FROM opensearchproject/opensearch:3.2.0
+origin/main:phase3 - information/techx-corp-platform/src/payment/Dockerfile:5:FROM docker.io/library/node:22.22.0-slim AS builder
+origin/main:phase3 - information/techx-corp-platform/src/payment/Dockerfile:16:FROM docker.io/library/node:22.22.0-alpine3.23
+origin/main:phase3 - information/techx-corp-platform/src/product-catalog/Dockerfile:5:FROM golang:1.26.5-bookworm AS builder
+origin/main:phase3 - information/techx-corp-platform/src/product-catalog/Dockerfile:19:FROM gcr.io/distroless/static-debian12:nonroot
+origin/main:phase3 - information/techx-corp-platform/src/product-catalog/genproto/Dockerfile:4:FROM golang:1.24-alpine
+origin/main:phase3 - information/techx-corp-platform/src/product-reviews/Dockerfile:5:FROM docker.io/library/python:3.12-alpine3.22 AS build-venv
+origin/main:phase3 - information/techx-corp-platform/src/product-reviews/Dockerfile:17:FROM docker.io/library/python:3.12-alpine3.22
+origin/main:phase3 - information/techx-corp-platform/src/product-reviews/genproto/Dockerfile:4:FROM python:3.12-slim-bookworm
+origin/main:phase3 - information/techx-corp-platform/src/quote/Dockerfile:5:FROM ghcr.io/mlocati/php-extension-installer:2.9.11 AS installer
+origin/main:phase3 - information/techx-corp-platform/src/quote/Dockerfile:7:FROM docker.io/library/composer:2.8.12 AS vendor
+origin/main:phase3 - information/techx-corp-platform/src/quote/Dockerfile:21:FROM docker.io/library/php:8.4-cli-alpine3.22
+origin/main:phase3 - information/techx-corp-platform/src/recommendation/Dockerfile:5:FROM docker.io/library/python:3.12.13-alpine3.23 AS build-venv
+origin/main:phase3 - information/techx-corp-platform/src/recommendation/Dockerfile:18:FROM docker.io/library/python:3.12.13-alpine3.23
+origin/main:phase3 - information/techx-corp-platform/src/recommendation/genproto/Dockerfile:4:FROM python:3.12-slim-bookworm
+origin/main:phase3 - information/techx-corp-platform/src/shipping/Dockerfile:5:FROM --platform=${BUILDPLATFORM} docker.io/library/rust:1.91 AS builder
+origin/main:phase3 - information/techx-corp-platform/src/shipping/Dockerfile:37:FROM gcr.io/distroless/cc-debian13:nonroot
