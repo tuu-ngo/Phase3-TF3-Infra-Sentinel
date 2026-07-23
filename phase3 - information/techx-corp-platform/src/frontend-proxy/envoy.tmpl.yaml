@@ -48,8 +48,45 @@ static_resources:
                           route: { cluster: image-provider, prefix_rewrite: "/" }
                         - match: { prefix: "/flagservice/" }
                           route: { cluster: flagservice, prefix_rewrite: "/", timeout: 0s }
-                        - match: { prefix: "/" }  # Default/catch-all route - keep last since prefix:"/" matches everything
+                        # Mandate-19 (load-shedding): checkout protected route — đặt TRƯỚC
+                        # catch-all "/" để match trước. Không có typed_per_filter_config
+                        # local_ratelimit → dùng global bucket 10 000/s (không bao giờ bị shed).
+                        # Checkout là luồng tiền, luôn ưu tiên khi hệ quá tải.
+                        - match: { prefix: "/api/checkout" }
+                          name: checkout_protected
                           route: { cluster: frontend }
+                        # Mandate-19 (load-shedding): browse/homepage catch-all route.
+                        # Token bucket 150 req/s: khi traffic browse vượt ngưỡng, Envoy trả
+                        # HTTP 429 ngay tại proxy — không đẩy request xuống backend,
+                        # giảm tải cho cluster frontend/product-catalog khi vượt trần.
+                        # Ngưỡng 150 RPS = ~75% breakpoint ước lượng từ Mandate-02 data;
+                        # điều chỉnh sau khi đo breakpoint thầt (xem ADR 0011).
+                        - match: { prefix: "/" }  # catch-all — giữ cuối vì prefix:"/" match mọi thứ
+                          name: browse_shedable
+                          route: { cluster: frontend }
+                          typed_per_filter_config:
+                            envoy.filters.http.local_ratelimit:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+                              stat_prefix: browse_rate_limiter
+                              token_bucket:
+                                max_tokens: 150
+                                tokens_per_fill: 150
+                                fill_interval: 1s
+                              filter_enabled:
+                                runtime_key: browse_rate_limit_enabled
+                                default_value:
+                                  numerator: 100
+                                  denominator: HUNDRED
+                              filter_enforced:
+                                runtime_key: browse_rate_limit_enforced
+                                default_value:
+                                  numerator: 100
+                                  denominator: HUNDRED
+                              response_headers_to_add:
+                                - header:
+                                    key: x-local-rate-limit
+                                    value: "true"
+                                  keep_empty_value: true
                 http_filters:
                   - name: envoy.filters.http.fault
                     typed_config:
@@ -59,6 +96,32 @@ static_resources:
                         header_delay: {}
                         percentage:
                           numerator: 100
+                  # Mandate-19 (load-shedding): Local rate limit filter — in-process
+                  # token bucket chạy trực tiếp trong Envoy, không cần Redis external.
+                  # Global bucket đặt cực cao (10 000/s) vì việc giới hạn thực tế
+                  # được cấu hình per-route trên browse_shedable route phía trên.
+                  # checkout_protected route KHÔNG có per-route override → dùng
+                  # global bucket này → không bao giờ bị shed (10k >> thực tế).
+                  - name: envoy.filters.http.local_ratelimit
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+                      stat_prefix: local_rate_limiter
+                      # Global bucket: cực cao — chỉ làm fallback, per-route override
+                      # trên browse_shedable mới là bucket thực tế cần quan tâm.
+                      token_bucket:
+                        max_tokens: 10000
+                        tokens_per_fill: 10000
+                        fill_interval: 1s
+                      filter_enabled:
+                        runtime_key: local_rate_limit_enabled
+                        default_value:
+                          numerator: 100
+                          denominator: HUNDRED
+                      filter_enforced:
+                        runtime_key: local_rate_limit_enforced
+                        default_value:
+                          numerator: 100
+                          denominator: HUNDRED
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -148,6 +211,18 @@ static_resources:
     - name: frontend
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
+      # Mandate-19 (throughput ceiling): Nới connection ceiling của Envoy → frontend.
+      # Default max_requests=1024 có thể trở thành điểm nghẹn khi traffic cao;
+      # tăng lên 4096 để Envoy không reject request trước khi backend cần reject.
+      # Load shedding đúng chỗ là local_ratelimit filter phía trên —
+      # circuit_breaker này là lưới an toàn cuối, không phải cơ chế shed chính.
+      circuit_breakers:
+        thresholds:
+          - priority: DEFAULT
+            max_connections: 1024
+            max_pending_requests: 1024
+            max_requests: 4096   # Mandate-19: default 1024 → 4096
+            max_retries: 3
       load_assignment:
         cluster_name: frontend
         endpoints:
