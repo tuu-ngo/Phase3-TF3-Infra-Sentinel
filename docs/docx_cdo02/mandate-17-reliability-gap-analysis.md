@@ -37,13 +37,14 @@ CDO02 (Platform — trụ Reliability + Cost Optimization)
 | REL-17-02 | **CAO** | Frontend gọi `ad`/`recommendation` **không deadline, không fallback** → dependency treo kéo theo frontend | #1      | 🔴 **CÒN HỞ** |
 | REL-17-03 | TRUNG BÌNH | `flagd` 1 replica, cố định AZ 1c — mất 1c là mất cơ chế đọc flag toàn hệ                  | #1, #2  | 🟡 CÒN — cần xin phép |
 | REL-17-04 | THẤP    | Toàn bộ observability 1 replica — mất AZ có thể mất luôn khả năng **chứng minh** SLO giữa demo | #2      | 🟡 CÒN (đã thêm otel-gateway PDB) |
-| REL-17-05 | ✅ ĐẠT   | 9/9 service luồng ra tiền có 2 replica trải ≥2 AZ, `DoNotSchedule` cưỡng bức             | #2      | ✅ ĐẠT |
+| REL-17-05 | ⚠️ **XUỐNG CẤP** | 9/9 service ra tiền vẫn trải 2 AZ, nhưng **dồn hết lên 2 spot node** sau batch Karpenter mandate-13 → mất AZ = dồn lên 1 spot node duy nhất | #2 | 🟡 **2 AZ đạt về chữ, headroom mất** |
 
-**Kết luận (cập nhật 22/07):** Yêu cầu #2 phần *pod placement* đã đạt thật (REL-17-05). Hai SPOF ẩn nặng
-nhất trong **code/manifest đường khởi động** (REL-17-01 dual-write, REL-17-06 wait-for-kafka) **đã được
-đóng** bởi `b881bf1` như một phần dọn dẹp §8 của Mandate 08. **Lỗ hổng nghiêm trọng còn lại là REL-17-02**
-— frontend thiếu deadline/fallback với dependency (đúng kịch bản yêu cầu #1, có postmortem 0011 chứng minh
-đang trượt) — và chưa ai đụng tới. Đây là ưu tiên số 1 còn lại của CDO02 cho mandate 17.
+**Kết luận (cập nhật 22/07):** Hai SPOF ẩn đường khởi động (REL-17-01 dual-write, REL-17-06 wait-for-kafka)
+**đã được đóng** bởi `b881bf1` (§8 Mandate 08). **NHƯNG** verify lại live cho thấy req#2 **xuống cấp**:
+batch Karpenter mandate-13 đã dồn cả 9 service ra tiền lên **2 spot node** (REL-17-05) — 2 AZ đạt về chữ
+nhưng mất headroom, mất AZ = dồn lên 1 spot node duy nhất. Cộng với **REL-17-02** (frontend thiếu
+deadline/fallback, req#1, có postmortem 0011 chứng minh đang trượt) chưa ai đụng, đây là **hai việc nặng
+nhất còn lại của CDO02**. REL-17-05 giờ cần **sync với mandate-13 (turuong/CDO01)**, không tự sửa một mình.
 
 > **Ghi chú truy vết:** Phần thân REL-17-01 và REL-17-06 bên dưới giữ nguyên đánh giá gốc ngày 21/07 (mô tả
 > cơ chế lỗi + đề xuất), có gắn hộp **✅ ĐÃ XỬ** trỏ commit. Không xoá để mentor thấy được cả chuỗi
@@ -61,41 +62,65 @@ nhất trong **code/manifest đường khởi động** (REL-17-01 dual-write, R
 
 ## Hiện trạng hạ tầng — bản đồ AZ
 
-```bash
-$ kubectl get nodes -L topology.kubernetes.io/zone,node.kubernetes.io/instance-type
+> **⚠️ Cập nhật 22/07 (verify lại live sau các batch Karpenter mandate-13):** bức tranh AZ đã **đổi hẳn**
+> so với đánh giá gốc 21/07. Toàn bộ 9 service ra tiền đã bị dời sang **2 spot node** — xem REL-17-05 dưới.
 
-NAME                                             STATUS   AGE     ZONE              INSTANCE-TYPE
-ip-10-0-14-228.ap-southeast-1.compute.internal   Ready    10h     ap-southeast-1a   t3.small     (spot/Karpenter)
-ip-10-0-4-166.ap-southeast-1.compute.internal    Ready    6d10h   ap-southeast-1a   t3.medium    (node group stateful_1a)
-ip-10-0-8-134.ap-southeast-1.compute.internal    Ready    7d13h   ap-southeast-1a   t3.large
-ip-10-0-26-153.ap-southeast-1.compute.internal   Ready    7d13h   ap-southeast-1b   t3.large
-ip-10-0-43-83.ap-southeast-1.compute.internal    Ready    7d13h   ap-southeast-1c   t3.large
+```bash
+$ kubectl get nodes -L topology.kubernetes.io/zone,karpenter.sh/capacity-type   # 22/07
+
+NAME                                             ZONE              CAPACITY-TYPE
+ip-10-0-10-199.ap-southeast-1.compute.internal   ap-southeast-1a   spot        (tạo hôm nay ~04:38)
+ip-10-0-33-255.ap-southeast-1.compute.internal   ap-southeast-1c   spot        (tạo hôm nay ~04:24)
+ip-10-0-24-177.ap-southeast-1.compute.internal   ap-southeast-1b   on-demand
+ip-10-0-26-153.ap-southeast-1.compute.internal   ap-southeast-1b   on-demand
+ip-10-0-4-166.ap-southeast-1.compute.internal    ap-southeast-1a   on-demand   (stateful_1a — nay TRỐNG, store cũ đã xoá)
+ip-10-0-8-134.ap-southeast-1.compute.internal    ap-southeast-1a   on-demand
+ip-10-0-43-83.ap-southeast-1.compute.internal    ap-southeast-1c   on-demand
 ```
 
-**Phân bố không cân:** AZ 1a có 3 node, 1b và 1c mỗi AZ **chỉ 1 node**. Mất 1b hoặc 1c = mất trọn một node
-mang ~15 pod. Mất 1a = mất 3 node nhưng phần lớn là node phụ.
+**7 node, 3 AZ. Nhưng 9 service ra tiền chỉ nằm trên 2 spot node (`10-199` 1a + `33-255` 1c).**
+AZ 1b (2 node on-demand) **không mang service ra tiền nào** — chỉ accounting/flagd/jaeger/llm...
 
 ---
 
-## REL-17-05 — Luồng ra tiền trải AZ: ĐẠT ✅
+## REL-17-05 — Luồng ra tiền trải AZ: ⚠️ 2 AZ NHƯNG TẬP TRUNG 2 SPOT NODE
 
-Đếm từng pod theo node, quy chiếu về AZ:
+> **Hạ bậc từ "✅ ĐẠT dễ dàng" (21/07) → "⚠️ đạt về chữ, posture xuống cấp" (22/07).** Lý do: batch
+> Karpenter mandate-13 (turuong/CDO01) đã dời cả 9 service ra tiền sang lớp elastic **spot**, dồn hết
+> lên đúng 2 node. Cost giảm nhưng headroom resilience của mandate-17 giảm theo.
 
-| Service         | Replica 1 (AZ)      | Replica 2 (AZ)      | Kết luận |
-| --------------- | ------------------- | ------------------- | -------- |
-| frontend        | `10-0-43-83` (1c)   | `10-0-8-134` (1a)   | ✅ 2 AZ  |
-| frontend-proxy  | `10-0-43-83` (1c)   | `10-0-8-134` (1a)   | ✅ 2 AZ  |
-| product-catalog | `10-0-26-153` (1b)  | `10-0-43-83` (1c)   | ✅ 2 AZ  |
-| cart            | `10-0-43-83` (1c)   | `10-0-8-134` (1a)   | ✅ 2 AZ  |
-| checkout        | `10-0-14-228` (1a)  | `10-0-43-83` (1c)   | ✅ 2 AZ  |
-| payment         | `10-0-43-83` (1c)   | `10-0-8-134` (1a)   | ✅ 2 AZ  |
-| currency        | `10-0-43-83` (1c)   | `10-0-8-134` (1a)   | ✅ 2 AZ  |
-| shipping        | `10-0-26-153` (1b)  | `10-0-43-83` (1c)   | ✅ 2 AZ  |
-| quote           | `10-0-26-153` (1b)  | `10-0-43-83` (1c)   | ✅ 2 AZ  |
+Verify live 22/07 — đếm từng pod theo node:
 
-Cơ chế: `topologySpreadConstraints` với `topologyKey: topology.kubernetes.io/zone` +
-`whenUnsatisfiable: DoNotSchedule` (cưỡng bức, không phải best-effort) — khai báo trong
-`phase3 - information/deploy/values-prod.yaml`, kèm PDB `minAvailable: 1` cho 9/9 service.
+| Service         | Replica 1 (node · AZ · loại) | Replica 2 (node · AZ · loại) | Kết luận |
+| --------------- | ---------------------------- | ---------------------------- | -------- |
+| frontend        | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+| frontend-proxy  | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+| product-catalog | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+| cart            | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+| checkout        | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+| payment         | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+| currency        | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+| shipping        | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+| quote           | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+
+Cơ chế trải AZ vẫn hiệu lực: `topologySpreadConstraints` zone `DoNotSchedule` (cưỡng bức) + PDB
+`minAvailable: 1` cho 9/9. **Nhưng không có ràng buộc nào ngăn tất cả cùng dồn lên 2 spot node** — hostname
+spread là `ScheduleAnyway` (mềm), và ở tải thấp hiện tại chỉ có 2 spot node tồn tại nên mọi replica rơi vào đó.
+
+**Ba rủi ro mới cho req#2 (không có ở bản 21/07):**
+1. **Tập trung 2 node** — mất 1 trong 2 → cả 9 service tụt còn 1 replica đồng thời, zero headroom.
+2. **Cả 2 đều spot** — AWS thu hồi bất kỳ lúc nào (2 phút báo trước); thu hồi tương quan cùng lúc là có thật.
+3. **Chặn AZ 1a (đúng bài mentor test):** mất `10-199` → **cả 9 service dồn lên 1 spot node duy nhất `33-255`
+   (1c)**. Nếu spot đó bị thu hồi trong cửa sổ → **sập toàn bộ luồng ra tiền**. Hồi phục phải chờ Karpenter
+   dựng node mới ở AZ khác (zone `DoNotSchedule` ép sang non-1c) → RTO không tức thì.
+
+**Đánh giá thẳng:** req#2 vẫn *có thể* qua nếu mentor chỉ chặn 1 AZ và 1 replica gánh nổi tải + spot node
+còn lại không bị thu hồi. Nhưng đây **không còn là "qua dễ dàng"** — nó là một canh bạc phụ thuộc spot. Đây
+là xung đột trực tiếp **mandate-13 (cost, dùng spot) ↔ mandate-17 (resilience)** cần đưa ra sync: ít nhất
+`checkout` nên có một replica on-demand làm mỏ neo, hoặc ép elastic trải >2 node.
+
+Tầng dữ liệu sau Mandate 08 vẫn đa AZ: RDS Multi-AZ · ElastiCache 2 node auto-failover ·
+MSK 3 broker/3 AZ, RF=3, `min.insync.replicas=2` — phần này **không** bị ảnh hưởng bởi batch spot.
 
 Tầng dữ liệu sau Mandate 08 cũng đã đa AZ: RDS Multi-AZ · ElastiCache 2 node auto-failover ·
 MSK 3 broker/3 AZ, RF=3, `min.insync.replicas=2`.
@@ -278,15 +303,16 @@ SKU khác.
 
 ---
 
-## REL-17-03 (TRUNG BÌNH) — flagd 1 replica, cố định AZ 1c
+## REL-17-03 (TRUNG BÌNH) — flagd 1 replica
 
 ```bash
 $ kubectl get deploy flagd -n techx-tf3
-flagd   READY 1   DESIRED 1      # pod trên ip-10-0-43-83 → AZ 1c
+flagd   READY 1   DESIRED 1      # 22/07: pod trên ip-10-0-24-177 → AZ 1b (đã dời khỏi 1c)
 ```
 
-Mất AZ 1c = mất flagd. Mọi service đọc flag qua `FLAGD_HOST=flagd` sẽ không đánh giá được flag trong lúc
-pod được lập lịch lại.
+Mất AZ chứa flagd = mất flagd. Mọi service đọc flag qua `FLAGD_HOST=flagd` sẽ không đánh giá được flag
+trong lúc pod được lập lịch lại. (Vị trí AZ thay đổi theo lập lịch — 21/07 ở 1c, 22/07 ở 1b — nên rủi ro
+không cố định một AZ mà là "mất AZ nào đang chứa flagd".)
 
 > ⚠️ **Cảnh báo tuân thủ:** flagd là cơ chế BTC bơm sự cố. RULES cấm gỡ/đổi hướng/vô hiệu hoá.
 > Nâng số replica **không phải** là vô hiệu hoá — nhưng vì đây là vùng nhạy cảm, **phải hỏi leader và
@@ -355,11 +381,12 @@ Sắp theo **tỷ lệ (giảm rủi ro thật) / (công sức)**, không theo t
 
 | # | Việc                                                                     | Gap        | Công sức | Trạng thái |
 | - | ------------------------------------------------------------------------ | ---------- | -------- | ---------- |
-| 1 | Timeout + fallback rỗng cho `ad` / `recommendation`; bỏ `Promise.all` cứng | REL-17-02  | ~1 ngày   | 🔴 **CÒN — ưu tiên #1** |
-| 2 | Đóng gói bằng chứng AZ spread thành artifact demo                         | REL-17-05  | ~1 giờ    | 🔴 CÒN (đã đạt, chỉ thiếu giấy) |
-| 3 | Bàn giao chuỗi leo thang `default` SA cho CDO01                           | yêu cầu #4 | 5 phút    | 🔴 CÒN |
-| 4 | flagd HA                                                                 | REL-17-03  | ~1 giờ    | 🟡 Cần xin phép leader/mentor |
-| 5 | Anti-affinity cho observability                                          | REL-17-04  | ~1 giờ    | 🟡 Ưu tiên thấp |
+| 1 | **Sync mandate-13 ↔ 17: gỡ tập trung 2 spot node** (mỏ neo on-demand cho checkout, hoặc ép elastic trải >2 node) | REL-17-05 | cần bàn với turuong | 🔴 **MỚI — rủi ro cao nhất req#2** |
+| 2 | Timeout + fallback rỗng cho `ad` / `recommendation`; bỏ `Promise.all` cứng | REL-17-02  | ~1 ngày   | 🔴 CÒN — lỗ hở chắc chắn của CDO02 |
+| 3 | Đóng gói bằng chứng AZ (kèm caveat spot) thành artifact demo              | REL-17-05  | ~1 giờ    | 🟡 Đang làm |
+| 4 | Bàn giao chuỗi leo thang `default` SA cho CDO01                           | yêu cầu #4 | 5 phút    | 🔴 CÒN (verify 22/07 vẫn thủng) |
+| 5 | flagd HA                                                                 | REL-17-03  | ~1 giờ    | 🟡 Cần xin phép leader/mentor |
+| 6 | Anti-affinity cho observability                                          | REL-17-04  | ~1 giờ    | 🟡 Ưu tiên thấp |
 | ~~—~~ | ~~Circuit breaker dual-write cart~~                                   | REL-17-01  | —        | ✅ **HUỶ** — `b881bf1` gỡ hẳn dual-write, không cần |
 | ~~—~~ | ~~Gỡ initContainer `wait-for-kafka`~~                                 | REL-17-06  | —        | ✅ **XONG** — `b881bf1` |
 
