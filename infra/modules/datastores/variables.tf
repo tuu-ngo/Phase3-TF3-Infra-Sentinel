@@ -52,10 +52,15 @@ variable "tags" {
 }
 
 # ---------- RDS PostgreSQL ----------
+# Chỉ ghim major version. auto_minor_version_upgrade mặc định bật, nên AWS đã
+# tự nâng instance 17.6 → 17.9; ghim đủ minor làm Terraform đòi hạ version và
+# apply chết với "Cannot upgrade postgres from 17.9 to 17.6". Provider so khớp
+# theo tiền tố khi giá trị chỉ có major, nên "17" hết va với auto minor upgrade.
+# Đổi major (18) vẫn là thay đổi tường minh trong plan.
 variable "rds_engine_version" {
-  description = "Phiên bản PostgreSQL — phải khớp in-cluster 1:1 (17.6)."
+  description = "Major version PostgreSQL cho RDS. Chỉ ghim major để auto minor upgrade không tạo diff."
   type        = string
-  default     = "17.6"
+  default     = "17"
 }
 
 variable "rds_instance_class" {

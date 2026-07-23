@@ -74,6 +74,13 @@ jobs:
           terraform show -no-color tfplan
           sha256sum tfplan > tfplan.sha256
 
+      # Zip Lambda do data.archive_file sinh ra lúc PLAN. Job apply chạy trên
+      # runner khác, và `terraform apply <saved plan>` KHÔNG đọc lại data source
+      # — nó dùng giá trị đã ghi trong plan. Nên artifact phải mang theo cả zip,
+      # nếu không apply chết giữa chừng với "reading ZIP file ... no such file".
+      #
+      # Mọi path đều nằm dưới infra/ nên gốc artifact là infra/; job apply
+      # download về đúng thư mục đó để cấu trúc khớp lại.
       - name: Upload saved plan
         uses: actions/upload-artifact@v4
         with:
@@ -81,6 +88,8 @@ jobs:
           path: |
             ${{ env.TF_WORKING_DIR }}/tfplan
             ${{ env.TF_WORKING_DIR }}/tfplan.sha256
+            ${{ env.TF_WORKING_DIR }}/m12-audit-heartbeat.zip
+            infra/modules/audit-detection/audit-alert-router.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -128,10 +137,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: terraform-plan-${{ github.run_id }}-${{ github.sha }}
-          path: ${{ env.TF_WORKING_DIR }}
+          path: infra
 
       - name: Verify saved plan
-        run: sha256sum --check tfplan.sha256
+        run: |
+          set -euo pipefail
+          sha256sum --check tfplan.sha256
+          # Fail sớm với thông báo rõ ràng thay vì để Terraform chết giữa apply.
+          test -f m12-audit-heartbeat.zip
+          test -f ../../modules/audit-detection/audit-alert-router.zip
 
       - name: Apply saved plan
         run: terraform apply -input=false tfplan

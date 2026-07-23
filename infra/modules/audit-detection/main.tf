@@ -83,9 +83,11 @@ data "aws_iam_policy_document" "audit_kms" {
       identifiers = ["sns.amazonaws.com"]
     }
 
+    # GenerateDataKey* chứ không phải GenerateDataKey: SNS có thể gọi biến thể
+    # WithoutPlaintext tuỳ đường mã hoá, ghim đúng một tên là rủi ro deny ngầm.
     actions = [
       "kms:Decrypt",
-      "kms:GenerateDataKey",
+      "kms:GenerateDataKey*",
     ]
     resources = ["*"]
 
@@ -564,6 +566,20 @@ data "aws_iam_policy_document" "audit_alert_router" {
       "sns:Publish",
     ]
     resources = [aws_sns_topic.audit_alerts.arn]
+  }
+
+  # Từ khi topic được mã hoá bằng CMK (PM-126, AVD-AWS-0095), riêng sns:Publish
+  # là KHÔNG đủ: publisher phải tự gọi KMS để lấy data key. Thiếu statement này
+  # SNS trả AuthorizationErrorException, publish_alert không bắt exception nên
+  # Lambda fail → retry → DLQ, và alert biến mất khỏi hộp thư trong im lặng.
+  statement {
+    sid    = "EncryptAlerts"
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+    ]
+    resources = [aws_kms_key.audit.arn]
   }
 
   statement {
