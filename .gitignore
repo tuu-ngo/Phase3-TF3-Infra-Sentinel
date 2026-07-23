@@ -40,3 +40,13 @@ Thumbs.db
 .vscode/
 
 infra/tfplan-*
+
+# --- Lambda zip do Terraform archive_file sinh ra, không commit ---
+infra/live/production/m12-audit-heartbeat.zip
+infra/modules/audit-detection/audit-alert-router.zip
+
+# --- Bytecode Python: archive_file zip cả source_dir nên __pycache__ lọt vào
+# audit-alert-router.zip và làm CodeSha256 lệch giữa các máy. Chạy unit test
+# router bằng PYTHONDONTWRITEBYTECODE=1 để không sinh ra chúng ngay từ đầu.
+__pycache__/
+*.py[cod]
