@@ -19,6 +19,16 @@ on:
         options:
           - full
           - pm127-kyverno-ecr
+      allow_bastion_replacement:
+        description: Explicitly acknowledge a reviewed shared-bastion replacement
+        required: true
+        type: boolean
+        default: false
+      bastion_replacement_ticket:
+        description: Approved maintenance ticket/reference when allowing bastion replacement
+        required: false
+        type: string
+        default: ""
 
 permissions:
   id-token: write
@@ -98,6 +108,11 @@ jobs:
 
           terraform plan -no-color -input=false "${target_args[@]}" -out=tfplan
           terraform show -no-color tfplan
+          terraform show -json tfplan > tfplan.json
+          python3 ../../../scripts/ci/validate-bastion-replacement-plan.py \
+            --plan tfplan.json \
+            --allow-replacement "${{ inputs.allow_bastion_replacement }}" \
+            --ticket "${{ inputs.bastion_replacement_ticket }}"
           sha256sum tfplan > tfplan.sha256
 
       - name: Upload saved plan

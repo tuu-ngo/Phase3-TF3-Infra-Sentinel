@@ -12,7 +12,13 @@ class Pm127TerraformRolloutContractTests(unittest.TestCase):
         self.assertIn("        default: full\n", WORKFLOW_TEXT)
         self.assertIn("          - full\n", WORKFLOW_TEXT)
         self.assertIn("          - pm127-kyverno-ecr\n", WORKFLOW_TEXT)
-        self.assertNotIn("type: string", WORKFLOW_TEXT)
+        self.assertIn(
+            "      scope:\n"
+            "        description: Limit the saved plan to an approved rollout scope\n"
+            "        required: true\n"
+            "        type: choice\n",
+            WORKFLOW_TEXT,
+        )
 
     def test_pm127_scope_targets_only_role_and_inline_policy(self):
         self.assertEqual(WORKFLOW_TEXT.count("-target="), 2)

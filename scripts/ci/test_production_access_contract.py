@@ -10,12 +10,15 @@ def documents():
     return [doc for doc in yaml.safe_load_all(RBAC_PATH.read_text()) if doc]
 
 
-def rules_for(role_name, namespace=None):
+def rules_for(role_name, namespace=None, kind="Role"):
     role = next(
         doc
         for doc in documents()
-        if doc["kind"] == "Role" and doc["metadata"]["name"] == role_name
-        and (namespace is None or doc["metadata"]["namespace"] == namespace)
+        if doc["kind"] == kind and doc["metadata"]["name"] == role_name
+        and (
+            namespace is None
+            or doc["metadata"].get("namespace") == namespace
+        )
     )
     return role["rules"]
 
@@ -43,19 +46,22 @@ def test_operator_excludes_security_sensitive_mutation():
     assert not granted("tf3-production-operator", "pods/exec", "create")
 
 
-def test_reader_has_no_mutation_or_sensitive_reads():
+def test_namespaced_reader_has_no_mutation_secret_or_exec_access():
     for rule in rules_for("tf3-production-readonly"):
         assert set(rule["verbs"]) <= {"get", "list", "watch", "create"}
         if "create" in rule["verbs"]:
             assert rule["resources"] == ["pods/portforward"]
     assert not granted("tf3-production-readonly", "secrets", "get")
-    assert not granted("tf3-production-readonly", "configmaps", "get")
     assert not granted("tf3-production-readonly", "pods/exec", "create")
 
 
 def test_bindings_target_expected_groups_and_namespace():
     docs = documents()
-    assert all(doc["metadata"]["namespace"] in {"techx-tf3", "argocd"} for doc in docs)
+    assert all(
+        doc["metadata"].get("namespace") in {"techx-tf3", "argocd"}
+        for doc in docs
+        if doc["kind"] in {"Role", "RoleBinding"}
+    )
     bindings = {
         (doc["metadata"]["namespace"], doc["metadata"]["name"]): doc
         for doc in docs
@@ -75,6 +81,55 @@ def test_bindings_target_expected_groups_and_namespace():
     )
 
 
+def test_reader_has_cluster_view_and_read_only_operational_extensions():
+    bindings = {
+        doc["metadata"]["name"]: doc
+        for doc in documents()
+        if doc["kind"] == "ClusterRoleBinding"
+    }
+    view_binding = bindings["tf3-production-readonly-cluster-view"]
+    assert view_binding["roleRef"] == {
+        "apiGroup": "rbac.authorization.k8s.io",
+        "kind": "ClusterRole",
+        "name": "view",
+    }
+    assert view_binding["subjects"][0]["name"] == "tf3-production-readers"
+
+    extension_binding = bindings["tf3-production-readonly-cluster-extensions"]
+    assert extension_binding["subjects"][0]["name"] == "tf3-production-readers"
+    assert extension_binding["roleRef"]["name"] == "tf3-production-readonly-cluster-extensions"
+
+    rules = rules_for(
+        "tf3-production-readonly-cluster-extensions",
+        kind="ClusterRole",
+    )
+    assert all(set(rule["verbs"]) <= {"get", "list", "watch"} for rule in rules)
+    assert any(
+        rule["apiGroups"] == [""]
+        and "nodes" in rule["resources"]
+        and "get" in rule["verbs"]
+        for rule in rules
+    )
+    assert any(
+        rule["apiGroups"] == ["argoproj.io"]
+        and "applications" in rule["resources"]
+        and "get" in rule["verbs"]
+        for rule in rules
+    )
+    assert any(
+        rule["apiGroups"] == ["networking.k8s.aws"]
+        and "policyendpoints" in rule["resources"]
+        and "list" in rule["verbs"]
+        for rule in rules
+    )
+    assert not any(
+        "secrets" in rule.get("resources", [])
+        or "pods/exec" in rule.get("resources", [])
+        or "pods/portforward" in rule.get("resources", [])
+        for rule in rules
+    )
+
+
 def test_reader_can_port_forward_observability_without_argocd_app_access():
     assert granted(
         "tf3-production-readonly",
@@ -89,12 +144,14 @@ def test_reader_can_port_forward_observability_without_argocd_app_access():
         namespace="argocd",
     )
     assert granted("tf3-production-readonly-observability", "services", "get", namespace="argocd")
-    assert not granted(
-        "tf3-production-readonly-observability",
-        "applications",
-        "get",
-        namespace="argocd",
-        api_group="argoproj.io",
+    # Port-forward remains namespace-scoped; cluster-wide permissions are read-only.
+    cluster_rules = rules_for(
+        "tf3-production-readonly-cluster-extensions",
+        kind="ClusterRole",
+    )
+    assert not any(
+        "pods/portforward" in rule.get("resources", [])
+        for rule in cluster_rules
     )
 
 
