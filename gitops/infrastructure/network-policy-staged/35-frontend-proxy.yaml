@@ -1,0 +1,73 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-proxy-business-policy
+  namespace: techx-tf3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: frontend-proxy
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # CloudFront reaches the internal ALB from one of the production private
+    # subnets. cloudflared and load-generator are explicit in-cluster callers.
+    - from:
+        - ipBlock: { cidr: 10.0.0.0/20 }
+        - ipBlock: { cidr: 10.0.16.0/20 }
+        - ipBlock: { cidr: 10.0.32.0/20 }
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudflared
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: load-generator
+      ports:
+        - { protocol: TCP, port: 8080 }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-node-agent
+      ports:
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 10000 }
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+      ports:
+        - { protocol: TCP, port: 8080 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: image-provider
+      ports:
+        - { protocol: TCP, port: 8081 }
+    # Preserve both the protected /flagservice route and the flagd UI route.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: flagd
+      ports:
+        - { protocol: TCP, port: 8013 }
+        - { protocol: TCP, port: 4000 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: otel-gateway
+      ports:
+        - { protocol: TCP, port: 4317 }
+        - { protocol: TCP, port: 4318 }
