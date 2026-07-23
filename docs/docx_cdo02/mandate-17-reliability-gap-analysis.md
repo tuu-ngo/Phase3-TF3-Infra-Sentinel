@@ -67,24 +67,34 @@ nhất còn lại của CDO02**. REL-17-05 giờ cần **sync với mandate-13 (
 
 ## Hiện trạng hạ tầng — bản đồ AZ
 
-> **⚠️ Cập nhật 22/07 (verify lại live sau các batch Karpenter mandate-13):** bức tranh AZ đã **đổi hẳn**
-> so với đánh giá gốc 21/07. Toàn bộ 9 service ra tiền đã bị dời sang **2 spot node** — xem REL-17-05 dưới.
+> **⚠️ Cập nhật 23/07 (verify lại live — fleet spot đã lớn hơn nhưng vẫn tập trung):** spot fleet tăng từ
+> 2 → **4 node, trải 3 AZ**. Nhưng **8/9 service ra tiền vẫn dồn đúng 2 node cũ** (`10-199` 1a + `33-255` 1c);
+> chỉ `checkout` tách sang 2 node spot mới (do vừa rollout image CVE). **Placement KHÔNG ổn định — trôi theo
+> mỗi rollout/consolidation**, nên phải verify lại NGAY trước demo, không tin ảnh cũ. Bản đồ 22/07 gốc giữ
+> bên dưới để đối chiếu.
 
 ```bash
-$ kubectl get nodes -L topology.kubernetes.io/zone,karpenter.sh/capacity-type   # 22/07
+$ kubectl get nodes -L topology.kubernetes.io/zone,karpenter.sh/capacity-type   # 23/07
 
-NAME                                             ZONE              CAPACITY-TYPE
-ip-10-0-10-199.ap-southeast-1.compute.internal   ap-southeast-1a   spot        (tạo hôm nay ~04:38)
-ip-10-0-33-255.ap-southeast-1.compute.internal   ap-southeast-1c   spot        (tạo hôm nay ~04:24)
-ip-10-0-24-177.ap-southeast-1.compute.internal   ap-southeast-1b   on-demand
+NAME                                             ZONE              CAPACITY-TYPE   GHI CHÚ
+ip-10-0-10-199.ap-southeast-1.compute.internal   ap-southeast-1a   spot            8 service ra tiền
+ip-10-0-33-255.ap-southeast-1.compute.internal   ap-southeast-1c   spot            8 service ra tiền
+ip-10-0-21-42.ap-southeast-1.compute.internal    ap-southeast-1b   spot            checkout (mới 23/07)
+ip-10-0-40-78.ap-southeast-1.compute.internal    ap-southeast-1c   spot            checkout (mới 23/07)
+ip-10-0-24-177.ap-southeast-1.compute.internal   ap-southeast-1b   on-demand       (base — không mang ra tiền)
 ip-10-0-26-153.ap-southeast-1.compute.internal   ap-southeast-1b   on-demand
-ip-10-0-4-166.ap-southeast-1.compute.internal    ap-southeast-1a   on-demand   (stateful_1a — nay TRỐNG, store cũ đã xoá)
-ip-10-0-8-134.ap-southeast-1.compute.internal    ap-southeast-1a   on-demand
+ip-10-0-4-166.ap-southeast-1.compute.internal    ap-southeast-1a   on-demand       stateful_1a — TRỐNG, kế hoạch gỡ (mandate 08 §G.3 #5)
+ip-10-0-8-134.ap-southeast-1.compute.internal    ap-southeast-1a   on-demand       grafana + prometheus (REL-17-04)
 ip-10-0-43-83.ap-southeast-1.compute.internal    ap-southeast-1c   on-demand
 ```
 
-**7 node, 3 AZ. Nhưng 9 service ra tiền chỉ nằm trên 2 spot node (`10-199` 1a + `33-255` 1c).**
-AZ 1b (2 node on-demand) **không mang service ra tiền nào** — chỉ accounting/flagd/jaeger/llm...
+**9 node (4 spot / 5 on-demand base), 3 AZ. Nhưng luồng ra tiền KHÔNG dùng 5 node on-demand base** (do
+`nodeSelector: techx.io/workload=elastic` ghim cứng vào lớp spot). **8/9 service vẫn dồn 2 spot node
+`10-199`+`33-255`;** checkout tách sang `21-42`(1b)+`40-78`(1c). Số node tăng **không** đến từ trải đều —
+mà từ việc checkout rollout tạo 2 node mới, còn 8 service kia đứng yên trên 2 node cũ.
+
+> ⚠️ **Truy cập cluster đổi 23/07:** bastion cũ `i-02a8d3e39b87180ce` đã bị dựng lại → mới
+> `i-0f5959afa0eb31e7c`. Runbook nay lấy bastion ID **động** (PR bf9f4fa) — đừng hardcode.
 
 ---
 
@@ -94,7 +104,7 @@ AZ 1b (2 node on-demand) **không mang service ra tiền nào** — chỉ accoun
 > Karpenter mandate-13 (turuong/CDO01) đã dời cả 9 service ra tiền sang lớp elastic **spot**, dồn hết
 > lên đúng 2 node. Cost giảm nhưng headroom resilience của mandate-17 giảm theo.
 
-Verify live 22/07 — đếm từng pod theo node:
+Verify live 23/07 — đếm từng pod theo node (số 22/07 trong ngoặc nếu khác):
 
 | Service         | Replica 1 (node · AZ · loại) | Replica 2 (node · AZ · loại) | Kết luận |
 | --------------- | ---------------------------- | ---------------------------- | -------- |
@@ -102,11 +112,16 @@ Verify live 22/07 — đếm từng pod theo node:
 | frontend-proxy  | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
 | product-catalog | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
 | cart            | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
-| checkout        | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
 | payment         | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
 | currency        | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
 | shipping        | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
 | quote           | `10-199` · 1a · **spot**     | `33-255` · 1c · **spot**     | 2 AZ, **2 spot** |
+| **checkout**    | `21-42` · 1b · **spot** *(mới)* | `40-78` · 1c · **spot** *(mới)* | 2 AZ, **2 spot** — tách sau rollout CVE |
+
+**Điểm cần nhấn:** 8/9 service **cùng dồn đúng 2 node** (`10-199`+`33-255`) → mất 1 trong 2 node =
+**8 service tụt còn 1 replica cùng lúc**. Fleet 4 spot node **không** giúp giảm rủi ro này vì chúng
+không được trải đều — hostname spread mềm không ép, và spot đã đủ thoả `minDomains:2` với 2 node.
+checkout tách ra chỉ là **tạm thời** (do rollout), consolidation có thể gom lại bất kỳ lúc nào.
 
 Cơ chế trải AZ vẫn hiệu lực: `topologySpreadConstraints` zone `DoNotSchedule` (cưỡng bức) + PDB
 `minAvailable: 1` cho 9/9. **Nhưng không có ràng buộc nào ngăn tất cả cùng dồn lên 2 spot node** — hostname
