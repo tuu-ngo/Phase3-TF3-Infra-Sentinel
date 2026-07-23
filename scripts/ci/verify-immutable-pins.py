@@ -48,13 +48,20 @@ def workflow_paths() -> list[Path]:
     return sorted([*WORKFLOW_ROOT.glob("*.yml"), *WORKFLOW_ROOT.glob("*.yaml")])
 
 
+def path_label(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def verify_workflows() -> list[str]:
     errors: list[str] = []
     for path in workflow_paths():
         text = path.read_text(encoding="utf-8")
         for token in FLOATING_REMOTE:
             if token in text:
-                errors.append(f"{path.relative_to(ROOT)} contains floating remote dependency {token}")
+                errors.append(f"{path_label(path)} contains floating remote dependency {token}")
         for number, line in enumerate(text.splitlines(), 1):
             match = USES_RE.match(line)
             if not match:
@@ -63,14 +70,14 @@ def verify_workflows() -> list[str]:
             if value.startswith("./") or value.startswith("docker://"):
                 continue
             if "@" not in value:
-                errors.append(f"{path.relative_to(ROOT)}:{number}: external uses has no ref: {value}")
+                errors.append(f"{path_label(path)}:{number}: external uses has no ref: {value}")
                 continue
             ref = value.rsplit("@", 1)[1]
             if not SHA_RE.fullmatch(ref):
-                errors.append(f"{path.relative_to(ROOT)}:{number}: external uses is not a full SHA: {value}")
+                errors.append(f"{path_label(path)}:{number}: external uses is not a full SHA: {value}")
             version = match.group("version")
             if not version or not re.fullmatch(r"v?[0-9][A-Za-z0-9._+-]*", version):
-                errors.append(f"{path.relative_to(ROOT)}:{number}: SHA pin needs a version comment")
+                errors.append(f"{path_label(path)}:{number}: SHA pin needs a version comment")
     return errors
 
 
