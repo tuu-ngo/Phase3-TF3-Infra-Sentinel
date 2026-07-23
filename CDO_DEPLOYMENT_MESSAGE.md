@@ -1,26 +1,35 @@
-# Yêu Cầu Triển Khai Hệ Thống (CDO Deploy Request)
+# Yêu Cầu Triển Khai Hệ Thống (CDO Deploy Request) - CẬP NHẬT BIGUPDATE SPRINT 3
 
 Chào anh em CDO,
 
-Bên AIO/AIE1 đã hoàn thành việc nâng cấp dịch vụ `product-reviews` để kết nối trực tiếp với AWS Bedrock (boto3 Converse API) thay vì đi qua LiteLLM proxy cũ nhằm tối ưu độ trễ và tăng tính ổn định.
+Bên AIO/AIE1 đã hoàn thành nâng cấp dịch vụ `product-reviews` kết nối trực tiếp với AWS Bedrock, đồng thời hoàn thiện hệ thống Caching 2 tầng, bộ điều khiển sự cố (Actuator) phục vụ kịch bản Closed-Loop Mitigation.
 
-Để deploy phiên bản mới này lên EKS, nhờ anh em CDO hỗ trợ một số điểm sau và merge code từ branch **`feature/product-review`** vào `main`:
+Dưới đây là các đầu việc chi tiết nhờ anh em CDO hỗ trợ triển khai khi deploy phiên bản mới này lên EKS:
 
-### 1. Build lại Docker Image:
-* Đã cập nhật file `requirements.txt` (thêm `boto3` và `tenacity`) và source code của `product-reviews`.
-* Nhờ anh em chạy lại pipeline CI/CD hoặc chạy script **`phase3 - information/deploy/build-push-images.sh`** để đóng gói và push image mới lên registry.
+### 1. Database Migration (Quan trọng - thực hiện trước khi deploy app):
+* Dịch vụ cần bổ sung cấu trúc dữ liệu mới để lọc review sạch. Nhờ anh em chạy tệp migration:
+  * [migration.sql](file:///C:/Users/ASUS/OneDrive/Obsidian%20Vault/XBrain-Phase3/Phase3-TF3-Infra-Sentinel/phase3%20-%20information/techx-corp-platform/src/product-reviews/migration.sql): Thêm cột `is_safe` (mặc định `TRUE`) và index `productreviews_prod_safe_idx` vào bảng `reviews.productreviews`.
+* Chạy worker đồng bộ dữ liệu cũ:
+  * Chạy tệp [db_migration_worker.py](file:///C:/Users/ASUS/OneDrive/Obsidian%20Vault/XBrain-Phase3/Phase3-TF3-Infra-Sentinel/phase3%20-%20information/techx-corp-platform/src/product-reviews/db_migration_worker.py) để tự động quét toàn bộ review cũ và đánh dấu `is_safe = FALSE` nếu vi phạm bộ lọc Regex Guardrail. Chạy độc lập ngoài request path để tránh ảnh hưởng hệ thống.
 
-### 2. Cập nhật Helm Values:
-* Cấu hình môi trường mới đã được push tại tệp **`phase3 - information/deploy/values-aio-llm.yaml`**.
-* Đã bổ sung các biến môi trường: `LLM_PROVIDER: bedrock`, `LLM_MODEL: amazon.nova-lite-v1:0` và `AWS_REGION: us-east-1`. Nhờ anh em dùng file này khi chạy `helm upgrade`.
+### 2. Cấu hình Redis Caching:
+* Hệ thống đã tích hợp Caching 2 tầng (Redis Real-time Cache + Postgres).
+* Nhờ anh em kiểm tra kết nối gRPC/HTTP tới Valkey/Redis của cluster, đảm bảo dịch vụ nhận được các biến môi trường kết nối Redis (đã cấu hình mặc định tự động nhận diện, hỗ trợ TLS `rediss://`).
 
-### 3. Cấp quyền truy cập AWS Bedrock (Quan trọng):
-* Pod của `product-reviews` trên EKS cần có quyền gọi Bedrock (bao gồm cả mô hình tóm tắt `amazon.nova-lite-v1:0` và mô hình giám khảo/judge `amazon.nova-micro-v1:0` cũng như Bedrock Guardrail). Nhờ anh em cấu hình theo 1 trong 2 cách:
-  * **Cách 1 (Khuyên dùng):** Gắn IAM Policy cho ServiceAccount của Pod `product-reviews` trên EKS với các quyền:
-    * `bedrock:InvokeModel`
-    * `bedrock:InvokeModelWithResponseStream`
-    * `bedrock:ApplyGuardrail`
-    *(Lưu ý: AWS IAM xác thực các API Converse qua hành động `InvokeModel`, chứ không có hành động `bedrock:Converse`).*
-  * **Cách 2:** Nếu chưa bật IRSA, nhờ anh em tạo Kubernetes Secret chứa `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (có quyền gọi 2 model Bedrock trên) rồi map vào `envOverrides` của Pod.
+### 3. Cổng điều khiển Sự cố (Actuator) & Telemetry (MANDATE #22):
+* **Actuator:** Dịch vụ tự động lắng nghe Redis key `product_reviews:fallback_override`. Khi AIOps Detector set key này bằng `true` hoặc `1`, dịch vụ sẽ lập tức bypass hoàn toàn Bedrock và chuyển sang chế độ fallback.
+* **Failure Injection Mode:** Nhận diện thông qua flag `llmRateLimitError` từ flagd để giả lập lỗi kết nối LLM (chế độ phục vụ test replay sự cố).
+* **Telemetry Metrics:** Xuất Prometheus metric `app_ai_fallback_total` để monitor lỗi kết nối LLM.
+
+### 4. Build lại Docker Image:
+* Đã cập nhật file `requirements.txt` (bổ sung `redis` bên cạnh `boto3` và `tenacity`) và toàn bộ mã nguồn liên quan.
+* Nhờ anh em chạy script [build-push-images.sh](file:///C:/Users/ASUS/OneDrive/Obsidian%20Vault/XBrain-Phase3/Phase3-TF3-Infra-Sentinel/phase3%20-%20information/deploy/build-push-images.sh) để build multi-arch image mới (`1.0-product-reviews`) và push lên registry.
+
+### 5. Helm Upgrade & Phân quyền AWS Bedrock (IRSA):
+* **IAM Policy:** Đảm bảo ServiceAccount `techx-corp` trong namespace `techx-corp` được gắn IAM Role có quyền gọi Bedrock:
+  * `bedrock:InvokeModel`
+  * `bedrock:InvokeModelWithResponseStream`
+  * `bedrock:ApplyGuardrail`
+* **Helm Values:** Sử dụng cấu hình cập nhật tại [values-aio-llm.yaml](file:///C:/Users/ASUS/OneDrive/Obsidian%20Vault/XBrain-Phase3/Phase3-TF3-Infra-Sentinel/phase3%20-%20information/deploy/values-aio-llm.yaml) (đã tích hợp ServiceAccount role-arn annotation).
 
 Cảm ơn anh em!

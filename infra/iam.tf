@@ -35,3 +35,43 @@ module "lb_controller_irsa" {
     }
   }
 }
+
+module "product_reviews_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.48"
+
+  role_name = "${var.cluster_name}-product-reviews-bedrock"
+
+  role_policy_arns = {
+    bedrock = aws_iam_policy.bedrock_access.arn
+  }
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["techx-corp:techx-corp"]
+    }
+  }
+}
+
+resource "aws_iam_policy" "bedrock_access" {
+  name        = "${var.cluster_name}-bedrock-access"
+  path        = "/"
+  description = "IAM policy for AWS Bedrock access from EKS product-reviews"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+          "bedrock:ApplyGuardrail"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+

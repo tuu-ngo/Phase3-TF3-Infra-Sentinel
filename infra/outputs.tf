@@ -34,3 +34,8 @@ output "configure_kubectl" {
   description = "Run this after apply to point kubectl/helm at the new cluster"
   value       = "aws eks update-kubeconfig --name ${module.eks.cluster_name} --region ${var.region}"
 }
+
+output "product_reviews_role_arn" {
+  value = module.product_reviews_irsa.iam_role_arn
+}
+
