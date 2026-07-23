@@ -11,6 +11,14 @@ on:
         options:
           - plan
           - apply
+      scope:
+        description: Limit the saved plan to an approved rollout scope
+        required: true
+        type: choice
+        default: full
+        options:
+          - full
+          - pm127-kyverno-ecr
 
 permissions:
   id-token: write
@@ -69,8 +77,26 @@ jobs:
         run: terraform validate
 
       - name: Create saved plan
+        env:
+          PLAN_SCOPE: ${{ inputs.scope }}
         run: |
-          terraform plan -no-color -input=false -out=tfplan
+          target_args=()
+          case "$PLAN_SCOPE" in
+            full)
+              ;;
+            pm127-kyverno-ecr)
+              target_args=(
+                -target=aws_iam_role.kyverno_ecr
+                -target=aws_iam_role_policy.kyverno_ecr_read
+              )
+              ;;
+            *)
+              echo "Unsupported Terraform rollout scope: $PLAN_SCOPE" >&2
+              exit 1
+              ;;
+          esac
+
+          terraform plan -no-color -input=false "${target_args[@]}" -out=tfplan
           terraform show -no-color tfplan
           sha256sum tfplan > tfplan.sha256
 
@@ -135,6 +161,21 @@ jobs:
 
       - name: Apply saved plan
         run: terraform apply -input=false tfplan
+
+      - name: Verify PM-127 Kyverno ECR role
+        if: inputs.scope == 'pm127-kyverno-ecr'
+        run: |
+          test "$(aws iam get-role \
+            --role-name techx-corp-tf3-kyverno-ecr \
+            --query 'Role.Arn' \
+            --output text)" = \
+            "arn:aws:iam::197826770971:role/techx-corp-tf3-kyverno-ecr"
+
+          aws iam get-role-policy \
+            --role-name techx-corp-tf3-kyverno-ecr \
+            --policy-name techx-corp-tf3-kyverno-ecr-read \
+            --query 'PolicyDocument.Statement' \
+            --output json > /dev/null
 
       - name: Verify staging edge paths
         shell: bash
