@@ -11,6 +11,10 @@ on:
         description: "Build platforms"
         required: false
         default: "linux/amd64,linux/arm64"
+      services:
+        description: "Optional space-separated production services for a scoped canary build"
+        required: false
+        default: ""
 
   push:
     branches: [main]
@@ -46,7 +50,7 @@ jobs:
       platforms: ${{ steps.vars.outputs.platforms }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
@@ -102,6 +106,7 @@ jobs:
           EVENT_BEFORE: ${{ github.event.before }}
           SOURCE_SHA: ${{ github.sha }}
           SOURCE_REF: ${{ github.ref }}
+          INPUT_SERVICES: ${{ inputs.services }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$SOURCE_REF" != refs/heads/main ]; then
@@ -113,6 +118,18 @@ jobs:
           ALL_SORTED="$(printf '%s\n' "${ALL_SERVICE_ARRAY[@]}" | sort -u | paste -sd' ' -)"
           MODE=full
           SERVICES="$ALL_SORTED"
+
+          if [ "$EVENT_NAME" = workflow_dispatch ] && [ -n "${INPUT_SERVICES// }" ]; then
+            read -r -a REQUESTED_SERVICES <<< "$INPUT_SERVICES"
+            for service in "${REQUESTED_SERVICES[@]}"; do
+              grep -Fqw -- "$service" <<< "$ALL_SERVICES" || {
+                echo "FAIL: unknown production service: $service" >&2
+                exit 1
+              }
+            done
+            SERVICES="$(printf '%s\n' "${REQUESTED_SERVICES[@]}" | sort -u | paste -sd' ' -)"
+            MODE=scoped
+          fi
 
           if [ "$EVENT_NAME" != workflow_dispatch ] &&
              [ -n "$EVENT_BEFORE" ] &&
@@ -190,7 +207,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
@@ -267,6 +284,7 @@ jobs:
           EVENT_BEFORE: ${{ github.event.before }}
           SOURCE_SHA: ${{ github.sha }}
           SOURCE_REF: ${{ github.ref }}
+          INPUT_SERVICES: ${{ inputs.services }}
         run: |
           set -euo pipefail
 
@@ -285,6 +303,20 @@ jobs:
               sort -u |
               paste -sd' ' -
           )"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "${INPUT_SERVICES// }" ]; then
+            read -r -a REQUESTED_SERVICES <<< "$INPUT_SERVICES"
+            for service in "${REQUESTED_SERVICES[@]}"; do
+              grep -Fqw -- "$service" <<< "$ALL_SERVICES" || {
+                echo "FAIL: unknown production service: $service" >&2
+                exit 1
+              }
+            done
+            UNIQUE_SERVICES="$(printf '%s\n' "${REQUESTED_SERVICES[@]}" | sort -u | paste -sd' ' -)"
+            echo "mode=scoped" >> "$GITHUB_OUTPUT"
+            echo "services=$UNIQUE_SERVICES" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "mode=full" >> "$GITHUB_OUTPUT"
@@ -346,22 +378,22 @@ jobs:
 
       - name: Configure AWS credentials (OIDC)
         if: steps.scope.outputs.mode != 'none'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         if: steps.scope.outputs.mode != 'none'
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
 
       - name: Set up QEMU
         if: steps.scope.outputs.mode != 'none'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Set up Docker Buildx
         if: steps.scope.outputs.mode != 'none'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Point registry at TF3 ECR repository
         if: steps.scope.outputs.mode != 'none'
@@ -403,7 +435,7 @@ jobs:
 
       - name: Install Trivy
         if: steps.scope.outputs.mode != 'none'
-        uses: aquasecurity/setup-trivy@v0.3.1
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: v0.72.0
           cache: true
@@ -441,7 +473,7 @@ jobs:
 
       - name: Upload pre-push Trivy reports
         if: always() && steps.scope.outputs.mode != 'none'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: trivy-pre-push-${{ github.run_id }}-${{ matrix.service }}
           path: trivy-reports/pre-push/
@@ -665,7 +697,7 @@ jobs:
 
       - name: Upload post-push Trivy reports
         if: always() && steps.scope.outputs.mode != 'none'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: trivy-post-push-${{ github.run_id }}-${{ matrix.service }}
           path: trivy-reports/post-push/
@@ -675,7 +707,7 @@ jobs:
 
       - name: Install Cosign
         if: steps.scope.outputs.mode != 'none'
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign and verify approved image digests with keyless Cosign
         if: steps.scope.outputs.mode != 'none'
@@ -933,7 +965,7 @@ jobs:
 
       - name: Upload signed release evidence
         if: always() && steps.scope.outputs.mode != 'none'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: signed-release-evidence-${{ github.run_id }}-${{ matrix.service }}
           path: release-evidence/
@@ -943,11 +975,11 @@ jobs:
 
       - name: Upload approved image manifest
         if: success() && steps.scope.outputs.mode != 'none'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: approved-image-${{ github.run_id }}-${{ matrix.service }}
           path: phase3 - information/techx-corp-platform/approved-images.json
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
           overwrite: true
 
@@ -961,7 +993,7 @@ jobs:
       artifact_attempt: ${{ steps.artifact.outputs.run_attempt }}
     steps:
       - name: Download per-service approved manifests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: approved-image-${{ github.run_id }}-*
           path: service-manifests
@@ -1055,11 +1087,11 @@ jobs:
         run: echo "run_attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
 
       - name: Upload aggregate approved image manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: approved-images-${{ github.run_id }}-${{ github.run_attempt }}
           path: approved-images.json
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
           overwrite: true
 
@@ -1075,13 +1107,13 @@ jobs:
 
     steps:
       - name: Checkout approved source commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.10"
 
@@ -1099,7 +1131,7 @@ jobs:
           python -m pytest -q scripts/ci
 
       - name: Download approved image manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: approved-images-${{ github.run_id }}-${{ needs.aggregate.outputs.artifact_attempt }}
           path: .
@@ -1287,7 +1319,7 @@ jobs:
               --state open \
               --head "$BRANCH_NAME" \
               --base main \
-              --json url,headRefOid,baseRefName,state \
+              --json number,url,headRefOid,baseRefName,state \
               --jq '.[0] // empty'
           )"
 
@@ -1301,25 +1333,57 @@ jobs:
             test "$EXISTING_STATE" = "OPEN"
 
             echo "Pull request already exists and matches the remote branch."
-            exit 0
+            PR_JSON="$EXISTING_PR_JSON"
+          else
+            gh pr create \
+              --title "$PR_TITLE" \
+              --body-file pr_body.txt \
+              --head "$BRANCH_NAME" \
+              --base main
+
+            PR_JSON="$(
+              gh pr list \
+                --state open \
+                --head "$BRANCH_NAME" \
+                --base main \
+                --json number,url,headRefOid,baseRefName,state \
+                --jq '.[0] // empty'
+            )"
+
+            test -n "$PR_JSON"
+            test "$(jq -r '.headRefOid' <<< "$PR_JSON")" = "$REMOTE_SHA"
+            test "$(jq -r '.baseRefName' <<< "$PR_JSON")" = "main"
+            test "$(jq -r '.state' <<< "$PR_JSON")" = "OPEN"
           fi
 
-          gh pr create \
-            --title "$PR_TITLE" \
-            --body-file pr_body.txt \
-            --head "$BRANCH_NAME" \
-            --base main
+          jq -n \
+            --argjson pr "$PR_JSON" \
+            --arg repository "$REPOSITORY" \
+            --arg branch "$BRANCH_NAME" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg source_short_sha "$SOURCE_SHORT_SHA" \
+            --arg run_id "$WORKFLOW_RUN_ID" \
+            --arg run_attempt "$WORKFLOW_RUN_ATTEMPT" \
+            --arg build_mode "$BUILD_MODE" \
+            --arg platforms "$BUILD_PLATFORMS" \
+            --arg registry "$ECR_REGISTRY" \
+            --arg image_repository "$ECR_REPOSITORY" \
+            --argjson services "$(jq -c '.services' approved-images.json)" \
+            '{schemaVersion: 1, repository: $repository, branch: $branch,
+              sourceSha: $source_sha, sourceShortSha: $source_short_sha,
+              workflowRunId: $run_id, workflowRunAttempt: $run_attempt,
+              buildMode: $build_mode, platforms: $platforms,
+              registry: $registry, imageRepository: $image_repository,
+              promotionPr: {number: $pr.number, url: $pr.url,
+                            headSha: $pr.headRefOid, base: $pr.baseRefName,
+                            state: $pr.state},
+              services: $services}' > promotion-evidence.json
 
-          CREATED_PR_JSON="$(
-            gh pr list \
-              --state open \
-              --head "$BRANCH_NAME" \
-              --base main \
-              --json url,headRefOid,baseRefName,state \
-              --jq '.[0] // empty'
-          )"
-
-          test -n "$CREATED_PR_JSON"
-          test "$(jq -r '.headRefOid' <<< "$CREATED_PR_JSON")" = "$REMOTE_SHA"
-          test "$(jq -r '.baseRefName' <<< "$CREATED_PR_JSON")" = "main"
-          test "$(jq -r '.state' <<< "$CREATED_PR_JSON")" = "OPEN"
+      - name: Upload promotion evidence
+        if: env.no_changes != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: promotion-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: promotion-evidence.json
+          if-no-files-found: error
+          retention-days: 90
