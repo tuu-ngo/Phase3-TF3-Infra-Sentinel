@@ -1259,6 +1259,7 @@ opentelemetry-collector:
             insecure: true
 
     processors:
+      batch: {}
       memory_limiter:
         check_interval: 5s
         limit_percentage: 80
