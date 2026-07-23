@@ -2,8 +2,8 @@
 
 This runbook verifies the PM-127 supply-chain path without applying resources
 directly with `kubectl`, `helm`, or `kyverno`. The deployment source is the
-`main` branch after merge; this implementation is being prepared on
-`feat/mandate10-pm127`.
+`main` branch after merge. The preparation implementation was merged by PR
+#349; every rollout step below remains separately reviewed.
 
 ## Safety boundary
 
@@ -12,7 +12,8 @@ Do not run `kubectl apply`, `helm upgrade`, `argocd app sync`, or
 
 1. Pull request review and merge to `main`.
 2. Terraform plan reviewed, then the approved saved plan is applied by the
-   infrastructure owner.
+   infrastructure owner. Use the fixed `pm127-kyverno-ecr` scope while the
+   full production plan contains unrelated changes.
 3. A reviewed controller-only PR enables automated reconciliation for the
    `kyverno` child Application.
 4. After the controller is healthy, a policy-only PR enables automated
@@ -82,6 +83,41 @@ read-only checks above. A tunnel can be healthy while the AWS role is still
 unable to inspect the cluster or ECR.
 
 ## Post-merge GitOps observation
+
+### Apply only the PM-127 IRSA prerequisite
+
+The automatic plan for the PR #349 merge showed the two expected Kyverno IAM
+resources together with unrelated production changes, including a bastion
+replacement and datastore/audit updates. Do not apply that full plan as part
+of PM-127.
+
+After the scoped-rollout workflow change is merged, dispatch **Terraform Apply
+(production)** from `main` with:
+
+```text
+action: apply
+scope: pm127-kyverno-ecr
+```
+
+The plan job uses a closed, repository-owned target list:
+
+```text
+aws_iam_role.kyverno_ecr
+aws_iam_role_policy.kyverno_ecr_read
+```
+
+Before approving the `production` environment, inspect the plan log. It must
+show only those two resources and this summary:
+
+```text
+Plan: 2 to add, 0 to change, 0 to destroy.
+```
+
+Reject the environment approval if any bastion, EKS, datastore, edge, audit,
+or other resource appears. The apply job verifies the downloaded plan hash,
+applies that exact `tfplan`, then calls `iam:GetRole` and `iam:GetRolePolicy` to
+prove both live IAM objects exist. Keep `scope: full` for normal, separately
+reviewed infrastructure releases; it is not the PM-127 rollout path.
 
 After the infrastructure owner applies the reviewed Terraform plan, merge the
 controller enablement PR and observe ArgoCD without forcing a sync:
