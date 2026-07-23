@@ -56,6 +56,8 @@ The same blocking scan exits `0` with **0 unresolved HIGH/CRITICAL findings**. A
 | HIGH unresolved | 8 | 0 |
 | Exact approved exception records | 0 | 3 |
 
+The gate stays live after PM-126, so later work can add records to the same ledger. Mandate 12 added one (last row below), bringing the ledger to 4; the PM-126 baseline columns above are left at their measured values.
+
 ## Residual finding / exception table
 
 | Rule | Exact resource | Classification | Owner | Ticket | Review date | Reason |
@@ -63,6 +65,7 @@ The same blocking scan exits `0` with **0 unresolved HIGH/CRITICAL findings**. A
 | AVD-AWS-0013 | `aws_cloudfront_distribution.staging` | Operational necessity | `tuu-ngo` | PM-126 | 2026-08-22 | Default CloudFront certificate mode only supports the legacy minimum protocol value; HTTPS redirect is still enforced. |
 | AVD-AWS-0013 | `aws_cloudfront_distribution.frontend` | Operational necessity | `tuu-ngo` | PM-126 | 2026-08-22 | Default CloudFront certificate mode only supports the legacy minimum protocol value; HTTPS redirect is still enforced. |
 | AVD-AWS-0057 | `data.aws_iam_policy_document.audit_alert_router` | False positive | `tuu-ngo` | PM-126 | 2026-08-22 | The wildcard is the required child log-stream suffix and is paired only with `CreateLogStream`/`PutLogEvents`. |
+| AVD-AWS-0057 | `data.aws_iam_policy_document.m12_audit_heartbeat` | Operational necessity | `tuu-ngo` | PM-126 | 2026-08-22 | Read-only audit-health role with no mutating action. `cloudwatch:DescribeAlarms` and `cloudtrail:DescribeTrails` have no resource-level permission support, and the log statement uses the required child log-stream suffix. Added by Mandate 12. |
 
 Machine-readable authority: `docs/evidence/mandate-10/pm-126-tfsec-exceptions.json`.
 
