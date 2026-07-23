@@ -50,8 +50,13 @@ def main() -> None:
     assert "resources: [\"pods\", \"namespaces\"]" in rendered
     assert "resources: [\"replicasets\"]" in rendered
     assert "verbs: [\"get\", \"list\", \"watch\"]" in rendered
+    relay_config = rendered.split("  relay.yaml: |\n", 1)[1].split("\n---", 1)[0]
+    assert "      batch: {}" in relay_config.splitlines(), (
+        "otel-gateway pipelines reference batch, so the processor must be "
+        "configured even when the legacy collector is disabled"
+    )
 
-    print("PASS: otel-gateway renders its dedicated identity and read-only RBAC")
+    print("PASS: otel-gateway renders a standalone identity and valid processors")
 
 
 if __name__ == "__main__":
