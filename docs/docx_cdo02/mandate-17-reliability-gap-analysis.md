@@ -10,12 +10,12 @@ CDO02 (Platform — trụ Reliability + Cost Optimization)
 
 | Trường           | Giá trị                                                                                      |
 | ---------------- | -------------------------------------------------------------------------------------------- |
-| Ngày đánh giá    | 2026-07-21                                                                                   |
+| Ngày đánh giá    | 2026-07-21 (lập gốc) · **re-verify live 22/07 + 23/07**                                       |
 | Cluster          | techx-corp-tf3                                                                               |
 | Region           | ap-southeast-1                                                                               |
 | Namespace        | techx-tf3                                                                                    |
 | Người thực hiện  | CDO02                                                                                        |
-| Phương pháp      | Live cluster verify qua SSM tunnel (`kubectl`, `psql`, `valkey-cli`, `kafka-consumer-groups`) + đọc source code |
+| Phương pháp      | Live cluster verify qua SSM tunnel (`kubectl`, `psql`, `valkey-cli`, `kafka-consumer-groups`, Prometheus API) + đọc source code |
 
 > Mandate 17 áp dụng cho **toàn bộ Task Force (phần CDO)** và được nghiệm thu trong **một buổi demo chung**.
 > Tài liệu này phủ **yêu cầu #1 và #2**. Yêu cầu #3 và #4 do CDO01 phụ trách — xem tài liệu bổ trợ.
@@ -23,21 +23,26 @@ CDO02 (Platform — trụ Reliability + Cost Optimization)
 > **🔄 Cập nhật 22/07/2026:** commit `b881bf1` ("§8 bước 1/2", Huu Tai Ngo, 21/07 — đã vào `main`) đã đóng
 > **REL-17-01** và **REL-17-06**: gỡ `VALKEY_DUAL_WRITE_ADDR` (đổi từ "đường lui nóng" sang "đường lui
 > lạnh" = snapshot ElastiCache + PITR RDS + retention MSK 168h) và gỡ initContainer `wait-for-kafka` ở
-> checkout/accounting/fraud-detection. Đánh giá gốc bên dưới lập ngày 21/07 giữ nguyên để truy vết; trạng
-> thái hiện hành xem cột **Trạng thái 22/07** trong bảng tóm tắt.
+> checkout/accounting/fraud-detection.
+>
+> **🔄 Cập nhật 23/07/2026 (re-verify live):** hai phát hiện mới sau các batch Karpenter + otel migration:
+> (1) **REL-17-05 xuống cấp** — cả 9 service ra tiền bị dồn lên **2 spot node** (mandate-13); (2) **REL-17-04
+> nâng lên TRUNG BÌNH** — `grafana`+`prometheus` cùng 1 node ở **AZ 1a**, prometheus dùng `emptyDir` → mất AZ
+> 1a = mất dashboard **và** mất lịch sử metric đúng lúc demo. Đánh giá gốc 21/07 giữ nguyên để truy vết;
+> trạng thái hiện hành xem cột **Trạng thái (mới nhất)** trong bảng tóm tắt.
 
 ---
 
 ## Tóm tắt điều hành
 
-| ID        | Mức độ  | Mô tả                                                                                   | Yêu cầu | Trạng thái 22/07 |
+| ID        | Mức độ  | Mô tả                                                                                   | Yêu cầu | Trạng thái (mới nhất) |
 | --------- | ------- | ----------------------------------------------------------------------------------------- | ------- | ---------------- |
 | REL-17-01 | **CAO** | Dual-write của `cart` chặn đồng bộ 2s trong `lock` → mất AZ 1a làm cart nghẽn ~40–60s **đúng lúc mentor bấm giờ RTO** | #2      | ✅ **ĐÃ XỬ** — `b881bf1` gỡ dual-write |
 | REL-17-06 | **CAO** | initContainer `wait-for-kafka` khoá khởi động checkout vào Kafka CŨ (PV gp2 ghim AZ 1b) → mọi restart cần kho sắp xoá còn sống | #2 | ✅ **ĐÃ XỬ** — `b881bf1` gỡ init |
-| REL-17-02 | **CAO** | Frontend gọi `ad`/`recommendation` **không deadline, không fallback** → dependency treo kéo theo frontend | #1      | 🔴 **CÒN HỞ** |
-| REL-17-03 | TRUNG BÌNH | `flagd` 1 replica, cố định AZ 1c — mất 1c là mất cơ chế đọc flag toàn hệ                  | #1, #2  | 🟡 CÒN — cần xin phép |
-| REL-17-04 | THẤP    | Toàn bộ observability 1 replica — mất AZ có thể mất luôn khả năng **chứng minh** SLO giữa demo | #2      | 🟡 CÒN (đã thêm otel-gateway PDB) |
-| REL-17-05 | ⚠️ **XUỐNG CẤP** | 9/9 service ra tiền vẫn trải 2 AZ, nhưng **dồn hết lên 2 spot node** sau batch Karpenter mandate-13 → mất AZ = dồn lên 1 spot node duy nhất | #2 | 🟡 **2 AZ đạt về chữ, headroom mất** |
+| REL-17-02 | **CAO** | Frontend gọi `ad`/`recommendation` **không deadline, không fallback** → dependency treo kéo theo frontend | #1      | 🔴 **CÒN HỞ — ưu tiên #1** |
+| REL-17-05 | **CAO** (23/07) | 9/9 service ra tiền vẫn trải 2 AZ, nhưng **dồn hết lên 2 spot node** sau batch Karpenter mandate-13 → mất AZ = dồn lên 1 spot node duy nhất | #2 | 🔴 **CÒN — sync mandate-13** |
+| REL-17-04 | TRUNG BÌNH (nâng 23/07) | `grafana`+`prometheus` cùng 1 node ở **AZ 1a**, prometheus `emptyDir` → mất AZ 1a = mất dashboard **+ lịch sử metric** đúng lúc demo | #2      | 🟡 CÒN |
+| REL-17-03 | TRUNG BÌNH | `flagd` 1 replica — mất AZ chứa flagd = mất cơ chế đọc flag toàn hệ (vị trí AZ đổi theo lập lịch) | #1, #2  | 🟡 CÒN — cần xin phép |
 
 **Kết luận (cập nhật 22/07):** Hai SPOF ẩn đường khởi động (REL-17-01 dual-write, REL-17-06 wait-for-kafka)
 **đã được đóng** bởi `b881bf1` (§8 Mandate 08). **NHƯNG** verify lại live cho thấy req#2 **xuống cấp**:
@@ -321,14 +326,47 @@ không cố định một AZ mà là "mất AZ nào đang chứa flagd".)
 
 ---
 
-## REL-17-04 (THẤP) — Observability đơn lẻ
+## REL-17-04 (TRUNG BÌNH — nâng từ THẤP ngày 23/07) — Observability chết cùng AZ demo
 
-`grafana`, `jaeger`, `prometheus`, `opensearch-0` đều 1 replica. `prometheus` + `grafana` + `opensearch-0`
-nằm chung node `ip-10-0-8-134` (AZ 1a).
+> **Nâng mức 23/07:** không chỉ "mất dashboard tạm" mà còn **mất lịch sử metric** — hai thứ đúng lúc cần
+> chứng minh req#2. Verify live 23/07.
 
-Không phải sản phẩm, không tính vào SLO. Nhưng **mất AZ 1a giữa buổi demo = mất luôn dashboard để chứng
-minh SLO vẫn giữ**. Rủi ro về mặt trình bày, không phải về mặt khách hàng. Mandate 03 đã ghi nhận blip
-502 ~1 phút của Grafana khi drain node — cùng gốc rễ.
+Verify live 23/07:
+
+```bash
+$ kubectl get pods -n techx-tf3 -l app.kubernetes.io/name=grafana -o wide
+grafana-...      Running   ip-10-0-8-134   # AZ 1a
+$ kubectl get pods -n techx-tf3 -l app.kubernetes.io/name=prometheus -o wide
+prometheus-...   Running   ip-10-0-8-134   # AZ 1a — CÙNG node với grafana
+$ kubectl get pods -n techx-tf3 -l app.kubernetes.io/name=jaeger -o wide
+jaeger-...       Running   ip-10-0-24-177  # AZ 1b (đã tách)
+$ kubectl get pod prometheus-... -o jsonpath='{.spec.volumes[?(@.name=="storage-volume")]}'
+{"emptyDir":{},"name":"storage-volume"}    # KHÔNG PVC → node-local, mất khi restart
+```
+
+- **grafana + prometheus:** mỗi cái 1 replica, **cùng node `ip-10-0-8-134`, cùng AZ 1a**.
+- **prometheus dùng `emptyDir`** (không PVC), TSDB đang giữ ~6 ngày history (chạy từ 17/07).
+- jaeger đã tách sang AZ 1b — nên "toàn bộ observability" không còn đúng tuyệt đối; rủi ro tập trung ở
+  cặp grafana+prometheus.
+
+**Hai hệ quả khi mất AZ 1a (không chỉ một):**
+1. **Mất dashboard:** node `8-134` chết → cả grafana lẫn prometheus cùng chết. Không PVC nên chúng
+   **reschedule được** sang AZ khác (không kẹt Pending), nhưng có cửa sổ ~1–2 phút không có dashboard.
+2. **Mất LỊCH SỬ metric:** `emptyDir` → khi prometheus restart, **toàn bộ TSDB bay**. Demo req#2 cần chứng
+   minh **"SLO dip rồi recover"** trên đồ thị — nếu prometheus restart trắng đúng lúc mất AZ thì **không
+   còn đồ thị dip để trình**. Đây là mặt nặng hơn.
+
+**Nghịch lý đáng chú ý:** AZ 1a đang chứa **1 replica spot của mọi service ra tiền** (`ip-10-0-10-199`)
+**VÀ** cả grafana+prometheus (`ip-10-0-8-134`). Nếu mentor chặn đúng AZ 1a để test req#2 → service ra tiền
+sống (còn replica ở 1c) nhưng **công cụ để chứng minh chúng sống lại chết cùng lúc**. Tức là AZ mentor chặn
+để test resilience cũng chính là AZ giết bằng chứng resilience.
+
+**Hướng xử (2 tầng):**
+1. *Rẻ, làm ngay:* anti-affinity để grafana ≠ prometheus (khác node + khác AZ) → mất 1 AZ không mất cả hai.
+2. *Sâu hơn (quyết định riêng):* prometheus cần **PVC hoặc HA/remote-write** để không mất history khi
+   restart — nhưng PVC lại ghim AZ nên phải cân. Không sửa vội.
+
+Mandate 03 đã ghi nhận blip 502 ~1 phút của Grafana khi drain node — cùng gốc rễ (single-replica).
 
 ---
 
@@ -375,24 +413,26 @@ Ghi chú tích cực: SA `techx-corp` (31 pod dùng chung) **không có RoleBind
 
 ---
 
-## Kế hoạch (cập nhật 22/07)
+## Kế hoạch (cập nhật 23/07)
 
 Sắp theo **tỷ lệ (giảm rủi ro thật) / (công sức)**, không theo thứ tự yêu cầu.
 
 | # | Việc                                                                     | Gap        | Công sức | Trạng thái |
 | - | ------------------------------------------------------------------------ | ---------- | -------- | ---------- |
-| 1 | **Sync mandate-13 ↔ 17: gỡ tập trung 2 spot node** (mỏ neo on-demand cho checkout, hoặc ép elastic trải >2 node) | REL-17-05 | cần bàn với turuong | 🔴 **MỚI — rủi ro cao nhất req#2** |
+| 1 | **Sync mandate-13 ↔ 17: gỡ tập trung 2 spot node** (mỏ neo on-demand cho checkout, hoặc ép elastic trải >2 node) | REL-17-05 | cần bàn với turuong | 🔴 **rủi ro cao nhất req#2** |
 | 2 | Timeout + fallback rỗng cho `ad` / `recommendation`; bỏ `Promise.all` cứng | REL-17-02  | ~1 ngày   | 🔴 CÒN — lỗ hở chắc chắn của CDO02 |
-| 3 | Đóng gói bằng chứng AZ (kèm caveat spot) thành artifact demo              | REL-17-05  | ~1 giờ    | 🟡 Đang làm |
-| 4 | Bàn giao chuỗi leo thang `default` SA cho CDO01                           | yêu cầu #4 | 5 phút    | 🔴 CÒN (verify 22/07 vẫn thủng) |
-| 5 | flagd HA                                                                 | REL-17-03  | ~1 giờ    | 🟡 Cần xin phép leader/mentor |
-| 6 | Anti-affinity cho observability                                          | REL-17-04  | ~1 giờ    | 🟡 Ưu tiên thấp |
+| 3 | **Anti-affinity grafana ≠ prometheus (khác node + AZ)**                   | REL-17-04  | ~1 giờ    | 🔴 CÒN — nâng ưu tiên 23/07 |
+| 4 | Đóng gói bằng chứng AZ (kèm caveat spot) thành artifact demo              | REL-17-05  | ~1 giờ    | 🟡 Đang làm |
+| 5 | Bàn giao chuỗi leo thang `default` SA cho CDO01                           | yêu cầu #4 | 5 phút    | 🔴 CÒN (verify 22/07 vẫn thủng) |
+| 6 | flagd HA                                                                 | REL-17-03  | ~1 giờ    | 🟡 Cần xin phép leader/mentor |
+| 7 | prometheus PVC/HA để không mất history (quyết định riêng)                 | REL-17-04  | vừa       | 🟡 Cân nhắc |
 | ~~—~~ | ~~Circuit breaker dual-write cart~~                                   | REL-17-01  | —        | ✅ **HUỶ** — `b881bf1` gỡ hẳn dual-write, không cần |
 | ~~—~~ | ~~Gỡ initContainer `wait-for-kafka`~~                                 | REL-17-06  | —        | ✅ **XONG** — `b881bf1` |
 
 **Đổi so với bản 21/07:** hai việc nặng nhất trong bảng gốc (circuit breaker + gỡ init) đã được leader
-xử qua `b881bf1`. Ưu tiên số 1 còn lại của CDO02 giờ là **REL-17-02** — thứ duy nhất còn hở trên đường
-yêu cầu #1, và là thứ có postmortem 0011 chứng minh đang trượt.
+xử qua `b881bf1`. Nhưng re-verify 22-23/07 lòi ra **2 việc mới**: REL-17-05 (tập trung spot, cần sync
+mandate-13) và REL-17-04 nâng mức (grafana+prometheus chết cùng AZ 1a + mất history). Cùng với **REL-17-02**
+(req#1 fallback, chưa ai đụng), đây là các việc còn lại thực chất của CDO02 cho mandate 17.
 
 ---
 
