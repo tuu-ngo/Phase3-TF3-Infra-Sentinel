@@ -55,14 +55,14 @@ Ràng buộc cứng: trong ngân sách ~$300/tuần/TF; không thay đổi store
 
 **Quyết định chọn:** Đổi default Object Lock cho object **mới** từ `GOVERNANCE 14 ngày` sang `COMPLIANCE 14 ngày`. Giữ lifecycle 30 ngày như M11.
 
-> **Sửa ngày 23/07/2026.** Bản đầu chốt `COMPLIANCE 365` + lifecycle `400`. Đã đổi: bài tập kết thúc 31/07/2026 và account chạy trên thẻ của owner cá nhân, nên khoá WORM 365 ngày là bắt owner trả tiền lưu trữ suốt một năm sau khi không còn ai đọc log — mà `COMPLIANCE` thì **không có đường rút ngắn**, kể cả root. Thay đổi thời hạn, **không** thay đổi mode.
+Vì bài tập kết thúc vào 31/07/2026 và account chạy trên thẻ của owner cá nhân, thời hạn lưu trữ được căn chỉnh theo vòng đời bài tập (14 ngày đủ để phủ cửa sổ demo/nghiệm thu). Thay đổi thời hạn, **không** thay đổi mode — vì `COMPLIANCE` là cốt lõi để đảm bảo "kể cả root cũng không xóa được", điều mà GOVERNANCE không làm được.
 
 ### Alternatives considered
 
 | Phương án | Lý do loại bỏ |
 |---|---|
 | Giữ GOVERNANCE 14 ngày của M11 | Admin vẫn có thể xóa object bằng `s3:BypassGovernanceRetention`; cả 4 IAM user đều `AdministratorAccess` nên đây là WORM trên danh nghĩa |
-| COMPLIANCE 365 ngày (bản đầu của ADR này) | Vượt xa vòng đời bài tập. Không rút ngắn được sau khi apply, nên chi phí lưu trữ đeo bám owner tới 07/2027 |
+| COMPLIANCE 365 ngày | Vượt xa vòng đời bài tập. `COMPLIANCE` không thể rút ngắn sau khi set, nên chi phí lưu trữ sẽ đeo bám owner ròng rã 1 năm trời kể cả sau khi bài tập kết thúc |
 | Bỏ hẳn lifecycle | Ngược mục tiêu: lifecycle chính là thứ xoá object. Bỏ đi thì log giữ vĩnh viễn, hoá đơn tăng chứ không giảm; và bucket `prevent_destroy` chỉ xoá được khi rỗng nên mất luôn đường dọn dẹp. Heartbeat cũng đọc lifecycle như một invariant |
 | Dùng Glacier Instant Retrieval ngay lần đầu | Minimum storage duration 90 ngày dài hơn cả vòng đời dữ liệu ở cấu hình này — transition sẽ đắt hơn là để nguyên Standard |
 
@@ -72,10 +72,10 @@ Ràng buộc cứng: trong ngân sách ~$300/tuần/TF; không thay đổi store
 - `COMPLIANCE` mode: kể cả root user không thể xóa object trong thời hạn lock — WORM thực sự, không phải WORM "trên danh nghĩa". Đây là phần claim của mandate, và rút ngắn thời hạn không làm mất nó.
 - 14 ngày phủ hết cửa sổ demo, nghiệm thu và điều tra sau bài tập (cutover ~24/07 → hết lock ~07/08).
 - Lifecycle 30 ngày cho 16 ngày đệm sau khi hết lock: đủ để export bằng chứng, rồi object tự hết hạn và bucket dọn được.
-- Không còn thay đổi lifecycle so với M11 → biến mất rủi ro "lifecycle 400 áp cho cả object hiện có" và không cần cost approval trước apply.
+- Không thay đổi lifecycle so với M11 → biến mất rủi ro "lifecycle 400 áp cho cả object hiện có" và không cần cost approval trước apply.
 
 **Negative / residual risk:**
-- Cửa sổ điều tra rút từ 12 tháng xuống 14 ngày. Phát hiện trễ hơn 14 ngày sau sự việc thì object gốc có thể đã hết hạn. Chấp nhận được **chỉ vì** hệ thống ngừng tồn tại sau 31/07/2026; nếu tái dùng cho môi trường sống thì phải nâng lại và ký lại quyết định này.
+- Cửa sổ điều tra thực tế chỉ có 14 ngày. Nếu phát hiện sự cố muộn hơn 14 ngày, object gốc có thể đã hết hạn. Mức độ rủi ro này được **chấp nhận** vì hệ thống ngừng tồn tại sau 31/07/2026; nếu tái sử dụng kiến trúc này cho môi trường sống (production thật), phải nâng thời gian lưu trữ lên 365 ngày.
 - `COMPLIANCE` vẫn không thể rút ngắn sau khi set — 14 ngày cũng là 14 ngày. Apply vẫn phải có saved plan hash và gate review trước.
 - Áp dụng cho object **mới**; không hồi tố object đã ghi.
 
