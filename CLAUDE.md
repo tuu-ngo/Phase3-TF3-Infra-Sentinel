@@ -87,12 +87,20 @@ Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"tea
 ### Truy cập cluster — 2 đường song song
 - **⚠️ PHẢI dùng `export AWS_PROFILE=techx-new`** cho mọi lệnh AWS/kubectl. Profile `default` trỏ
   account CŨ `012619468490` (không còn dùng) — quên set là truy cập nhầm account, mọi thứ fail.
-- **SSM bastion** (mặc định): bastion `i-02a8d3e39b87180ce`, cluster endpoint
-  `ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com`. Mở tunnel:
+- **SSM bastion** (mặc định): bastion ID **không cố định** (Terraform replace là đổi ID — 23/07 id cũ
+  `i-02a8d3e39b87180ce` bị terminate, hiện là `i-0f5959afa0eb31e7c`; luôn tra động theo tag, xem lệnh
+  dưới). Cluster endpoint `ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com`. Mở tunnel:
   ```sh
   export AWS_PROFILE=techx-new; export MSYS_NO_PATHCONV=1   # Windows git-bash
-  aws ssm start-session --target i-02a8d3e39b87180ce --document-name AWS-StartPortForwardingSessionToRemoteHost \
-    --parameters host="ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com",portNumber="443",localPortNumber="8443" --region ap-southeast-1
+  # KHÔNG hardcode bastion ID — Terraform replace bastion là ID đổi (đã xảy ra 23/07: id cũ
+  # i-02a8d3e39b87180ce bị terminate). Tra động theo tag + endpoint theo tên cluster:
+  BASTION_ID=$(aws ec2 describe-instances --region ap-southeast-1 \
+    --filters "Name=tag:Name,Values=techx-corp-tf3-bastion" "Name=instance-state-name,Values=running" \
+    --query "Reservations[].Instances[].InstanceId" --output text)
+  EKS_HOST=$(aws eks describe-cluster --name techx-corp-tf3 --region ap-southeast-1 \
+    --query "cluster.endpoint" --output text | sed 's~^https://~~')
+  aws ssm start-session --target "$BASTION_ID" --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters host="$EKS_HOST",portNumber="443",localPortNumber="8443" --region ap-southeast-1
   # terminal khác:
   kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx-corp-tf3 --server=https://localhost:8443 --insecure-skip-tls-verify=true
   ```

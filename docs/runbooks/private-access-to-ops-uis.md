@@ -66,11 +66,21 @@ arn:aws:sts::197826770971:assumed-role/techx-tf3-mandate-reviewer/mandate-01-rev
 
 ## 2. Mở tunnel tới EKS private API
 
-Terminal 1, giữ chạy trong suốt phiên kiểm tra:
+Terminal 1, giữ chạy trong suốt phiên kiểm tra.
+
+> **Đừng hardcode instance ID bastion** — Terraform có thể replace bastion, ID sẽ
+> đổi và lệnh trỏ ID cũ báo `TargetNotConnected` (đã xảy ra 23/07/2026). Tra ID
+> động theo tag:
 
 ```sh
+BASTION_ID=$(aws ec2 describe-instances --region ap-southeast-1 \
+  --filters "Name=tag:Name,Values=techx-corp-tf3-bastion" \
+            "Name=instance-state-name,Values=running" \
+  --query "Reservations[].Instances[].InstanceId" --output text \
+  --profile mentor-mandate-reviewer)
+
 aws ssm start-session \
-  --target i-02a8d3e39b87180ce \
+  --target "$BASTION_ID" \
   --document-name TechX-Mandate01-EKS-PortForward \
   --parameters localPortNumber="9443" \
   --region ap-southeast-1 \
