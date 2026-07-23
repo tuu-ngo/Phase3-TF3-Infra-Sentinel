@@ -1,0 +1,81 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: mandate05-native-resource-requirements
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+        scope: Namespaced
+  validations:
+    - expression: "object.spec.containers.all(c, has(c.resources.requests) && ('cpu' in c.resources.requests) && ('memory' in c.resources.requests) && has(c.resources.limits) && ('cpu' in c.resources.limits) && ('memory' in c.resources.limits)) && (!has(object.spec.initContainers) || object.spec.initContainers.all(c, has(c.resources.requests) && ('cpu' in c.resources.requests) && ('memory' in c.resources.requests) && has(c.resources.limits) && ('cpu' in c.resources.limits) && ('memory' in c.resources.limits)))"
+      message: "All containers and initContainers must explicitly define requests.cpu, requests.memory, limits.cpu, and limits.memory."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: mandate05-native-resource-requirements-techx-tf3
+spec:
+  policyName: mandate05-native-resource-requirements
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      # Mandate 5 cluster-wide expansion (native, 22/07): tu truoc chi khop
+      # techx-tf3, gio loai tru kube-system - ap dung toan cluster giong dung
+      # pham vi Kyverno cu (18-20/07). Dung matchExpressions/NotIn thay vi
+      # liet ke ten tung namespace nhu Kyverno truoc day - tu dong ap cho ca
+      # namespace tao moi sau nay, khong can sua lai policy moi lan them
+      # namespace. Da pre-flight verify sach argocd/argo-rollouts/
+      # external-secrets/default truoc khi doi dong nay - xem
+      # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md.
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: mandate05-native-image-reference
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+        scope: Namespaced
+  validations:
+    - expression: "object.spec.containers.all(c, c.image.matches('^.+(:[^/]+|@sha256:[0-9a-f]{64})$') && !c.image.matches('^(.+/)?[^/@]+:latest$')) && (!has(object.spec.initContainers) || object.spec.initContainers.all(c, c.image.matches('^.+(:[^/]+|@sha256:[0-9a-f]{64})$') && !c.image.matches('^(.+/)?[^/@]+:latest$'))) && (!has(object.spec.ephemeralContainers) || object.spec.ephemeralContainers.all(c, c.image.matches('^.+(:[^/]+|@sha256:[0-9a-f]{64})$') && !c.image.matches('^(.+/)?[^/@]+:latest$')))"
+      message: "Images must use an explicit non-latest tag or immutable sha256 digest."
+    - expression: "object.spec.containers.all(c, !c.image.startsWith('197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp') || c.image.matches('^197826770971[.]dkr[.]ecr[.]ap-southeast-1[.]amazonaws[.]com/techx-corp@sha256:[0-9a-f]{64}$')) && (!has(object.spec.initContainers) || object.spec.initContainers.all(c, !c.image.startsWith('197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp') || c.image.matches('^197826770971[.]dkr[.]ecr[.]ap-southeast-1[.]amazonaws[.]com/techx-corp@sha256:[0-9a-f]{64}$'))) && (!has(object.spec.ephemeralContainers) || object.spec.ephemeralContainers.all(c, !c.image.startsWith('197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp') || c.image.matches('^197826770971[.]dkr[.]ecr[.]ap-southeast-1[.]amazonaws[.]com/techx-corp@sha256:[0-9a-f]{64}$')))"
+      message: "Images from 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp must use @sha256:<64 lowercase hex>."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: mandate05-native-image-reference-techx-tf3
+spec:
+  policyName: mandate05-native-image-reference
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      # Mandate 5 cluster-wide expansion (native, 22/07): tu truoc chi khop
+      # techx-tf3, gio loai tru kube-system - ap dung toan cluster giong dung
+      # pham vi Kyverno cu (18-20/07). Dung matchExpressions/NotIn thay vi
+      # liet ke ten tung namespace nhu Kyverno truoc day - tu dong ap cho ca
+      # namespace tao moi sau nay, khong can sua lai policy moi lan them
+      # namespace. Da pre-flight verify sach argocd/argo-rollouts/
+      # external-secrets/default truoc khi doi dong nay - xem
+      # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md.
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system

@@ -21,10 +21,27 @@ resource "aws_security_group" "bastion" {
   vpc_id      = var.vpc_id
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS to private VPC endpoints and the private EKS API"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  egress {
+    description = "UDP DNS to the Amazon-provided VPC resolver"
+    from_port   = 53
+    to_port     = 53
+    protocol    = "udp"
+    cidr_blocks = ["${cidrhost(var.vpc_cidr, 2)}/32"]
+  }
+
+  egress {
+    description = "TCP DNS fallback to the Amazon-provided VPC resolver"
+    from_port   = 53
+    to_port     = 53
+    protocol    = "tcp"
+    cidr_blocks = ["${cidrhost(var.vpc_cidr, 2)}/32"]
   }
 
   tags = {
@@ -65,6 +82,10 @@ resource "aws_instance" "bastion" {
 
   metadata_options {
     http_tokens = "required"
+  }
+
+  root_block_device {
+    encrypted = true
   }
 
   tags = {

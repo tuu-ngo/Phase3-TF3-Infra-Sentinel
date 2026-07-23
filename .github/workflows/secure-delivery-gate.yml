@@ -1,0 +1,166 @@
+name: Secure delivery
+
+"on":
+  pull_request:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  iac_misconfiguration:
+    name: IaC misconfiguration scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out untrusted PR source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Validate exact tfsec exceptions
+        run: python3 scripts/ci/validate-pm126-tfsec-exceptions.py
+
+      - name: Scan production Terraform with tfsec
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/iac
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --volume "$GITHUB_WORKSPACE:/src:ro" \
+            --volume "$GITHUB_WORKSPACE/artifacts/iac:/out" \
+            aquasec/tfsec:v1.28.14@sha256:ac46d48a384ae2c0bbd0413cd2a18229e45e21a44d22c8be28b56de5b38d74c3 \
+            /src/infra/live/production \
+            --exclude-downloaded-modules \
+            --minimum-severity HIGH \
+            --format json \
+            --out /out/tfsec.json
+
+      - name: Upload IaC scan artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pm126-iac-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/iac/
+          if-no-files-found: warn
+          retention-days: 90
+
+  secret_scan:
+    name: Repository secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out untrusted PR source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Scan the complete repository tree with Trivy
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/secrets
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/src:ro" \
+            --volume "$GITHUB_WORKSPACE/artifacts/secrets:/out" \
+            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            fs \
+            --scanners secret \
+            --secret-config /src/.trivy-secret.yaml \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            --no-progress \
+            --offline-scan \
+            --format json \
+            --output /out/raw.json \
+            /src
+          python3 scripts/ci/evaluate-trivy-secrets.py \
+            --input artifacts/secrets/raw.json \
+            --report artifacts/secrets/sanitized.json \
+            --summary artifacts/secrets/summary.json
+
+      - name: Upload redacted secret scan artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pm126-secrets-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/secrets/sanitized.json
+            artifacts/secrets/summary.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Remove raw secret matches
+        if: ${{ always() }}
+        run: rm -f artifacts/secrets/raw.json
+
+  sast:
+    name: SAST scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out untrusted PR source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Scan primary services with Semgrep
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/sast
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/src:ro" \
+            --volume "$GITHUB_WORKSPACE/artifacts/sast:/out" \
+            semgrep/semgrep:1.170.0@sha256:c98f8829eea377274ee4b10656458b078b88232469b2ff913f091c2317347c9d \
+            semgrep scan \
+            --config p/owasp-top-ten \
+            --config /src/.semgrep/pm126.yml \
+            --severity ERROR \
+            --error \
+            --metrics off \
+            --exclude '**/Dockerfile' \
+            --json-output /out/semgrep.json \
+            --sarif-output /out/semgrep.sarif \
+            "/src/phase3 - information/techx-corp-platform/src"
+
+      - name: Upload SAST scan artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pm126-sast-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/sast/
+          if-no-files-found: warn
+          retention-days: 90
+
+  secure_delivery_gate:
+    name: Secure delivery gate
+    if: ${{ always() }}
+    needs:
+      - iac_misconfiguration
+      - secret_scan
+      - sast
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish aggregate verdict
+        env:
+          IAC_RESULT: ${{ needs.iac_misconfiguration.result }}
+          SECRET_RESULT: ${{ needs.secret_scan.result }}
+          SAST_RESULT: ${{ needs.sast.result }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## PM-126 secure delivery gate"
+            echo ""
+            echo "| Control | Result |"
+            echo "|---|---|"
+            echo "| IaC misconfiguration | $IAC_RESULT |"
+            echo "| Repository secret scan | $SECRET_RESULT |"
+            echo "| SAST | $SAST_RESULT |"
+            echo ""
+            echo "This is a read-only pre-merge/pre-ECR-push gate; ECR scan-on-push is not used as merge evidence."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$IAC_RESULT" != "success" || \
+                "$SECRET_RESULT" != "success" || \
+                "$SAST_RESULT" != "success" ]]; then
+            echo "One or more PM-126 controls failed, were cancelled, or were skipped." >&2
+            exit 1
+          fi
