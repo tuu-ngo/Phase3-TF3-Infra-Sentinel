@@ -56,10 +56,15 @@ def test_psa_enforcement_and_observability_exception_are_explicit():
     assert observability_labels["pod-security.kubernetes.io/audit"] == "baseline"
 
 
-def test_kyverno_is_absent_from_gitops_desired_state():
-    assert not (REPO / "gitops/apps/kyverno-app.yaml").exists()
-    assert not (REPO / "gitops/apps/kyverno-policies-app.yaml").exists()
-    assert not (REPO / "gitops/policies/kyverno").exists()
+def test_retired_mandate05_kyverno_policies_stay_absent():
+    retired = (
+        "baseline-security-context.yaml",
+        "disallow-latest-tag.yaml",
+        "require-first-party-image-digest.yaml",
+        "require-resource-requests.yaml",
+    )
+    for filename in retired:
+        assert not (REPO / "gitops/policies/kyverno" / filename).exists()
 
 
 def test_argocd_self_uses_server_side_apply():
