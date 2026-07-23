@@ -23,7 +23,8 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/immutable
           python3 scripts/ci/verify-immutable-pins.py \
-            --workflows \
+            --verify-registry \
+            --inventory-output artifacts/immutable/dockerfile-inventory.json \
             2>&1 | tee artifacts/immutable/audit.log
 
       - name: Upload audit evidence

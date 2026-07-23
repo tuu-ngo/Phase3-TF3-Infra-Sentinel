@@ -139,8 +139,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Verify immutable workflow pins
-        run: python3 scripts/ci/verify-immutable-pins.py --workflows
+      - name: Verify immutable workflow and Dockerfile pins
+        run: python3 scripts/ci/verify-immutable-pins.py
 
   secure_delivery_gate:
     name: Secure delivery gate
