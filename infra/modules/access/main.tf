@@ -44,6 +44,29 @@ resource "aws_security_group" "bastion" {
     cidr_blocks = ["${cidrhost(var.vpc_cidr, 2)}/32"]
   }
 
+  # Managed-datastore ops path via SSM port-forward. The datastore module already
+  # opens RDS (5432) and ElastiCache (6379) ingress to this bastion SG (db_ops_sgs),
+  # so the bastion must be allowed to egress on those ports or the tunnel times out.
+  # PM-126 hardening replaced the previous open egress with 443+DNS only, which
+  # dropped this path (see postmortem 0014). Scope stays inside the VPC CIDR — not
+  # 0.0.0.0/0 — preserving least privilege. MSK (9096) is intentionally excluded:
+  # the datastore module does not open MSK ingress to the bastion.
+  egress {
+    description = "PostgreSQL to RDS via SSM tunnel"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  egress {
+    description = "Valkey/Redis to ElastiCache via SSM tunnel"
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
   tags = {
     Name = "${var.cluster_name}-bastion-sg"
   }
