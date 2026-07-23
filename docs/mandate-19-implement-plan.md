@@ -1,211 +1,225 @@
 # Kế hoạch triển khai [MANDATE-19]: Biết trần & Nâng trần bằng hiệu suất
 
-## Mục tiêu
+## Phạm vi PR và thứ tự
 
-Directive #19 yêu cầu 4 thứ phải nộp:
-1. **Tìm breakpoint thật** (RPS/user đỉnh mà SLO vẫn giữ) — trước và sau tuning
-2. **Nâng trần, không thêm node** — chứng minh requests-per-node tăng sau khi tuning
-3. **Xử nút thắt thông lượng** — tìm service bão hoà sớm nhất và nới nó
-4. **Demo xuống mềm** — đẩy tải vượt trần → checkout vẫn sống, browse bị shed (429)
-
----
-
-## Bối cảnh từ các Mandate trước
-
-| Mandate | Kết quả liên quan |
-|---|---|
-| Mandate-02 | 200 user: p95 ~46ms, checkout 99.98%, node không đổi (7 node). Trần **chưa bị chạm**. |
-| Mandate-16 | Checkout critical path song song hoá — latency giảm từ 185ms xuống ~45ms |
-
-**Kết luận:** 200 user vẫn còn rất xa breakpoint thật. Hệ có headroom lớn chưa được khai thác.
+| PR | Branch | Nội dung | Phụ thuộc |
+|---|---|---|---|
+| **PM-153** | `feat/pm-153` | HPA tuning (65%→75%) + Envoy circuit_breakers + breakpoint test evidence | Không |
+| **PM-154** | `feat/mandate-19` | Route classification + `local_ratelimit` shadow mode | PM-153 evidence cần cho token bucket |
+| **PM-154b** | (PR riêng sau shadow pass) | Flip `filter_enforced` 0%→100% + điền `max_tokens` từ PM-153 | PM-154 shadow ≥ 5 phút pass |
 
 ---
 
-## Thay đổi đã thực hiện
+## PM-153 — HPA Tuning + Breakpoint Discovery
 
-### 1. HPA Tuning — tăng requests-per-node density
+### Thay đổi (branch `feat/pm-153`)
 
-**File:** [`gitops/infrastructure/hpa-hotpath.yaml`](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/gitops/infrastructure/hpa-hotpath.yaml)
+**`gitops/infrastructure/hpa-hotpath.yaml`:**
 
-| HPA | CPU target cũ | CPU target mới | maxReplicas cũ | maxReplicas mới |
-|---|---|---|---|---|
-| `frontend-proxy-hpa` | 65% | **75%** | 8 | 8 |
-| `frontend-hpa` | 65% | **75%** | 8 | **12** |
-| `product-catalog-hpa` | 65% | **75%** | 8 | **10** |
-| `cart-hpa` | 65% | 65% (giữ) | 6 | 6 |
-| `checkout-hpa` | 65% | 65% (giữ) | 8 | 8 |
+| HPA | CPU target | maxReplicas |
+|---|---|---|
+| `frontend-proxy-hpa` | 65% → **75%** | 8 (giữ) |
+| `frontend-hpa` | 65% → **75%** | 8 → **12** |
+| `product-catalog-hpa` | 65% → **75%** | 8 → **10** |
+| `cart-hpa`, `checkout-hpa` | Giữ 65% | Giữ nguyên |
 
-**Lý do tăng target lên 75% cho browse services:** Mỗi pod gánh nhiều request hơn trước khi scale → cùng số node phục vụ được nhiều request hơn → requests-per-node tăng. Browse services không revenue-critical nên chấp nhận pod chạy nóng hơn.
+Lý do: mỗi pod gánh nhiều request hơn trước khi scale → requests-per-node density tăng mà không thêm node. Checkout/cart giữ 65% vì revenue-critical.
 
-**Lý do giữ 65% cho checkout/cart:** Revenue-critical — ưu tiên latency thấp hơn density.
-
-### 2. Envoy Load Shedding — xuống mềm khi vượt trần
-
-**File:** [`phase3 - information/techx-corp-platform/src/frontend-proxy/envoy.tmpl.yaml`](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/phase3%20-%20information/techx-corp-platform/src/frontend-proxy/envoy.tmpl.yaml)
-
-#### 2a. Route split — checkout protected vs browse shedable
-
+**`envoy.tmpl.yaml` — cluster `frontend`:**
+```yaml
+circuit_breakers:
+  thresholds:
+    - priority: DEFAULT
+      max_connections: 1024
+      max_pending_requests: 1024
+      max_requests: 4096   # default 1024 → 4096
+      max_retries: 3
 ```
-/otlp-http/    → collector           (giữ nguyên)
-/images/       → image-provider      (giữ nguyên)
-/flagservice/  → flagd               (KHÔNG đụng — Directive #1)
-/api/checkout  → frontend            [checkout_protected — KHÔNG shed]
-/              → frontend            [browse_shedable   — token bucket 150 RPS]
-```
+Loại bỏ Envoy-level bottleneck trước khi backend thực sự cạn.
 
-Route `/api/checkout` được đặt **trước** catch-all `/` để prefix match đúng ưu tiên.
-
-#### 2b. `envoy.filters.http.local_ratelimit` filter
-
-- Chạy **in-process** trong Envoy — không cần Redis external, không thêm latency đáng kể
-- Global bucket: `10 000 token/s` — fallback, không bao giờ bị trigger thực tế
-- Per-route override trên `browse_shedable`: `max_tokens=150, tokens_per_fill=150, fill_interval=1s`
-- Khi browse vượt 150 RPS: Envoy trả HTTP 429 + header `x-local-rate-limit: true` ngay tại proxy — không đẩy xuống backend
-
-#### 2c. Envoy circuit breaker `max_requests` tăng
-
-- Cluster `frontend`: `max_requests: 1024 → 4096`
-- Ngăn Envoy reject request ở tầng proxy trước khi backend thực sự cạn
-
-### 3. ADR 0011
-
-**File mới:** [`docs/adr/0011-mandate-19-throughput-ceiling-load-shedding.md`](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/docs/adr/0011-mandate-19-throughput-ceiling-load-shedding.md)
-
-Ghi nhận: trần cũ/mới (placeholder — điền sau breakpoint test), nút thắt ở đâu, nâng bằng gì, cơ chế load-shedding.
-
----
-
-## Kế hoạch Verification (người verify thực hiện)
-
-### Bước 1 — Tìm breakpoint trước tuning (Phase 1)
-
-> **Thực hiện TRƯỚC khi ArgoCD sync thay đổi HPA/Envoy**, hoặc dùng git stash để revert tạm thời.
+### Breakpoint Test Procedure (PM-153)
 
 ```bash
-# Ramp lên dần: 200 → 300 → 400 → 500 → 700 → 1000 user, giữ 3-5 phút mỗi bậc
+# Ramp up dần: 200 → 300 → 400 → 500 → 700 → 1000 user
+# Giữ mỗi bậc 3-5 phút, quan sát signal gãy: p99 > 1000ms HOẶC error rate > 1%
 kubectl -n techx-tf3 set env deploy/load-generator \
   LOCUST_USERS=300 LOCUST_SPAWN_RATE=30
 kubectl -n techx-tf3 rollout restart deploy/load-generator
 
-# Quan sát signal gãy: p99 > 1000ms HOẶC error rate > 1%
-# Grafana: dashboard slo-dashboard / apm-dashboard
-
-# Ghi lại:
-# - RPS tại điểm gãy (từ Grafana hoặc Locust stats)
-# - Service bão hoà sớm nhất (kubectl top pod --sort-by=cpu)
-# - pod count tại điểm gãy (kubectl get hpa)
+# Theo dõi
+watch kubectl -n techx-tf3 get hpa
+kubectl -n techx-tf3 top pod --sort-by=cpu
 ```
 
-**Điền vào bảng (trước tuning):**
+**Ghi lại (bắt buộc cho PM-154 token bucket):**
+
 | Metric | Giá trị |
 |---|---|
 | Breakpoint user count | _(điền)_ |
-| RPS tại breakpoint | _(điền)_ |
-| Service bão hoà đầu tiên | _(điền)_ |
+| Browse breakpoint RPS | _(điền)_ |
+| frontend-proxy Ready count tại breakpoint | _(điền)_ |
+| `max_tokens` tính được = floor(0.70 × RPS / Ready) | _(tính)_ |
+| Service bão hoà sớm nhất | _(điền)_ |
 | p99 tại breakpoint | _(điền)_ |
-| requests/node tại breakpoint | _(điền)_ |
 
-### Bước 2 — Deploy thay đổi
+---
 
-```bash
-# ArgoCD sync sẽ tự pick up:
-# - gitops/infrastructure/hpa-hotpath.yaml (HPA tuning)
-# Cần build + push image mới cho envoy.tmpl.yaml:
-# - phase3 - information/techx-corp-platform/src/frontend-proxy/envoy.tmpl.yaml
-# (trigger CI build-push-ecr.yml cho frontend-proxy, sau đó cập nhật imageOverride)
+## PM-154 — Route Classification + Load Shedding (Shadow Mode)
+
+### Thay đổi (branch `feat/mandate-19`, PR hiện tại)
+
+**`phase3 - information/techx-corp-platform/src/frontend-proxy/envoy.tmpl.yaml`:**
+
+#### Route priority table
+
+| Route | Name | Xử lý |
+|---|---|---|
+| `/api/checkout` | `checkout_protected` | Luôn forward — không shed |
+| `/api/cart` | `cart_protected` | Luôn forward — không shed |
+| `/` (catch-all) | `browse_shedable` | Token bucket — shed khi vượt ngưỡng |
+
+Tại sao `/api/cart` protected: cart write là bước ngay trước checkout trong funnel. Shed cart = vô hiệu checkout protection gián tiếp.
+
+#### local_ratelimit — shadow mode
+
+```yaml
+filter_enabled:  numerator: 100   # Đếm — stat tích lũy
+filter_enforced: numerator: 0     # SHADOW: không reject, pass-through
+token_bucket:
+  max_tokens: 999999              # Placeholder — thay bằng PM-153 evidence
+  tokens_per_fill: 999999
 ```
 
-### Bước 3 — Verify HPA tuning
+- Mục đích shadow: quan sát `browse_rate_limiter.rate_limited` tăng tự nhiên trước khi flip enforce
+- Response header `x-techx-load-shed: browse` chỉ active ở PM-154b (enforce mode)
 
-```bash
-# Xác nhận target đã đổi
-kubectl -n techx-tf3 get hpa -o custom-columns=\
-  NAME:.metadata.name,\
-  TARGET:.spec.metrics[0].resource.target.averageUtilization,\
-  MAX:.spec.maxReplicas
+#### Công thức token bucket (cho PM-154b)
 
-# Kết quả mong đợi:
-# frontend-proxy-hpa    75    8
-# frontend-hpa          75   12
-# product-catalog-hpa   75   10
-# cart-hpa              65    6
-# checkout-hpa          65    8
+```
+max_tokens = floor(0.70 × browse_breakpoint_RPS / frontend-proxy-Ready-count)
 ```
 
-### Bước 4 — Retest breakpoint sau tuning (Phase 2b)
+Lấy `browse_breakpoint_RPS` và `frontend-proxy-Ready-count` từ PM-153 evidence.
+
+### Pre-deploy Validation
+
+> [!IMPORTANT]
+> **Bắt buộc trước khi deploy PM-154 lên production:**
 
 ```bash
-# Chạy lại ramp tương tự Bước 1, đo breakpoint mới
-# Ghi lại requests-per-node: = total RPS / số node thực tế
-```
+# 1. Validate Envoy config (chạy local hoặc trong CI)
+docker run --rm -v "$(pwd)/phase3 - information/techx-corp-platform/src/frontend-proxy:/etc/envoy" \
+  envoyproxy/envoy:v1.32-latest \
+  envoy --mode validate -c /etc/envoy/envoy.tmpl.yaml 2>&1
+# → phải thấy "configuration '/etc/envoy/envoy.tmpl.yaml' OK"
+# Lưu ý: envoy.tmpl.yaml dùng ${VAR} placeholder — cần substitute hoặc dùng
+# envoy config dump từ pod đang chạy để validate thật.
 
-**Điền vào bảng (sau tuning):**
-| Metric | Trước tuning | Sau tuning | Δ |
-|---|---|---|---|
-| RPS đỉnh giữ SLO | _(Bước 1)_ | _(Bước 4)_ | _(tính)_ |
-| requests/node | _(Bước 1)_ | _(Bước 4)_ | _(tính)_ |
-| Node count | _(không đổi)_ | _(không đổi)_ | 0 |
+# 2. Build + push frontend-proxy image (CI)
+# Trigger workflow build-push-ecr.yml cho frontend-proxy sau khi merge PR
+# Cập nhật values-prod.yaml imageOverride với tag mới
 
-### Bước 5 — Verify Envoy local_ratelimit
-
-```bash
-# Sau khi frontend-proxy image mới được deploy:
-
-# a) Kiểm tra filter đã load
+# 3. Verify filter đã load sau deploy
 kubectl -n techx-tf3 exec deploy/frontend-proxy -c frontend-proxy -- \
-  wget -qO- localhost:${ENVOY_ADMIN_PORT}/stats | grep -E "rate_limit|ratelimit"
-# → phải thấy counter: http.ingress_http.local_rate_limiter.*
-
-# b) Test browse bị 429 khi vượt 150 RPS
-# (dùng hey hoặc Locust headless mode với >150 RPS browse-only)
-# → response phải có: HTTP 429 + header x-local-rate-limit: true
-
-# c) Test checkout KHÔNG bị 429
-curl -X POST https://<storefront>/api/checkout -d '{"user_id":"...","...":"..."}'
-# → phải 200, KHÔNG phải 429
+  wget -qO- localhost:${ENVOY_ADMIN_PORT}/stats | grep -E "rate_limit|browse_rate"
+# → phải thấy: local_rate_limiter.* và browse_rate_limiter.*
 ```
 
-### Bước 6 — Demo xuống mềm (Phase 3 Demo — nộp cho mentor)
+### Shadow Mode Validation (≥ 5 phút sustained overload)
 
 ```bash
-# Đẩy tải lên > breakpoint × 1.5 user
+# Đẩy tải vượt trần (dùng breakpoint × 1.5 từ PM-153)
 kubectl -n techx-tf3 set env deploy/load-generator \
   LOCUST_USERS=<breakpoint_users * 1.5> LOCUST_SPAWN_RATE=30
 kubectl -n techx-tf3 rollout restart deploy/load-generator
 
-# Quan sát Grafana:
-# - Browse error rate: phải thấy 429 tăng (shedding hoạt động)
-# - Checkout success rate: phải vẫn ≥ 99% (checkout được bảo vệ)
-# - Hệ không sập toàn bộ (vẫn có request được phục vụ)
+# Quan sát shadow counter (phải tăng nếu tải vượt max_tokens)
+kubectl -n techx-tf3 exec deploy/frontend-proxy -c frontend-proxy -- \
+  wget -qO- localhost:${ENVOY_ADMIN_PORT}/stats | grep browse_rate_limiter.rate_limited
 
-# Screenshot/record Grafana → lưu vào docs/postmortem/ hoặc docs/evidence/
+# Xác nhận checkout KHÔNG bị ảnh hưởng trong shadow
+# (không có 429, p99 checkout vẫn ổn)
 ```
+
+Điều kiện pass shadow:
+- `browse_rate_limiter.rate_limited` > 0 (counter tích lũy)
+- Checkout success rate ≥ 99% trong shadow period
+- Không có pod crash / OOM / restart
 
 ---
 
-## Điều chỉnh ngưỡng rate limit sau breakpoint test
+## PM-154b — Enforce Mode (PR riêng, sau shadow pass)
 
-Sau khi có breakpoint thật (Bước 1), cập nhật `max_tokens` trong `envoy.tmpl.yaml`:
+> [!CAUTION]
+> Chỉ tạo PR này sau khi shadow đã pass ≥ 5 phút liên tục. Không merge cùng PM-154.
+
+### Thay đổi
+
+**`envoy.tmpl.yaml`** — 2 thay đổi:
 
 ```yaml
-# Công thức: max_tokens ≈ 0.70 × breakpoint_RPS
-# Ví dụ: nếu breakpoint là 200 RPS thì max_tokens = 140
+# 1. Flip enforced
+filter_enforced:
+  default_value:
+    numerator: 100   # ← đổi từ 0 → 100
+
+# 2. Điền token bucket từ PM-153 evidence
 token_bucket:
-  max_tokens: <0.70 × breakpoint_RPS>
-  tokens_per_fill: <0.70 × breakpoint_RPS>
-  fill_interval: 1s
+  max_tokens: <floor(0.70 × browse_breakpoint_RPS / proxy_ready)>
+  tokens_per_fill: <same>
 ```
 
-Cập nhật ADR 0011 với số liệu thật sau khi test.
+### Demo xuống mềm (nộp mentor)
+
+```bash
+# Đẩy tải vượt trần
+kubectl -n techx-tf3 set env deploy/load-generator \
+  LOCUST_USERS=<breakpoint_users * 1.5> LOCUST_SPAWN_RATE=30
+
+# Quan sát song song:
+# 1. Browse: phải thấy 429 + header x-techx-load-shed: browse
+curl -I https://<storefront>/
+# → HTTP/1.1 429
+# → x-techx-load-shed: browse
+
+# 2. Checkout: phải vẫn 200
+curl -X POST https://<storefront>/api/checkout -d '{...}'
+# → HTTP/1.1 200
+
+# 3. Hệ không sập (vẫn có request được phục vụ)
+# Grafana: checkout success rate ≥ 99%, browse error rate > 0%
+```
 
 ---
 
-> [!IMPORTANT]
-> **Thứ tự image deploy cho envoy.tmpl.yaml:** Vì envoy.tmpl.yaml thay đổi nằm trong source code frontend-proxy, cần:
-> 1. Push commit lên branch feat/mandate-19
-> 2. Trigger CI workflow build-push-ecr.yml cho `frontend-proxy`
-> 3. Cập nhật `imageOverride` trong `values-prod.yaml` với tag mới (pattern: `<tag>-frontend-proxy`)
-> 4. Merge PR → ArgoCD sync → frontend-proxy pod rolling restart
+## Evidence Checklist (bắt buộc trước khi nộp mentor)
 
-> [!NOTE]
-> HPA tuning (`hpa-hotpath.yaml`) deploy độc lập qua ArgoCD không cần build image — có thể apply ngay.
+Lưu vào `docs/evidence/mandate-19/`:
+
+- [ ] **Locust stats:** screenshot/CSV — RPS, error rate, breakpoint (PM-153)
+- [ ] **Prometheus:** p99 trước/sau tuning, checkout rate, `browse_rate_limiter.rate_limited` (PM-154)
+- [ ] **Envoy counter:** output của `wget /stats | grep rate_limit` trong shadow period
+- [ ] **Jaeger trace:** 1 checkout trace (protected, 200) + 1 browse trace (429) khi enforce
+- [ ] **Node timeline:** `kubectl get nodes` trước/sau — node count không đổi
+- [ ] **Rollback evidence:** output của `kubectl rollout undo deploy/frontend-proxy` (nếu cần)
+
+---
+
+## Rollback
+
+```bash
+# Frontend-proxy (PM-154 revert)
+kubectl -n techx-tf3 rollout undo deployment/frontend-proxy
+
+# Hoặc đổi imageOverride về tag cũ và ArgoCD sync
+# Tag cũ: xem values-prod.yaml components.frontend-proxy.imageOverride trước PR
+```
+
+---
+
+## Tham chiếu
+
+- [ADR 0011](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/docs/adr/0011-mandate-19-throughput-ceiling-load-shedding.md)
+- [envoy.tmpl.yaml](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/phase3%20-%20information/techx-corp-platform/src/frontend-proxy/envoy.tmpl.yaml)
+- [hpa-hotpath.yaml](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/gitops/infrastructure/hpa-hotpath.yaml)
+- [Mandate-02 load test report](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/docs/mandate-02-load-test-report.md)

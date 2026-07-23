@@ -8,15 +8,6 @@
 #
 # Yêu cầu: metrics-server EKS add-on + CPU requests tường minh trong workload.
 # KHÔNG đặt HPA cho datastore (stateful).
-#
-# Mandate #19 (Performance Efficiency — throughput ceiling & density):
-# - frontend-proxy / frontend / product-catalog: target 65% → 75%.
-#   Lý do: mỗi pod gánh nhiều request hơn trước khi trigger scale → tăng
-#   requests-per-node density trên cùng số node. Browse services không phải
-#   revenue-critical nên chấp nhận pod chạy nóng hơn trước khi scale.
-# - cart / checkout: GIỮ 65% — revenue-critical, ưu tiên latency thấp hơn density.
-# - frontend / product-catalog maxReplicas nới (8→12 / 8→10) để không chặn
-#   HPA khi cần burst lên trên trần cũ để chứng minh trần mới cao hơn.
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -29,8 +20,7 @@ spec:
   maxReplicas: 8
   metrics:
     - type: Resource
-      # Mandate-19: 65% → 75% — tăng density trước khi scale, không thêm node
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 75 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 0
@@ -53,11 +43,10 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: frontend }
   minReplicas: 2
-  maxReplicas: 12  # Mandate-19: 8 → 12 để không chặn HPA khi tìm breakpoint mới
+  maxReplicas: 8
   metrics:
     - type: Resource
-      # Mandate-19: 65% → 75% — tăng density (browse path, không revenue-critical)
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 75 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 0
@@ -80,11 +69,10 @@ metadata:
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: product-catalog }
   minReplicas: 2
-  maxReplicas: 10  # Mandate-19: 8 → 10 để không chặn HPA khi cần burst
+  maxReplicas: 8
   metrics:
     - type: Resource
-      # Mandate-19: 65% → 75% — product-catalog là browse dependency, tăng density
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 75 } }
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 0

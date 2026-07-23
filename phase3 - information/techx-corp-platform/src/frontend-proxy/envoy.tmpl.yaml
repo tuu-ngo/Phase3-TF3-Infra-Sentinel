@@ -48,20 +48,33 @@ static_resources:
                           route: { cluster: image-provider, prefix_rewrite: "/" }
                         - match: { prefix: "/flagservice/" }
                           route: { cluster: flagservice, prefix_rewrite: "/", timeout: 0s }
-                        # Mandate-19 (load-shedding): checkout protected route — đặt TRƯỚC
+                        # PM-154 (load-shedding): /api/checkout protected — đặt TRƯỚC
                         # catch-all "/" để match trước. Không có typed_per_filter_config
-                        # local_ratelimit → dùng global bucket 10 000/s (không bao giờ bị shed).
-                        # Checkout là luồng tiền, luôn ưu tiên khi hệ quá tải.
+                        # local_ratelimit → dùng global bucket 10 000 token/s → không bao
+                        # giờ bị shed. Checkout = luồng tiền, ưu tiên tuyệt đối.
                         - match: { prefix: "/api/checkout" }
                           name: checkout_protected
                           route: { cluster: frontend }
-                        # Mandate-19 (load-shedding): browse/homepage catch-all route.
-                        # Token bucket 150 req/s: khi traffic browse vượt ngưỡng, Envoy trả
-                        # HTTP 429 ngay tại proxy — không đẩy request xuống backend,
-                        # giảm tải cho cluster frontend/product-catalog khi vượt trần.
-                        # Ngưỡng 150 RPS = ~75% breakpoint ước lượng từ Mandate-02 data;
-                        # điều chỉnh sau khi đo breakpoint thầt (xem ADR 0011).
-                        - match: { prefix: "/" }  # catch-all — giữ cuối vì prefix:"/" match mọi thứ
+                        # PM-154 (load-shedding): /api/cart protected — cart write ops
+                        # (add/update/delete item) cùng nhóm ưu tiên với checkout;
+                        # không bị shed để giữ session mua hàng trong khi browse bị hạn.
+                        - match: { prefix: "/api/cart" }
+                          name: cart_protected
+                          route: { cluster: frontend }
+                        # PM-154 (load-shedding): browse/homepage catch-all — SHADOW MODE.
+                        # filter_enabled=100%: Envoy đếm request qua token bucket và ghi
+                        # stat browse_rate_limiter.rate_limited nhưng CHƯĄ reject
+                        # (filter_enforced=0%). Mục đích: quan sát thực tế bao nhiêu request
+                        # bị count vượt ngưỡng trước khi bật enforce.
+                        #
+                        # Token bucket cần điền sau khi có PM-153 evidence:
+                        #   max_tokens = floor(0.70 × browse_breakpoint_RPS
+                        #                      / frontend-proxy Ready count)
+                        # Ví dụ: breakpoint 400 RPS, 3 Ready pods:
+                        #   max_tokens = floor(0.70 × 400 / 3) = 93
+                        # HIỆN TẠI: 999999 (sất ượng, shadow mode không reject thực tế).
+                        # THAY THẾ giá trị này trong enforce PR sau khi shadow đạt.
+                        - match: { prefix: "/" }  # catch-all — giữ cuối
                           name: browse_shedable
                           route: { cluster: frontend }
                           typed_per_filter_config:
@@ -69,23 +82,27 @@ static_resources:
                               "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
                               stat_prefix: browse_rate_limiter
                               token_bucket:
-                                max_tokens: 150
-                                tokens_per_fill: 150
+                                # PLACEHOLDER — điền floor(0.70×breakpoint_RPS/proxy_ready)
+                                # từ PM-153 evidence. Shadow mode: giá trị này chưa có tác dụng
+                                # reject thực tế vì filter_enforced=0% bên dưới.
+                                max_tokens: 999999
+                                tokens_per_fill: 999999
                                 fill_interval: 1s
                               filter_enabled:
                                 runtime_key: browse_rate_limit_enabled
                                 default_value:
-                                  numerator: 100
+                                  numerator: 100   # ON: Envoy đếm để có stat
                                   denominator: HUNDRED
                               filter_enforced:
                                 runtime_key: browse_rate_limit_enforced
                                 default_value:
-                                  numerator: 100
+                                  numerator: 0     # SHADOW: 0% — KHÔNG reject, chỉ đếm
                                   denominator: HUNDRED
                               response_headers_to_add:
+                                # Header sẽ active khi flip enforced=100% trong enforce PR
                                 - header:
-                                    key: x-local-rate-limit
-                                    value: "true"
+                                    key: x-techx-load-shed
+                                    value: browse
                                   keep_empty_value: true
                 http_filters:
                   - name: envoy.filters.http.fault
@@ -120,7 +137,7 @@ static_resources:
                       filter_enforced:
                         runtime_key: local_rate_limit_enforced
                         default_value:
-                          numerator: 100
+                          numerator: 0     # SHADOW: global fallback cũng 0% — khới tạo an toàn
                           denominator: HUNDRED
                   - name: envoy.filters.http.router
                     typed_config:
@@ -211,18 +228,8 @@ static_resources:
     - name: frontend
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
-      # Mandate-19 (throughput ceiling): Nới connection ceiling của Envoy → frontend.
-      # Default max_requests=1024 có thể trở thành điểm nghẹn khi traffic cao;
-      # tăng lên 4096 để Envoy không reject request trước khi backend cần reject.
-      # Load shedding đúng chỗ là local_ratelimit filter phía trên —
-      # circuit_breaker này là lưới an toàn cuối, không phải cơ chế shed chính.
-      circuit_breakers:
-        thresholds:
-          - priority: DEFAULT
-            max_connections: 1024
-            max_pending_requests: 1024
-            max_requests: 4096   # Mandate-19: default 1024 → 4096
-            max_retries: 3
+      # circuit_breakers (max_requests: 4096) được tách sang PM-153 PR riêng
+      # để giữ PM-154 focus vào route classification + rate-limit only.
       load_assignment:
         cluster_name: frontend
         endpoints:
