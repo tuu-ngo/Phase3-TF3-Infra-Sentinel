@@ -7,7 +7,7 @@
 # `npm run build` under QEMU emulation, which has hung for multi-hour periods
 # on this image's linux/arm64 leg (native npm/swc under binfmt emulation is a
 # known class of issue, see nodejs/docker-node#1335, #1973).
-FROM --platform=$BUILDPLATFORM docker.io/library/node:22-slim AS builder
+FROM --platform=$BUILDPLATFORM docker.io/library/node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS builder
 
 WORKDIR /app
 
@@ -52,7 +52,7 @@ RUN npm run build
 # have picked - only *where* the process runs changes, not *what* gets
 # installed. libc stays glibc to match this stage's own node:22-slim
 # (Debian) base, same as the existing (pre-fix) behavior.
-FROM --platform=$BUILDPLATFORM docker.io/library/node:22-slim AS deps
+FROM --platform=$BUILDPLATFORM docker.io/library/node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS deps
 
 ARG TARGETARCH
 
@@ -80,7 +80,7 @@ RUN set -eu; \
 
 # -----------------------------------------------------------------------------
 
-FROM docker.io/library/node:22-alpine3.23
+FROM docker.io/library/node:22-alpine3.23@sha256:8516dce0483394d5708d4b2ee6cacb79fb1d617ea4e2787c2120bcca92ce372e
 
 # Pull patched Alpine packages into the immutable application image before the
 # strict Trivy gate evaluates it (notably OpenSSL/libexpat fixes).
