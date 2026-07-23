@@ -116,7 +116,7 @@ review_pr() {
     || { fail_step "reviews-${number}" "no latest non-author APPROVED review"; return 1; }
   jq -n --argjson pr "$pr" --argjson approvers "$approvers" \
     '{number:$pr.number,url:$pr.html_url,author:$pr.user.login,mergedAt:$pr.merged_at,
-      mergeCommit:$pr.merge_commit_sha,base:$pr.base.ref,approvers:$approvers}' > "$out"
+      mergeCommit:$pr.merge_commit_sha,headCommit:$pr.head.sha,base:$pr.base.ref,approvers:$approvers}' > "$out"
 }
 
 parse_args() {
@@ -186,6 +186,9 @@ main() {
   local tag_json
   tag_json="$(jq -c --arg service "$service" '[.imageDetails[0].imageTags[]? | select(test("-[0-9]+-" + $service + "$"))]' <<<"$ecr_json")"
   [[ "$(jq length <<<"$tag_json")" -ge 1 ]] || { fail_step ecr "no immutable run tag maps to service ${service}"; write_failure "$result_tmp"; return 1; }
+  local run_ids
+  run_ids="$(jq -c --arg service "$service" 'map(capture("-(?<run>[0-9]+)-" + $service + "$").run) | unique' <<<"$tag_json")"
+  [[ "$(jq length <<<"$run_ids")" -eq 1 ]] || { fail_step ecr "release digest maps to multiple workflow runs"; write_failure "$result_tmp"; return 1; }
   workflow_run="$(jq -r '.[0] | capture("-(?<run>[0-9]+)-" + $service + "$").run' --arg service "$service" <<<"$tag_json")"
   workflow_attempt="$(jq -r '.[0] | capture("-(?<run>[0-9]+)-" + $service + "$").run' --arg service "$service" <<<"$tag_json")"
   if ! run_json workflow-run "$WORK/run.json" gh api "repos/${REPOSITORY}/actions/runs/${workflow_run}"; then write_failure "$result_tmp"; return 1; fi
@@ -205,7 +208,7 @@ main() {
   approved_file="$(find "$WORK/approved" -type f -name approved-images.json -print -quit)"
   [[ -n "$approved_file" && "$(find "$WORK/approved" -type f -name approved-images.json | wc -l)" -eq 1 ]] || { fail_step approved-artifact "artifact must contain exactly one approved-images.json"; write_failure "$result_tmp"; return 1; }
   run_json approved-manifest "$WORK/approved.json" cat "$approved_file" || { write_failure "$result_tmp"; return 1; }
-  jq -e --arg sha "$source_sha" --arg digest "$release_digest" --arg service "$service" '.sourceSha==$sha and any(.services[]; .name==$service and .digest==$digest)' "$WORK/approved.json" >/dev/null \
+  jq -e --arg sha "$source_sha" --arg digest "$release_digest" --arg service "$service" --arg run "$workflow_run" --arg attempt "$workflow_attempt" '.sourceSha==$sha and (.workflowRunId|tostring)==$run and (.workflowRunAttempt|tostring)==$attempt and any(.services[]; .name==$service and .digest==$digest)' "$WORK/approved.json" >/dev/null \
     || { fail_step approved-manifest "source SHA, service, or release digest mismatch"; write_failure "$result_tmp"; return 1; }
 
   local source_candidates
@@ -219,6 +222,8 @@ main() {
   [[ "$source_number" =~ ^[0-9]+$ ]] || { fail_step source-pr "source SHA does not resolve to exactly one merged main PR; pass --source-pr"; write_failure "$result_tmp"; return 1; }
   review_pr "$source_number" "$(jq -r --arg n "$source_number" '.[] | select((.number|tostring)==$n) | .author.login' <<<"$source_candidates" | head -1)" main "$WORK/source-pr.json" \
     || { write_failure "$result_tmp"; return 1; }
+  jq -e --arg sha "$source_sha" '.mergeCommit==$sha or .headCommit==$sha' "$WORK/source-pr.json" >/dev/null \
+    || { fail_step source-pr "source PR does not contain the trusted source SHA"; write_failure "$result_tmp"; return 1; }
 
   gh run download "$workflow_run" -R "$REPOSITORY" -n "promotion-evidence-${workflow_run}-${workflow_attempt}" -D "$WORK/promotion" >/dev/null 2>"$WORK/promotion.err" \
     || { fail_step promotion-artifact "cannot download exact promotion evidence: $(tail -1 "$WORK/promotion.err")"; write_failure "$result_tmp"; return 1; }
@@ -228,12 +233,14 @@ main() {
   run_json promotion-manifest "$WORK/promotion.json" cat "$promotion_file" || { write_failure "$result_tmp"; return 1; }
   promotion_number="$(jq -r '.promotionPr.number' "$WORK/promotion.json")"
   [[ -z "$PROMOTION_PR" || "$PROMOTION_PR" == "$promotion_number" ]] || { fail_step promotion-manifest "--promotion-pr does not match artifact"; write_failure "$result_tmp"; return 1; }
-  jq -e --arg sha "$source_sha" --arg digest "$release_digest" --arg service "$service" '.sourceSha==$sha and any(.services[]; .name==$service and .digest==$digest) and .promotionPr.base=="main" and .promotionPr.state=="OPEN"' "$WORK/promotion.json" >/dev/null \
+  jq -e --arg sha "$source_sha" --arg digest "$release_digest" --arg service "$service" --arg run "$workflow_run" --arg attempt "$workflow_attempt" '.sourceSha==$sha and (.workflowRunId|tostring)==$run and (.workflowRunAttempt|tostring)==$attempt and any(.services[]; .name==$service and .digest==$digest) and .promotionPr.base=="main" and .promotionPr.state=="OPEN"' "$WORK/promotion.json" >/dev/null \
     || { fail_step promotion-manifest "promotion evidence does not match source/release"; write_failure "$result_tmp"; return 1; }
   promotion_number="${PROMOTION_PR:-$promotion_number}"
   run_json promotion-pr "$WORK/promotion-pr.json" gh api "repos/${REPOSITORY}/pulls/${promotion_number}" || { write_failure "$result_tmp"; return 1; }
   promotion_pr_json="$(cat "$WORK/promotion-pr.json")"
   [[ "$(jq -r '.merged' <<<"$promotion_pr_json")" == true && "$(jq -r '.base.ref' <<<"$promotion_pr_json")" == main ]] || { fail_step promotion-pr "promotion PR is not merged into main"; write_failure "$result_tmp"; return 1; }
+  jq -e --arg head "$(jq -r '.promotionPr.headSha' "$WORK/promotion.json")" '.head.sha==$head' <<<"$promotion_pr_json" >/dev/null \
+    || { fail_step promotion-pr "promotion PR head does not match promotion evidence"; write_failure "$result_tmp"; return 1; }
   promotion_merge_sha="$(jq -r '.merge_commit_sha' <<<"$promotion_pr_json")"
   review_pr "$promotion_number" "$(jq -r '.user.login' <<<"$promotion_pr_json")" main "$WORK/promotion-reviewed.json" || { write_failure "$result_tmp"; return 1; }
 
@@ -260,7 +267,14 @@ main() {
   jq -e --arg issuer "$OIDC_ISSUER" --arg identity "$OIDC_IDENTITY" '((if type=="array" then . else [.] end)[] | .optional // {}) | select(.Issuer==$issuer and .Subject==$identity)' <<<"$cosign_json" >/dev/null \
     || { fail_step cosign "signature identity/issuer does not match policy"; write_failure "$result_tmp"; return 1; }
 
-  local platform="linux/amd64" child_ref="$REGISTRY/$IMAGE_REPOSITORY@$child_digest"
+  local node_name node_arch platform child_ref
+  node_name="$(jq -r '.spec.nodeName // empty' <<<"$pod_json")"
+  [[ -n "$node_name" ]] || { fail_step pod "pod is not scheduled on a node"; write_failure "$result_tmp"; return 1; }
+  if ! run_json node "$WORK/node.json" kubectl get node "$node_name" -o json; then write_failure "$result_tmp"; return 1; fi
+  node_arch="$(jq -r '.status.nodeInfo.architecture // empty' "$WORK/node.json")"
+  [[ "$node_arch" == amd64 || "$node_arch" == arm64 ]] || { fail_step pod "unsupported node architecture: ${node_arch:-unknown}"; write_failure "$result_tmp"; return 1; }
+  platform="linux/$node_arch"
+  child_ref="$REGISTRY/$IMAGE_REPOSITORY@$child_digest"
   python3 "$SCRIPT_DIR/get-sbom.py" --no-login --metadata --platform "$platform" "$child_ref" > "$WORK/sbom.json" 2>"$WORK/sbom.err" \
     || { fail_step sbom "trusted SBOM lookup failed: $(tail -1 "$WORK/sbom.err")"; write_failure "$result_tmp"; return 1; }
   sbom_json="$(cat "$WORK/sbom.json")"
