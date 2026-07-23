@@ -116,7 +116,11 @@ resource "aws_instance" "bastion" {
   }
 
   lifecycle {
-    ignore_changes = [ami]
+    # Changing an EC2 root block device is ForceNew. Keep the old shared
+    # access path alive until the replacement instance exists, then let the
+    # runbook resolve the newest running bastion dynamically.
+    create_before_destroy = true
+    ignore_changes        = [ami]
   }
 }
 
