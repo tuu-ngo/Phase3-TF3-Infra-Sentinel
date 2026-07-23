@@ -62,8 +62,10 @@ GROUP_MAP = {
     "s3:DeleteBucket": 6,
     # Group 7 (Mandate 12) bắt thay đổi lên chính alert plane và heartbeat:
     # EventBridge rule/target, SNS topic/subscription, Lambda router và các
-    # control của audit bucket. Nhóm này nằm trong critical_group_numbers nên
-    # không bị allowlist automation hay suppression làm im lặng.
+    # control của audit bucket. Event pattern không lọc được resource, nên nhóm
+    # này lọc bằng critical_group_7_target_keywords trong handler: chỉ event
+    # nhắm vào resource audit mới đi tiếp, và khi đó nó nằm trong
+    # critical_group_numbers nên không bị allowlist hay suppression làm im lặng.
     "events:DisableRule": 7,
     "events:DeleteRule": 7,
     "events:PutRule": 7,
@@ -138,6 +140,17 @@ def handler(event, _context):
     # bản Mandate 12 phải bắt được. Approved change vẫn tạo alert; người trực
     # đối chiếu change ID thay vì tắt cảnh báo.
     critical_groups = set(CONFIG.get("critical_group_numbers") or [])
+
+    # Mandate 12: rule nhóm 7 khớp theo eventName và không lọc resource, nên nó
+    # nhận cả PutMetricAlarm, UpdateFunctionCode hay PutBucketPolicy lên resource
+    # chẳng liên quan gì tới audit plane. Để nguyên thì mọi terraform apply bình
+    # thường đều thành CRITICAL không tắt được, và người trực sẽ lọc mail — đúng
+    # cửa sổ mù mà mandate muốn chặn. Lọc theo target ở đây chứ không đưa
+    # requestParameters vào event pattern: pattern sai một tên field là mất hẳn
+    # event, còn ở đây sai thì cùng lắm là thừa alert.
+    if group == 7 and not is_audit_plane_target(target):
+        LOGGER.info(json.dumps({"ignored": True, "reason": "non_audit_target", "actor": actor, "target": target, "event_key": event_key}))
+        return {"ignored": True, "reason": "non_audit_target", "actor": actor, "target": target, "event_key": event_key}
 
     if group not in critical_groups and is_allowed_automation(actor):
         LOGGER.info(json.dumps({"ignored": True, "reason": "allowlisted_automation", "actor": actor, "event_key": event_key}))
@@ -228,6 +241,30 @@ def extract_target(detail, group=None):
         if secret_targets:
             return ",".join(secret_targets)
 
+    # Mandate 12: nhóm 7 trải trên 5 service, mỗi API đặt tên tham số một kiểu.
+    # Danh sách key chung ở dưới không có alarmName/functionName/topicArn/rule
+    # nên target của phần lớn event nhóm 7 sẽ ra "unknown" — mà target chính là
+    # thứ quyết định event có phải đòn vào audit plane hay không.
+    if group == 7:
+        group_7_targets = []
+        for key in [
+            "name",              # events:PutRule / DeleteRule / DisableRule
+            "rule",              # events:PutTargets / RemoveTargets
+            "topicArn",          # sns:Subscribe / SetTopicAttributes / DeleteTopic
+            "subscriptionArn",   # sns:Unsubscribe / SetSubscriptionAttributes
+            "functionName",      # lambda:UpdateFunctionCode / PutFunctionConcurrency
+            "alarmName",         # monitoring:PutMetricAlarm
+            "alarmNames",        # monitoring:DeleteAlarms / DisableAlarmActions
+            "bucketName",        # s3:PutBucketPolicy và các control bucket khác
+        ]:
+            value = request.get(key)
+            if isinstance(value, list):
+                group_7_targets.extend(str(item) for item in value if item)
+            elif value:
+                group_7_targets.append(str(value))
+        if group_7_targets:
+            return ",".join(group_7_targets)
+
     for key in [
         "userName",
         "roleName",
@@ -272,6 +309,19 @@ def should_alert_secret_read(actor, target):
 
 def is_allowed_automation(actor):
     return matches_any(actor, CONFIG.get("allowed_principals") or [])
+
+
+def is_audit_plane_target(target):
+    """Event nhóm 7 có nhắm vào resource của audit plane hay không.
+
+    Hai đường fail-safe cố ý: config thiếu keyword, hoặc không trích được target,
+    thì trả True — thà thừa một alert còn hơn im lặng bỏ qua một đòn thật.
+    """
+    keywords = CONFIG.get("critical_group_7_target_keywords") or []
+    lowered = (target or "").strip().lower()
+    if not keywords or not lowered or lowered == "unknown":
+        return True
+    return any(keyword in lowered for keyword in keywords)
 
 
 def is_suppressed(actor, target):

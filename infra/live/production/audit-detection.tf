@@ -1,6 +1,11 @@
 locals {
   audit_detection_email_subscriptions = var.audit_detection_email_subscriptions
 
+  # Resource heartbeat M12 nằm ở root này chứ không ở module, nên module không
+  # tự suy ra được. Một tiền tố phủ đủ: function, schedule rule, 2 alarm và
+  # topic fallback đều bắt đầu bằng nó.
+  audit_detection_extra_audit_plane_keywords = ["${var.cluster_name}-m12-audit-heartbeat"]
+
   audit_detection_human_principal_arns = distinct(concat(
     local.operator_user_arns,
     [local.readonly_user_arn],
@@ -172,17 +177,20 @@ module "audit_detection_ap_southeast_1" {
   # Mandate 12 — chỉ instance tạo trail mới nhận các input này.
   # require_s3_data_event_coverage = true: plan FAIL nếu chưa điền ARN đã duyệt,
   # thay vì apply một trail không ghi GetObject.
-  trail_object_lock_mode            = var.audit_detection_trail_object_lock_mode
-  trail_object_lock_days            = var.audit_detection_trail_object_lock_days
-  s3_data_event_arns                = var.audit_detection_s3_data_event_arns
-  require_s3_data_event_coverage    = true
-  alert_email_subscriptions         = local.audit_detection_email_subscriptions
-  event_rules                       = local.audit_detection_regional_event_rules
-  allowed_automation_principal_arns = local.audit_detection_allowed_automation_principal_arns
-  human_principal_arns              = local.audit_detection_human_principal_arns
-  secret_reader_principal_arns      = local.audit_detection_secret_reader_principal_arns
-  sensitive_secret_names            = local.audit_detection_sensitive_secret_names
-  suppressions                      = var.audit_detection_suppressions
+  trail_object_lock_mode         = var.audit_detection_trail_object_lock_mode
+  trail_object_lock_days         = var.audit_detection_trail_object_lock_days
+  s3_data_event_arns             = var.audit_detection_s3_data_event_arns
+  require_s3_data_event_coverage = true
+  # Chỉ instance này có alarm heartbeat trỏ vào topic của nó.
+  cloudwatch_alarm_publisher_enabled = true
+  additional_audit_plane_keywords    = local.audit_detection_extra_audit_plane_keywords
+  alert_email_subscriptions          = local.audit_detection_email_subscriptions
+  event_rules                        = local.audit_detection_regional_event_rules
+  allowed_automation_principal_arns  = local.audit_detection_allowed_automation_principal_arns
+  human_principal_arns               = local.audit_detection_human_principal_arns
+  secret_reader_principal_arns       = local.audit_detection_secret_reader_principal_arns
+  sensitive_secret_names             = local.audit_detection_sensitive_secret_names
+  suppressions                       = var.audit_detection_suppressions
 }
 
 module "audit_detection_us_east_1" {
@@ -199,6 +207,7 @@ module "audit_detection_us_east_1" {
   is_multi_region_trail             = false
   lambda_log_retention_days         = var.audit_detection_lambda_log_retention_days
   trail_s3_retention_days           = var.audit_detection_trail_s3_retention_days
+  additional_audit_plane_keywords   = local.audit_detection_extra_audit_plane_keywords
   alert_email_subscriptions         = local.audit_detection_email_subscriptions
   event_rules                       = local.audit_detection_global_event_rules
   allowed_automation_principal_arns = local.audit_detection_allowed_automation_principal_arns

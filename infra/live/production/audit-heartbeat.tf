@@ -9,6 +9,12 @@ locals {
   m12_heartbeat_name                = "${var.cluster_name}-m12-audit-heartbeat"
   m12_heartbeat_schedule_name       = "${var.cluster_name}-m12-audit-heartbeat-schedule"
   m12_heartbeat_fallback_topic_name = "${var.cluster_name}-m12-audit-heartbeat-fallback"
+
+  # Dựng ARN topic fallback từ thành phần đã biết. Key policy KMS phải khoá
+  # encryption context vào đúng topic này; tham chiếu attribute của chính
+  # aws_sns_topic ở đây sẽ tạo cycle topic → key → policy → topic.
+  m12_heartbeat_fallback_topic_arn = "arn:aws:sns:${var.region}:${data.aws_caller_identity.m12_current.account_id}:${local.m12_heartbeat_fallback_topic_name}"
+
   m12_heartbeat_alarm_names = [
     "${var.cluster_name}-m12-audit-heartbeat-missing",
     "${var.cluster_name}-m12-audit-heartbeat-errors",
@@ -105,11 +111,99 @@ locals {
 
 data "aws_caller_identity" "m12_current" {}
 
+# Topic fallback chở đúng nội dung nhạy cảm như hai topic M11 (chi tiết invariant
+# nào của audit plane đang hỏng), nên nó phải được mã hoá bằng CMK giống chúng —
+# để plaintext là hạ chuẩn một đường alert so với phần còn lại.
+#
+# Key riêng chứ không dùng lại key của module M11: key policy M11 khoá encryption
+# context đúng vào topic của nó, muốn dùng chung phải nới điều kiện đó trong
+# module dùng chung cho cả hai region.
+data "aws_iam_policy_document" "m12_heartbeat_fallback_kms" {
+  statement {
+    sid    = "EnableAccountRootPermissions"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.m12_current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowSnsEncryption"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["sns.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = [local.m12_heartbeat_fallback_topic_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:EncryptionContext:aws:sns:topicArn"
+      values   = [local.m12_heartbeat_fallback_topic_arn]
+    }
+  }
+
+  # CloudWatch tự gọi KMS khi alarm action publish vào topic mã hoá bằng CMK.
+  # Thiếu statement này alarm fail âm thầm — đúng loại hỏng mà heartbeat sinh ra
+  # để chặn. Điều kiện SourceAccount trùng với điều kiện đã dùng ở topic policy.
+  statement {
+    sid    = "AllowCloudWatchAlarmPublish"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.m12_current.account_id]
+    }
+  }
+}
+
+resource "aws_kms_key" "m12_heartbeat_fallback" {
+  description             = "Alert encryption for ${local.m12_heartbeat_fallback_topic_name}"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.m12_heartbeat_fallback_kms.json
+}
+
+resource "aws_kms_alias" "m12_heartbeat_fallback" {
+  name          = "alias/${local.m12_heartbeat_fallback_topic_name}"
+  target_key_id = aws_kms_key.m12_heartbeat_fallback.key_id
+}
+
 # Fallback cùng region để alarm không phụ thuộc duy nhất vào topic M11 primary.
 # Topic global M11 được Lambda dùng trực tiếp, không dùng làm alarm action vì
 # CloudWatch alarm chỉ publish được tới SNS cùng region.
 resource "aws_sns_topic" "m12_heartbeat_fallback" {
-  name = local.m12_heartbeat_fallback_topic_name
+  name              = local.m12_heartbeat_fallback_topic_name
+  kms_master_key_id = aws_kms_key.m12_heartbeat_fallback.arn
 
   lifecycle {
     prevent_destroy = true
@@ -234,6 +328,14 @@ resource "aws_iam_role" "m12_audit_heartbeat" {
   assume_role_policy = data.aws_iam_policy_document.m12_heartbeat_assume.json
 }
 
+# PM-126 exception metadata:
+# rule=AVD-AWS-0057
+# resource=data.aws_iam_policy_document.m12_audit_heartbeat
+# reason=Heartbeat chỉ đọc, không có action nào mutate. ReadAuditHealth phải để Resource "*" vì cloudwatch:DescribeAlarms và cloudtrail:DescribeTrails không hỗ trợ resource-level permission; WriteHeartbeatLogs dùng đúng hậu tố log-group ":*" mà CloudWatch Logs bắt buộc để địa chỉ hoá child stream.
+# owner=tuu-ngo
+# ticket=PM-126
+# review_date=2026-08-22
+#tfsec:ignore:aws-iam-no-policy-wildcards:exp:2026-08-22
 data "aws_iam_policy_document" "m12_audit_heartbeat" {
   statement {
     sid = "ReadAuditHealth"

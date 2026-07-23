@@ -211,8 +211,29 @@ Lambda có Free Tier 1 triệu request và 400.000 GB-s/tháng; heartbeat chỉ 
 - Mọi thay đổi trail/archive/alert/IAM dù hợp lệ hay không đều để lại alert; đội trực có đủ thông tin để tự đối chiếu change record.
 - Loại bỏ hoàn toàn kịch bản "CI bị chiếm để tắt audit mà không kêu".
 
+**Phạm vi của g7 — lọc theo resource, không theo eventName:**
+
+Rule `g7` khớp `eventName` trên 5 service và event pattern của EventBridge không
+lọc được resource, nên bản đầu coi **mọi** `PutMetricAlarm`, `UpdateFunctionCode`,
+`PutBucketPolicy` trong account là CRITICAL không tắt được — kể cả khi target
+chẳng liên quan gì tới audit plane. Một `terraform apply` bình thường đủ sinh vài
+chục mail CRITICAL, và đội trực sẽ lập filter: đúng cửa sổ mù mandate muốn chặn.
+
+Đã chốt hướng lọc theo target **trong router** (`critical_group_7_target_keywords`),
+không đưa `requestParameters` vào event pattern. Lý do là hướng hỏng: pattern sai
+một tên field thì event không tới router — mất phát hiện, im lặng. Lọc trong
+router sai thì cùng lắm thừa alert. Hai đường fail-safe cố ý: config thiếu keyword,
+hoặc không trích được target, đều xử như audit plane và vẫn alert. Cùng shape với
+`critical_group_6_target_keywords` đã dùng cho nhóm 6.
+
+Đánh đổi: hành động g7 lên resource **ngoài** audit plane không còn sinh alert.
+Vết vẫn nằm ở CloudTrail và ở log router (`reason=non_audit_target`), nên đây là
+thu hẹp phạm vi **cảnh báo**, không phải thu hẹp phạm vi **ghi nhận**. Khoá bằng
+`scripts/ci/test_audit_router_group7_targeting.py`.
+
 **Negative / residual risk:**
-- Approved Terraform PR cũng sẽ tạo alert CRITICAL cho nhóm g7/g8. Đội trực phải có quy trình đối chiếu change ID.
+- Approved Terraform PR chạm đúng resource audit plane vẫn tạo alert CRITICAL. Đội trực phải có quy trình đối chiếu change ID.
+- Keyword là so khớp substring lowercase. Đặt tên resource mới cho audit plane mà không khớp tiền tố `<cluster>-audit-detection` / `<cluster>-audit-trail` / `<cluster>-m12-audit-heartbeat` thì phải bổ sung vào `additional_audit_plane_keywords`, nếu không event nhắm vào nó bị xử như resource thường.
 - **Trạng thái hiện tại của `gitlab-ci-deployer` (tính đến 2026-07-22):** IAM user với `AdministratorAccess` trực tiếp, **chưa bật MFA**, còn **2 access key dài hạn đang hoạt động**, không migrate sang OIDC. Đây là identity nguy hiểm nhất trong allowlist — nếu key bị lộ, kẻ tấn công có đầy đủ quyền admin mà M11 không kêu. Phải migrate sang OIDC role và thu hồi key trước nghiệm thu mentor.
 
 ---

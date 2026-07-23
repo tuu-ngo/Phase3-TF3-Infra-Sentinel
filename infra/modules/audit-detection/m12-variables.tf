@@ -46,3 +46,25 @@ variable "require_s3_data_event_coverage" {
   type        = bool
   default     = false
 }
+
+# Topic alert được mã hoá bằng CMK, nên CloudWatch phải gọi được KMS thì alarm
+# action mới publish vào topic. Thiếu quyền này alarm fail âm thầm: alarm vẫn
+# chuyển ALARM, SNS không nhận gì, không có lỗi nào nổi lên.
+#
+# Default false vì chỉ instance nào thực sự có alarm trỏ vào topic mới cần —
+# instance us-east-1 dùng topic trực tiếp từ Lambda, không qua alarm.
+variable "cloudwatch_alarm_publisher_enabled" {
+  description = "Cấp cho cloudwatch.amazonaws.com quyền dùng audit KMS key để publish alarm vào topic alert."
+  type        = bool
+  default     = false
+}
+
+# Resource audit plane nằm ngoài module — heartbeat M12 và các thứ nó kéo theo
+# (schedule rule, 2 alarm, topic fallback). Module không biết tên chúng nên
+# caller phải khai, nếu không event nhóm 7 nhắm vào heartbeat sẽ bị coi là
+# "không phải audit plane" và bỏ qua.
+variable "additional_audit_plane_keywords" {
+  description = "Tiền tố/tên resource audit plane ngoài module, so khớp lowercase substring với target của event nhóm 7."
+  type        = list(string)
+  default     = []
+}

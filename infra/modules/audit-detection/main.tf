@@ -28,6 +28,18 @@ locals {
   sns_topic_name    = "${local.name_prefix}-alerts"
   trail_arn         = "arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:trail/${local.trail_name}"
   sns_topic_arn     = "arn:${data.aws_partition.current.partition}:sns:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${local.sns_topic_name}"
+
+  # Từ vựng resource của audit plane, cố ý bỏ hậu tố region: một event ở
+  # ap-southeast-1 vẫn có thể nhắm vào resource của instance us-east-1.
+  # Trail, bucket, router, topic alert, DLQ và 8 rule đều mang một trong hai
+  # tiền tố này.
+  audit_plane_keywords = distinct(concat(
+    [
+      lower("${var.cluster_name}-audit-detection"),
+      lower("${var.cluster_name}-audit-trail"),
+    ],
+    [for keyword in var.additional_audit_plane_keywords : lower(keyword)],
+  ))
   detector_config = jsonencode({
     deployment_label         = var.deployment_label
     allowed_principals       = var.allowed_automation_principal_arns
@@ -41,6 +53,10 @@ locals {
     # là kẻ tấn công dùng chính principal automation đã được tin cậy.
     critical_group_numbers           = [1, 2, 3, 4, 7, 8]
     critical_group_6_target_keywords = ["cloudtrail", "kms", "secret", "rds", "elasticache", "s3"]
+    # Nhóm 7 khớp theo eventName trên 5 service và không lọc resource được ở
+    # tầng event pattern. Danh sách này là thứ phân biệt "đụng vào audit plane"
+    # với "deploy một Lambda bất kỳ": chỉ vế đầu mới alert và mới critical.
+    critical_group_7_target_keywords = local.audit_plane_keywords
   })
 }
 
@@ -83,6 +99,38 @@ data "aws_iam_policy_document" "audit_kms" {
       test     = "StringEquals"
       variable = "kms:EncryptionContext:aws:sns:topicArn"
       values   = [local.sns_topic_arn]
+    }
+  }
+
+  # Mandate 12: alarm heartbeat publish vào chính topic này, mà topic mã hoá
+  # bằng CMK — CloudWatch phải gọi được KMS thì alarm action mới giao được.
+  # Chỉ chặn confused deputy bằng aws:SourceAccount: điều kiện hẹp hơn
+  # (aws:SourceArn, encryption context) chưa xác nhận được là CloudWatch có
+  # điền trong request tới KMS, mà đoán sai ở đây thì hỏng đúng theo kiểu im
+  # lặng. Xác nhận bằng set-alarm-state sau apply — xem §Phase 3 execution plan.
+  dynamic "statement" {
+    for_each = var.cloudwatch_alarm_publisher_enabled ? [1] : []
+
+    content {
+      sid    = "AllowCloudWatchAlarmPublish"
+      effect = "Allow"
+
+      principals {
+        type        = "Service"
+        identifiers = ["cloudwatch.amazonaws.com"]
+      }
+
+      actions = [
+        "kms:Decrypt",
+        "kms:GenerateDataKey*",
+      ]
+      resources = ["*"]
+
+      condition {
+        test     = "StringEquals"
+        variable = "aws:SourceAccount"
+        values   = [data.aws_caller_identity.current.account_id]
+      }
     }
   }
 
