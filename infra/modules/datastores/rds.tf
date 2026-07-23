@@ -1,4 +1,5 @@
-# RDS PostgreSQL 17.6, Multi-AZ, gp3, TLS bắt buộc, private, encryption at rest.
+# RDS PostgreSQL 17.x (khởi tạo 17.6, AWS auto minor -> 17.9; engine_version ignore_changes),
+# Multi-AZ, gp3, TLS bắt buộc, private, encryption at rest.
 # Master password do RDS quản lý trong Secrets Manager (manage_master_user_password) →
 # KHÔNG bao giờ nằm trong TF state. ESO đọc secret managed đó (policy ở secrets.tf).
 
@@ -65,4 +66,14 @@ resource "aws_db_instance" "postgres" {
   apply_immediately         = true
 
   tags = merge(local.common_tags, { Name = "${var.name_prefix}-postgres" })
+
+  lifecycle {
+    # RDS auto_minor_version_upgrade (mặc định true) đã tự nâng engine 17.6 -> 17.9.
+    # Không ignore thì mọi apply sau lại cố hạ về giá trị pin trong biến -> RDS trả
+    # InvalidParameterCombination "Cannot upgrade postgres from 17.9 to 17.6" và làm
+    # fail cả apply (gây fail run #24 — xem postmortem 0013). Đối xứng với ElastiCache
+    # (elasticache.tf) vốn đã ignore_changes engine_version. AWS vẫn tự vá minor;
+    # Terraform không tranh chấp nữa.
+    ignore_changes = [engine_version]
+  }
 }

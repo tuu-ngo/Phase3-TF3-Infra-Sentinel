@@ -26,7 +26,7 @@ repositories {
     gradlePluginPortal()
 }
 
-// gRPC 1.81.0 still resolves Netty 4.1.132.Final; force the patched June 2026
+// gRPC 1.81.0 still resolves Netty 4.1.132.Final; force the patched July 2026
 // patch-level consistently across the fat jar for the PM-101 zero-HIGH gate.
 configurations.configureEach {
     resolutionStrategy.eachDependency {
@@ -34,7 +34,7 @@ configurations.configureEach {
             requested.name != "netty-tcnative-boringssl-static" &&
             requested.name != "netty-tcnative-classes"
         ) {
-            useVersion("4.1.135.Final")
+            useVersion("4.1.136.Final")
             because("PM-101: remediate HIGH Netty CVEs before image release")
         }
         if (requested.group == "com.fasterxml.jackson.core" &&

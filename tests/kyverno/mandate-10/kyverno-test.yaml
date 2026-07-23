@@ -1,0 +1,22 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: pm127-external-allowlist-fixture
+policies:
+  - ../../../gitops/policies/kyverno/allow-approved-external-image-digests.yaml
+resources:
+  - resources/valid-pod.yaml
+  - resources/bad-pod.yaml
+results:
+  - kind: Pod
+    policy: allow-approved-external-image-digests
+    rule: require-approved-external-image-digest
+    resources:
+      - pm127-valid
+    result: pass
+  - kind: Pod
+    policy: allow-approved-external-image-digests
+    rule: require-approved-external-image-digest
+    resources:
+      - pm127-bad
+    result: fail

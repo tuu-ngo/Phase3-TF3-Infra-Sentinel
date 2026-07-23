@@ -1,0 +1,32 @@
+# Mandate 5 cluster-wide expansion (native, 22/07): ban sao cua
+# bad-latest-image-pod.yaml nhung dat o namespace "default" thay vi
+# "techx-tf3" - dung de chung minh VAP mandate05-native-image-reference that
+# su ap dung TOAN CLUSTER (tru kube-system), khong chi rieng techx-tf3.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mandate05-native-bad-latest-cross-ns
+  namespace: default
+  labels:
+    app.kubernetes.io/name: mandate05-native-bad-latest-cross-ns
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: nginx:latest
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi

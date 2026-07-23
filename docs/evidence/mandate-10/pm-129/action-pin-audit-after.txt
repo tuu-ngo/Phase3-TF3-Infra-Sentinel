@@ -1,0 +1,1 @@
+PASS: immutable pins verified (9 workflows, 28 Dockerfiles)

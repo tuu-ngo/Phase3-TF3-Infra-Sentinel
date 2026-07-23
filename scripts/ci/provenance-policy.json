@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "repository": "tuu-ngo/Phase3-TF3-Infra-Sentinel",
+  "workflowPath": ".github/workflows/build-push-ecr.yml",
+  "registry": "197826770971.dkr.ecr.ap-southeast-1.amazonaws.com",
+  "imageRepository": "techx-corp",
+  "awsRegion": "ap-southeast-1",
+  "oidcIssuer": "https://token.actions.githubusercontent.com",
+  "oidcIdentity": "https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel/.github/workflows/build-push-ecr.yml@refs/heads/main",
+  "sbomPredicateType": "https://cyclonedx.org/bom",
+  "sbomType": "cyclonedx",
+  "approvalPolicy": "latest-non-dismissed-approved-review-by-non-author",
+  "artifactRetentionDays": 90
+}

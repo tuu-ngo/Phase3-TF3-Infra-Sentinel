@@ -1,0 +1,10 @@
+# PARITY — RDS (managed, dang nhan don moi)
+# Thoi diem do: 2026-07-21T15:35:56Z UTC
+# Cung cau lenh checksum voi postgres cu (md5 toan dong, doc lap thu tu)
+
+accounting.order|215033|b3b832a909c4c4d0c652b14d6bfecc3d
+accounting.orderitem|395205|30ea128f1c715b57fe92278ceadb2422
+accounting.shipping|215033|0e220db7414f029d994602ea6463db1b
+catalog.products|10|bd6d7f7301cd136f0c4dbf4112243dca
+reviews.productreviews|50|bc4d8d6832ba47f191fb16bae49c8647
+DONE

@@ -21,10 +21,50 @@ resource "aws_security_group" "bastion" {
   vpc_id      = var.vpc_id
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS to private VPC endpoints and the private EKS API"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  egress {
+    description = "UDP DNS to the Amazon-provided VPC resolver"
+    from_port   = 53
+    to_port     = 53
+    protocol    = "udp"
+    cidr_blocks = ["${cidrhost(var.vpc_cidr, 2)}/32"]
+  }
+
+  egress {
+    description = "TCP DNS fallback to the Amazon-provided VPC resolver"
+    from_port   = 53
+    to_port     = 53
+    protocol    = "tcp"
+    cidr_blocks = ["${cidrhost(var.vpc_cidr, 2)}/32"]
+  }
+
+  # Managed-datastore ops path via SSM port-forward. The datastore module already
+  # opens RDS (5432) and ElastiCache (6379) ingress to this bastion SG (db_ops_sgs),
+  # so the bastion must be allowed to egress on those ports or the tunnel times out.
+  # PM-126 hardening replaced the previous open egress with 443+DNS only, which
+  # dropped this path (see postmortem 0014). Scope stays inside the VPC CIDR — not
+  # 0.0.0.0/0 — preserving least privilege. MSK (9096) is intentionally excluded:
+  # the datastore module does not open MSK ingress to the bastion.
+  egress {
+    description = "PostgreSQL to RDS via SSM tunnel"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  egress {
+    description = "Valkey/Redis to ElastiCache via SSM tunnel"
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
   }
 
   tags = {
@@ -67,12 +107,20 @@ resource "aws_instance" "bastion" {
     http_tokens = "required"
   }
 
+  root_block_device {
+    encrypted = true
+  }
+
   tags = {
     Name = "${var.cluster_name}-bastion"
   }
 
   lifecycle {
-    ignore_changes = [ami]
+    # Changing an EC2 root block device is ForceNew. Keep the old shared
+    # access path alive until the replacement instance exists, then let the
+    # runbook resolve the newest running bastion dynamically.
+    create_before_destroy = true
+    ignore_changes        = [ami]
   }
 }
 

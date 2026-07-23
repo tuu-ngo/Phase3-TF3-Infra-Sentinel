@@ -41,6 +41,7 @@ module "access" {
   region                    = var.region
   cluster_name              = var.cluster_name
   vpc_id                    = module.network.vpc_id
+  vpc_cidr                  = var.vpc_cidr
   private_subnet_ids        = module.network.private_subnet_ids
   cluster_security_group_id = module.eks_platform.cluster_security_group_id
   cluster_endpoint          = module.eks_platform.cluster_endpoint

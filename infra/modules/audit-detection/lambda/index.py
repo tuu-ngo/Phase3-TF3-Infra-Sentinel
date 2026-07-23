@@ -60,6 +60,62 @@ GROUP_MAP = {
     "kms:ScheduleKeyDeletion": 6,
     "secretsmanager:DeleteSecret": 6,
     "s3:DeleteBucket": 6,
+    # Group 7 (Mandate 12) bắt thay đổi lên chính alert plane và heartbeat:
+    # EventBridge rule/target, SNS topic/subscription, Lambda router và các
+    # control của audit bucket. Event pattern không lọc được resource, nên nhóm
+    # này lọc bằng critical_group_7_target_keywords trong handler: chỉ event
+    # nhắm vào resource audit mới đi tiếp, và khi đó nó nằm trong
+    # critical_group_numbers nên không bị allowlist hay suppression làm im lặng.
+    "events:DisableRule": 7,
+    "events:DeleteRule": 7,
+    "events:PutRule": 7,
+    "events:RemoveTargets": 7,
+    "events:PutTargets": 7,
+    "sns:AddPermission": 7,
+    "sns:RemovePermission": 7,
+    "sns:DeleteTopic": 7,
+    "sns:SetTopicAttributes": 7,
+    "sns:Subscribe": 7,
+    "sns:ConfirmSubscription": 7,
+    "sns:SetSubscriptionAttributes": 7,
+    "sns:Unsubscribe": 7,
+    "lambda:DeleteFunction": 7,
+    "lambda:UpdateFunctionCode": 7,
+    "lambda:UpdateFunctionConfiguration": 7,
+    # Đặt reserved concurrency = 0 làm router ngừng xử lý mà không xoá gì.
+    "lambda:PutFunctionConcurrency": 7,
+    "lambda:DeleteFunctionConcurrency": 7,
+    "monitoring:DeleteAlarms": 7,
+    "monitoring:DisableAlarmActions": 7,
+    "monitoring:PutMetricAlarm": 7,
+    "s3:PutBucketPolicy": 7,
+    "s3:DeleteBucketPolicy": 7,
+    "s3:PutBucketVersioning": 7,
+    "s3:PutObjectLockConfiguration": 7,
+    "s3:PutBucketLifecycleConfiguration": 7,
+    "s3:DeleteBucketLifecycle": 7,
+    "s3:PutBucketEncryption": 7,
+    "s3:DeleteBucketEncryption": 7,
+    "s3:PutPublicAccessBlock": 7,
+    "s3:DeletePublicAccessBlock": 7,
+    # Group 8 (Mandate 12) bắt thay đổi permissions boundary, policy
+    # attachment và trust path OIDC. IAM là global service nên rule tương ứng
+    # nằm ở us-east-1.
+    "iam:PutUserPermissionsBoundary": 8,
+    "iam:DeleteUserPermissionsBoundary": 8,
+    "iam:PutRolePermissionsBoundary": 8,
+    "iam:DeleteRolePermissionsBoundary": 8,
+    "iam:DeletePolicy": 8,
+    "iam:DeletePolicyVersion": 8,
+    "iam:DeleteUserPolicy": 8,
+    "iam:DeleteRolePolicy": 8,
+    "iam:DetachUserPolicy": 8,
+    "iam:DetachRolePolicy": 8,
+    "iam:CreateOpenIDConnectProvider": 8,
+    "iam:DeleteOpenIDConnectProvider": 8,
+    "iam:UpdateOpenIDConnectProviderThumbprint": 8,
+    "iam:AddClientIDToOpenIDConnectProvider": 8,
+    "iam:RemoveClientIDFromOpenIDConnectProvider": 8,
 }
 
 
@@ -77,11 +133,30 @@ def handler(event, _context):
     actor = extract_actor(detail.get("userIdentity", {}))
     target = extract_target(detail, group)
 
-    if is_allowed_automation(actor):
+    # Mandate 12: nhóm critical là các đòn nhắm vào chính hệ kiểm toán và vào
+    # đường leo thang quyền. Nếu để chúng đi qua allowlist automation hoặc
+    # suppression window thì một principal đã được tin cậy (CI/CD, Terraform
+    # apply, deployer) có thể tắt audit mà không sinh cảnh báo nào — đúng kịch
+    # bản Mandate 12 phải bắt được. Approved change vẫn tạo alert; người trực
+    # đối chiếu change ID thay vì tắt cảnh báo.
+    critical_groups = set(CONFIG.get("critical_group_numbers") or [])
+
+    # Mandate 12: rule nhóm 7 khớp theo eventName và không lọc resource, nên nó
+    # nhận cả PutMetricAlarm, UpdateFunctionCode hay PutBucketPolicy lên resource
+    # chẳng liên quan gì tới audit plane. Để nguyên thì mọi terraform apply bình
+    # thường đều thành CRITICAL không tắt được, và người trực sẽ lọc mail — đúng
+    # cửa sổ mù mà mandate muốn chặn. Lọc theo target ở đây chứ không đưa
+    # requestParameters vào event pattern: pattern sai một tên field là mất hẳn
+    # event, còn ở đây sai thì cùng lắm là thừa alert.
+    if group == 7 and not is_audit_plane_target(target):
+        LOGGER.info(json.dumps({"ignored": True, "reason": "non_audit_target", "actor": actor, "target": target, "event_key": event_key}))
+        return {"ignored": True, "reason": "non_audit_target", "actor": actor, "target": target, "event_key": event_key}
+
+    if group not in critical_groups and is_allowed_automation(actor):
         LOGGER.info(json.dumps({"ignored": True, "reason": "allowlisted_automation", "actor": actor, "event_key": event_key}))
         return {"ignored": True, "reason": "allowlisted_automation", "actor": actor, "event_key": event_key}
 
-    if is_suppressed(actor, target):
+    if group not in critical_groups and is_suppressed(actor, target):
         LOGGER.info(json.dumps({"ignored": True, "reason": "suppressed", "actor": actor, "target": target, "event_key": event_key}))
         return {"ignored": True, "reason": "suppressed", "actor": actor, "target": target, "event_key": event_key}
 
@@ -166,6 +241,30 @@ def extract_target(detail, group=None):
         if secret_targets:
             return ",".join(secret_targets)
 
+    # Mandate 12: nhóm 7 trải trên 5 service, mỗi API đặt tên tham số một kiểu.
+    # Danh sách key chung ở dưới không có alarmName/functionName/topicArn/rule
+    # nên target của phần lớn event nhóm 7 sẽ ra "unknown" — mà target chính là
+    # thứ quyết định event có phải đòn vào audit plane hay không.
+    if group == 7:
+        group_7_targets = []
+        for key in [
+            "name",              # events:PutRule / DeleteRule / DisableRule
+            "rule",              # events:PutTargets / RemoveTargets
+            "topicArn",          # sns:Subscribe / SetTopicAttributes / DeleteTopic
+            "subscriptionArn",   # sns:Unsubscribe / SetSubscriptionAttributes
+            "functionName",      # lambda:UpdateFunctionCode / PutFunctionConcurrency
+            "alarmName",         # monitoring:PutMetricAlarm
+            "alarmNames",        # monitoring:DeleteAlarms / DisableAlarmActions
+            "bucketName",        # s3:PutBucketPolicy và các control bucket khác
+        ]:
+            value = request.get(key)
+            if isinstance(value, list):
+                group_7_targets.extend(str(item) for item in value if item)
+            elif value:
+                group_7_targets.append(str(value))
+        if group_7_targets:
+            return ",".join(group_7_targets)
+
     for key in [
         "userName",
         "roleName",
@@ -210,6 +309,19 @@ def should_alert_secret_read(actor, target):
 
 def is_allowed_automation(actor):
     return matches_any(actor, CONFIG.get("allowed_principals") or [])
+
+
+def is_audit_plane_target(target):
+    """Event nhóm 7 có nhắm vào resource của audit plane hay không.
+
+    Hai đường fail-safe cố ý: config thiếu keyword, hoặc không trích được target,
+    thì trả True — thà thừa một alert còn hơn im lặng bỏ qua một đòn thật.
+    """
+    keywords = CONFIG.get("critical_group_7_target_keywords") or []
+    lowered = (target or "").strip().lower()
+    if not keywords or not lowered or lowered == "unknown":
+        return True
+    return any(keyword in lowered for keyword in keywords)
 
 
 def is_suppressed(actor, target):

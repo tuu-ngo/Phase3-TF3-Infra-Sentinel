@@ -1,0 +1,30 @@
+# PLAN B — DIEM LUI (snapshot + PITR + retention)
+# Thoi diem do: 2026-07-21T15:43:49Z UTC
+
+## 1. RDS: backup tu dong + PITR
+{
+    "RetentionDays": 7,
+    "BackupWindow": "19:53-20:23",
+    "LatestRestorableTime": "2026-07-21T15:40:49+00:00",
+    "MultiAZ": true
+}
+
+## 2. RDS: snapshot thu cong vua tao
+[
+    {
+        "ID": "techx-tf3-postgres-pre-cleanup-20260721-2242",
+        "Status": "creating",
+        "Created": "2026-07-21T15:43:07.443000+00:00",
+        "SizeGB": 20
+    }
+]
+
+## 3. ElastiCache: snapshot thu cong vua tao
+[
+    {
+        "Name": "techx-tf3-valkey-pre-cleanup-20260721-2243",
+        "Status": "creating",
+        "Source": "techx-tf3-valkey-002",
+        "Engine": "valkey"
+    }
+]
