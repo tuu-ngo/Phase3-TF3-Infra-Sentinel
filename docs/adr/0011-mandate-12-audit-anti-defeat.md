@@ -149,7 +149,7 @@ Danh sách tối thiểu nên trình owner duyệt trước: **Terraform state, 
 
 **Quyết định chọn:** Thêm Lambda heartbeat chạy mỗi 5 phút, kiểm tra đồng thời `IsLogging`, log age, digest age, validation flag, exact selectors, S3 lock/lifecycle/encryption, archive deny statement, rule pattern/target, full alarm config, CloudWatch topic policy, subscriptions và EKS audit log. Kết quả publish tới primary SNS M11 và global SNS M11; CloudWatch alarm về missing invocation và Lambda error publish vào topic primary M11 cùng region.
 
-**Demo và test đường alert (`forceAlertTest`):** Heartbeat hỗ trợ chế độ test riêng: invoke Lambda với payload `{"forceAlertTest": true}`. Lambda bỏ qua toàn bộ kiểm tra cấu hình, publish thẳng một message TEST tới tất cả đường alert và trả về `TEST-PASS` nếu tất cả kênh nhận thành công, hoặc `TEST-FAIL` nếu có kênh lỗi. Cơ chế này cho phép mentor xác minh đường alert hoạt động trước khi chạy test tấn công thật, mà không gây nhiễu log heartbeat normal. Xem [`heartbeat.py` L381–L401](../infra/modules/audit-detection/lambda-heartbeat/heartbeat.py).
+**Demo và test đường alert (`forceAlertTest`):** Heartbeat hỗ trợ chế độ test riêng: invoke Lambda với payload `{"forceAlertTest": true}`. Lambda bỏ qua toàn bộ kiểm tra cấu hình, publish thẳng một message TEST tới tất cả đường alert và trả về `TEST-PASS` nếu tất cả kênh nhận thành công, hoặc `TEST-FAIL` nếu có kênh lỗi. Cơ chế này cho phép mentor xác minh đường alert hoạt động trước khi chạy test tấn công thật, mà không gây nhiễu log heartbeat normal. Xem nhánh `forceAlertTest` trong `handler()` của [`heartbeat.py`](../infra/modules/audit-detection/lambda-heartbeat/heartbeat.py) (tham chiếu theo tên hàm, không theo số dòng — số dòng lệch mỗi lần sửa file).
 
 ### Alternatives considered
 

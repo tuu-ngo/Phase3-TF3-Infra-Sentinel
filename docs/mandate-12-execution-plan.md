@@ -507,11 +507,33 @@ python -c "from pathlib import Path; [compile(p.read_text(encoding='utf-8'), str
 | 2 | **SNS subscription** | Đo 23/07: primary 4/6, global 4/6 confirmed; 2 endpoint ở trạng thái `Deleted` (hết hạn xác nhận, không còn mail để bấm) nên phải tạo lại chứ không chờ được. **Không còn là gate chặn**: heartbeat chỉ ghi nhận số lượng, không FAIL | ⚠️ |
 | 3 | **Deployment identity** | Caller đúng account, không root, có MFA hoặc là approved short-lived role | ❌ |
 | 4 | **CD01 xác nhận state ownership + change window** | AWS không cho biết resource thuộc Terraform state nào. CD01 xác nhận M11 thuộc `infra/live/production` và cấp change window | ❌ |
-| 5 | **Change ID** | Ticket ghi Git SHA, saved-plan hash, principal, UTC window, **danh sách g7/g8 action dự kiến**, và người trực cam kết đối chiếu thay vì mute | ❌ |
+| 5 | **Change ID** | Ticket ghi Git SHA, saved-plan hash, principal, UTC window, **danh sách g7/g8 action dự kiến**, **chấp nhận tường minh 9 destroy do gỡ topic fallback (§10)**, và người trực cam kết đối chiếu thay vì mute | ❌ |
 
 Bổ sung từ §6.3 và §7: ngưỡng alert volume được chấp nhận, và unit test router PASS.
 
 Còn một dòng ❌ = **NO-GO**.
+
+#### Burst alert dự kiến ngay trong cửa sổ apply
+
+Chính lần apply này chạm vào audit plane nên nó **sẽ** sinh alert CRITICAL. Ghi con số vào change record trước, để người trực đối chiếu thay vì tưởng đang bị tấn công:
+
+| Nguồn | Số event | Nhóm | Tới topic |
+|---|---:|---|---|
+| `sns:Unsubscribe` (6 subscription fallback) | 6 | g7 | primary |
+| `sns:DeleteTopic` (topic fallback) | 1 | g7 | primary |
+| `sns:SetTopicAttributes` (tạo topic policy primary) | 1 | g7 | primary |
+| `lambda:UpdateFunctionCode` (2 router) | 2 | g7 | primary |
+| `monitoring:PutMetricAlarm` (2 alarm heartbeat) | 2 | g7 | primary |
+| `events:PutRule` + `PutTargets` (schedule heartbeat) | 2 | g7 | primary |
+| `iam:PutRolePolicy` (3 role policy) | 3 | g3 | global |
+| **Tổng** | **≈17** | | |
+
+Tất cả đều nhắm đúng resource audit plane nên qua được bộ lọc target của g7 và **không bị allowlist automation làm im lặng** — đó là hành vi đúng, không phải lỗi.
+
+`kms:ScheduleKeyDeletion` của key fallback thuộc g6, **không** nằm trong nhóm critical, nên bị allowlist `gha-terraform-apply` lọc — sẽ không thấy alert cho nó.
+
+> [!WARNING]
+> Quyền KMS của router được cấp **trong chính lần apply này**. Event xảy ra trước khi statement `EncryptAlerts` kịp áp sẽ publish thất bại và rơi vào DLQ thay vì vào hộp thư. Sau apply phải kiểm **cả** hộp thư **lẫn** độ sâu DLQ, đừng kết luận "không có alert" chỉ vì mail vắng.
 
 ### 8.1 S3 data-event scope — quyết định vòng 1
 
@@ -1003,6 +1025,8 @@ Câu claim đúng khi nghiệm thu:
 - [ ] Object **mới** có `COMPLIANCE` retain-until ≥ 14 ngày; lifecycle 30
 - [ ] `validate-logs` sạch trên window sau cutover
 - [ ] Heartbeat PASS; 2 alarm có đúng `AlarmActions` = topic primary M11
+- [ ] **`set-alarm-state` trên `techx-corp-tf3-m12-audit-heartbeat-errors` → có mail thật vào hộp thư.** Sau khi gỡ fallback, đây là **bằng chứng duy nhất** chứng minh đường meta-alarm còn sống: heartbeat đọc được SNS topic policy nhưng **không** đọc được KMS key policy, nên nếu grant cho `cloudwatch.amazonaws.com` sai thì cả hai alarm chuyển ALARM mà không gửi gì, trong khi mọi invariant vẫn PASS. Không có mục này thì không được ký `VERIFIED`
+- [ ] Lần heartbeat PASS đầu tiên: đối chiếu `get_bucket_encryption` trả `KMSMasterKeyID` dạng **ARN đầy đủ** (không phải key-id trần) để invariant so key bucket đúng
 - [ ] Heartbeat xác nhận `CodeSha256`/`Handler`/`Role`/`DETECTOR_CONFIG_JSON` của cả hai router khớp baseline Terraform
 - [ ] 12 subscription (2 topic M11 × 6 email) đều `Confirmed` — ghi nhận, không chặn nghiệm thu
 - [ ] Canary `GetObject` + `GetSecretValue` có evidence sạch, không lộ secret value

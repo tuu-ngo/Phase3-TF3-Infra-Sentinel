@@ -286,11 +286,14 @@ resource "aws_lambda_function" "m12_audit_heartbeat" {
 
   environment {
     variables = {
-      TRAIL_NAME                         = module.audit_detection_ap_southeast_1.trail_name
-      AUDIT_BUCKET_NAME                  = module.audit_detection_ap_southeast_1.trail_bucket_name
-      ALERT_TOPIC_ARN                    = module.audit_detection_ap_southeast_1.sns_topic_arn
-      GLOBAL_ALERT_TOPIC_ARN             = module.audit_detection_us_east_1.sns_topic_arn
-      REQUIRED_BUCKET_KMS_KEY_ARN        = module.audit_detection_ap_southeast_1.kms_key_arn
+      TRAIL_NAME             = module.audit_detection_ap_southeast_1.trail_name
+      AUDIT_BUCKET_NAME      = module.audit_detection_ap_southeast_1.trail_bucket_name
+      ALERT_TOPIC_ARN        = module.audit_detection_ap_southeast_1.sns_topic_arn
+      GLOBAL_ALERT_TOPIC_ARN = module.audit_detection_us_east_1.sns_topic_arn
+      # Lấy từ output đọc thẳng cấu hình mã hoá của bucket, KHÔNG lấy từ
+      # kms_key_arn (key của topic). Hôm nay hai giá trị bằng nhau vì module
+      # dùng chung một key; nếu sau này tách key thì biến này vẫn đúng.
+      REQUIRED_BUCKET_KMS_KEY_ARN        = module.audit_detection_ap_southeast_1.trail_bucket_kms_key_arn
       PRIMARY_REGION                     = var.region
       GLOBAL_REGION                      = "us-east-1"
       PRIMARY_RULES_JSON                 = jsonencode(local.m12_primary_rules)
