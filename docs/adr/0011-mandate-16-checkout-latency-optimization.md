@@ -1,123 +1,123 @@
-# ADR 0011 - Mandate 16 Checkout Latency Optimization
+# ADR 0011 - Mandate 16: Tối ưu độ trễ checkout
 
-**Date:** 2026-07-23
+**Ngày:** 23/07/2026
 
-**Decision owner:** CDO02 Reliability/Cost
+**Người quyết định:** CDO02 (Reliability + Cost Optimization)
 
-**Collaborators/reviewers:** CDO01, mentor
+**Phối hợp/review:** CDO01, mentor
 
-**Status:** Accepted for implementation and evidence collection
+**Trạng thái:** Đã chấp nhận cho triển khai và thu thập evidence
 
-**Related:** Mandate 16, `docs/mandate-16-checkout-latency-optimization.md`
+**Liên quan:** Mandate 16, `docs/mandate-16-checkout-latency-optimization.md`
 
-## Context
+## Bối cảnh
 
-Mandate 16 requires reducing checkout tail latency under sustained load without buying performance through more pods, more nodes, or topology changes.
+Mandate 16 yêu cầu giảm tail latency của `checkout` dưới tải bền mà không được "mua hiệu năng" bằng cách tăng pod, tăng node hoặc đổi topology production.
 
-Trace and code review on `checkout.PlaceOrder` showed that the checkout critical path was longer than necessary because multiple independent steps were still executed serially.
+Trace và code review trên `checkout.PlaceOrder` cho thấy critical path của checkout dài hơn mức cần thiết vì nhiều bước độc lập vẫn đang chạy tuần tự.
 
-The implementation that went into `phase3 - information/techx-corp-platform/src/checkout/main.go` actually addressed three separate bottlenecks, not just one aggregated "checkout preparation" issue.
+Phần implementation đưa vào `phase3 - information/techx-corp-platform/src/checkout/main.go` thực tế đã xử lý ba điểm nghẽn riêng, không chỉ một bottleneck gộp chung kiểu "checkout preparation chậm".
 
-## Bottlenecks Identified
+## Các điểm nghẽn đã xác định
 
-### Bottleneck 1: item preparation and shipping quote were serialized
+### Điểm nghẽn 1: chuẩn bị order item và lấy shipping quote đang chạy tuần tự
 
-After the cart was loaded, `prepareOrderItemsAndShippingQuoteFromCart` executed:
+Sau khi lấy cart, `prepareOrderItemsAndShippingQuoteFromCart` đang chạy:
 
 1. `prepOrderItems(...)`
 2. `quoteShipping(...)`
 
-These two branches both depend on the cart, but they do not depend on each other. Running them in sequence stretched the checkout critical path unnecessarily.
+Hai nhánh này cùng phụ thuộc vào cart, nhưng không phụ thuộc lẫn nhau. Việc chạy nối tiếp làm critical path của checkout bị kéo dài không cần thiết.
 
-### Bottleneck 2: each cart item was enriched one-by-one
+### Điểm nghẽn 2: từng cart item đang được enrich lần lượt
 
-Inside `prepOrderItems`, each line item performed:
+Bên trong `prepOrderItems`, mỗi line item đang phải đi qua:
 
 1. `product-catalog.GetProduct`
 2. `currency.Convert`
 
-before moving to the next item. On larger carts, latency accumulated roughly with cart size instead of converging on the slowest independent branch.
+rồi mới chuyển sang item tiếp theo. Với cart nhiều sản phẩm, latency bị cộng dồn theo số item thay vì hội tụ về nhánh độc lập chậm nhất.
 
-### Bottleneck 3: redundant currency conversion RPCs
+### Điểm nghẽn 3: gọi RPC đổi tiền dù không cần
 
-`convertCurrency` still called the currency service even when no conversion was needed, especially for the common `USD -> USD` path used by catalog prices and shipping quotes.
+`convertCurrency` vẫn gọi sang service `currency` ngay cả khi thực tế không cần đổi tiền, đặc biệt ở case phổ biến `USD -> USD` cho giá sản phẩm và shipping quote.
 
-That added avoidable network hops, spans, and latency to the critical path.
+Việc này tạo thêm network hop, span và latency không cần thiết trên critical path.
 
-## Decision
+## Quyết định
 
-We will keep the Mandate 16 implementation as a code-path optimization with three explicit changes:
+Giữ hướng triển khai Mandate 16 như một gói tối ưu code-path gồm ba thay đổi rõ ràng:
 
-1. Run `prepOrderItems(...)` and `quoteShipping(...)` in parallel after the cart is loaded.
-2. Run per-item enrichment concurrently inside `prepOrderItems(...)`, while preserving output order by writing back to the original item index.
-3. Short-circuit `convertCurrency(...)` when the input is nil, the target currency is empty, or the source and target currency already match.
+1. Chạy song song `prepOrderItems(...)` và `quoteShipping(...)` sau khi cart đã được tải.
+2. Chạy concurrent phần enrich từng item bên trong `prepOrderItems(...)`, nhưng vẫn giữ thứ tự output bằng cách ghi kết quả về đúng index ban đầu.
+3. Short-circuit `convertCurrency(...)` khi input nil, currency đích rỗng, hoặc currency nguồn đã trùng currency đích.
 
-## Scope
+## Phạm vi
 
 - Service: `checkout`
 - Code path: `checkout.PlaceOrder`
-- Main implementation file: `phase3 - information/techx-corp-platform/src/checkout/main.go`
-- Evidence file: `docs/mandate-16-checkout-latency-optimization.md`
+- File implement chính: `phase3 - information/techx-corp-platform/src/checkout/main.go`
+- File evidence: `docs/mandate-16-checkout-latency-optimization.md`
 
-## Why This Is the Right Boundary
+## Vì sao đây là ranh giới đúng
 
-This decision deliberately optimizes latency by removing unnecessary serialization in the checkout request path.
+Quyết định này chỉ tối ưu latency bằng cách loại bỏ các đoạn tuần tự hóa không cần thiết trong request path của checkout.
 
-It does not:
+Phần này không:
 
-- increase replicas
-- change HPA behavior
-- change node pools
-- change rollout strategy
-- change network topology
-- change checkout business rules
+- tăng replica
+- đổi HPA
+- đổi node pool
+- đổi rollout strategy
+- đổi network topology
+- đổi business rule của checkout
 
-That keeps the fix aligned with Mandate 16: faster under load, but not by adding capacity.
+Như vậy fix vẫn đúng tinh thần Mandate 16: nhanh hơn dưới tải, nhưng không dựa vào việc bơm thêm tài nguyên.
 
-## Consequences
+## Hệ quả
 
-### Positive
+### Tích cực
 
-- The checkout critical path is shorter because independent branches no longer wait on each other.
-- Tail latency becomes less sensitive to cart size because item preparation no longer accumulates strictly linearly.
-- Common no-op currency paths stop paying for an unnecessary RPC.
-- The change remains narrow and low-risk because it stays inside one service and one request path.
+- Critical path của checkout ngắn hơn vì các nhánh độc lập không còn phải đợi nhau.
+- Tail latency bớt nhạy với số lượng item trong cart vì item preparation không còn cộng dồn tuyến tính như trước.
+- Các case không cần đổi tiền không còn phải trả chi phí cho một RPC thừa.
+- Phạm vi thay đổi hẹp và ít rủi ro vì chỉ nằm trong một service và một request path.
 
-### Trade-offs
+### Đánh đổi
 
-- Concurrent downstream calls increase short bursts of fan-out to `product-catalog` and `currency` for larger carts.
-- The code path is more concurrent and therefore slightly harder to reason about than the previous sequential loop.
+- Số lượng downstream call concurrent tới `product-catalog` và `currency` có thể tăng thành từng burst ngắn khi cart lớn.
+- Code path concurrent khó đọc và khó reasoning hơn vòng lặp tuần tự cũ.
 
-### Mitigations
+### Giảm thiểu
 
-- Output order is preserved by writing results to the original slice index.
-- Error handling remains fail-fast at the request level: if item preparation fails, checkout still fails instead of returning partial data.
-- Scope stays limited to code; no production infrastructure tuning is mixed into this change.
+- Thứ tự output vẫn được giữ bằng cách ghi kết quả vào đúng index ban đầu.
+- Error handling vẫn giữ kiểu fail-fast ở mức request: nếu item preparation lỗi thì checkout vẫn fail thay vì trả partial data.
+- Scope giữ ở mức code, không trộn thêm tuning hạ tầng production vào cùng thay đổi này.
 
 ## Rollback
 
-- Revert the checkout code-path optimization only.
-- Keep production manifests, rollout settings, node pools, and autoscaling configuration unchanged.
-- Re-run the existing checkout verification path after rollback to confirm behavior returns to the pre-optimization baseline.
+- Chỉ revert phần tối ưu code path của `checkout`.
+- Giữ nguyên manifest production, rollout settings, node pool và autoscaling configuration.
+- Sau rollback, chạy lại đường verify checkout hiện có để xác nhận hành vi quay về baseline trước tối ưu.
 
-## Evidence Expectations
+## Kỳ vọng evidence
 
-This ADR should be defended with:
+ADR này cần được bảo vệ bằng:
 
-1. before/after traces showing overlap of independent spans
-2. before/after p95 and p99 for checkout under sustained load
-3. proof that no additional runtime capacity was introduced
+1. trace before/after cho thấy các span độc lập đã overlap
+2. p95 và p99 before/after của checkout dưới tải bền
+3. bằng chứng không tăng runtime capacity
 
-The implementation note and evidence pack live in:
+Implementation note và evidence pack nằm tại:
 
 - `docs/mandate-16-checkout-latency-optimization.md`
 
-## Final Position
+## Kết luận cuối
 
-Mandate 16 is not a single bottleneck fix. It is a focused optimization package over three related latency bottlenecks in the same checkout path:
+Mandate 16 không phải là một fix cho một bottleneck đơn lẻ. Đây là một gói tối ưu tập trung vào ba điểm nghẽn liên quan trong cùng checkout path:
 
-1. serialized order-item preparation vs shipping quote
-2. serialized per-item enrichment
-3. redundant currency conversion RPCs
+1. tuần tự giữa order-item preparation và shipping quote
+2. tuần tự khi enrich từng item
+3. RPC đổi tiền dư thừa
 
-We accept this design because it reduces checkout latency in the narrowest safe place, without changing production topology or buying speed through extra infrastructure.
+Chúng tôi chấp nhận thiết kế này vì nó giảm độ trễ checkout ở đúng nơi hẹp nhất và an toàn nhất, không đổi topology production và không mua tốc độ bằng hạ tầng bổ sung.
