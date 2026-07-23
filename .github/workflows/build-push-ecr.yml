@@ -11,6 +11,10 @@ on:
         description: "Build platforms"
         required: false
         default: "linux/amd64,linux/arm64"
+      services:
+        description: "Optional space-separated production services for a scoped canary build"
+        required: false
+        default: ""
 
   push:
     branches: [main]
@@ -102,6 +106,7 @@ jobs:
           EVENT_BEFORE: ${{ github.event.before }}
           SOURCE_SHA: ${{ github.sha }}
           SOURCE_REF: ${{ github.ref }}
+          INPUT_SERVICES: ${{ inputs.services }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$SOURCE_REF" != refs/heads/main ]; then
@@ -113,6 +118,18 @@ jobs:
           ALL_SORTED="$(printf '%s\n' "${ALL_SERVICE_ARRAY[@]}" | sort -u | paste -sd' ' -)"
           MODE=full
           SERVICES="$ALL_SORTED"
+
+          if [ "$EVENT_NAME" = workflow_dispatch ] && [ -n "${INPUT_SERVICES// }" ]; then
+            read -r -a REQUESTED_SERVICES <<< "$INPUT_SERVICES"
+            for service in "${REQUESTED_SERVICES[@]}"; do
+              grep -Fqw -- "$service" <<< "$ALL_SERVICES" || {
+                echo "FAIL: unknown production service: $service" >&2
+                exit 1
+              }
+            done
+            SERVICES="$(printf '%s\n' "${REQUESTED_SERVICES[@]}" | sort -u | paste -sd' ' -)"
+            MODE=scoped
+          fi
 
           if [ "$EVENT_NAME" != workflow_dispatch ] &&
              [ -n "$EVENT_BEFORE" ] &&
@@ -267,6 +284,7 @@ jobs:
           EVENT_BEFORE: ${{ github.event.before }}
           SOURCE_SHA: ${{ github.sha }}
           SOURCE_REF: ${{ github.ref }}
+          INPUT_SERVICES: ${{ inputs.services }}
         run: |
           set -euo pipefail
 
@@ -285,6 +303,20 @@ jobs:
               sort -u |
               paste -sd' ' -
           )"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "${INPUT_SERVICES// }" ]; then
+            read -r -a REQUESTED_SERVICES <<< "$INPUT_SERVICES"
+            for service in "${REQUESTED_SERVICES[@]}"; do
+              grep -Fqw -- "$service" <<< "$ALL_SERVICES" || {
+                echo "FAIL: unknown production service: $service" >&2
+                exit 1
+              }
+            done
+            UNIQUE_SERVICES="$(printf '%s\n' "${REQUESTED_SERVICES[@]}" | sort -u | paste -sd' ' -)"
+            echo "mode=scoped" >> "$GITHUB_OUTPUT"
+            echo "services=$UNIQUE_SERVICES" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "mode=full" >> "$GITHUB_OUTPUT"
@@ -947,7 +979,7 @@ jobs:
         with:
           name: approved-image-${{ github.run_id }}-${{ matrix.service }}
           path: phase3 - information/techx-corp-platform/approved-images.json
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
           overwrite: true
 
@@ -1059,7 +1091,7 @@ jobs:
         with:
           name: approved-images-${{ github.run_id }}-${{ github.run_attempt }}
           path: approved-images.json
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
           overwrite: true
 
@@ -1287,7 +1319,7 @@ jobs:
               --state open \
               --head "$BRANCH_NAME" \
               --base main \
-              --json url,headRefOid,baseRefName,state \
+              --json number,url,headRefOid,baseRefName,state \
               --jq '.[0] // empty'
           )"
 
@@ -1301,25 +1333,57 @@ jobs:
             test "$EXISTING_STATE" = "OPEN"
 
             echo "Pull request already exists and matches the remote branch."
-            exit 0
+            PR_JSON="$EXISTING_PR_JSON"
+          else
+            gh pr create \
+              --title "$PR_TITLE" \
+              --body-file pr_body.txt \
+              --head "$BRANCH_NAME" \
+              --base main
+
+            PR_JSON="$(
+              gh pr list \
+                --state open \
+                --head "$BRANCH_NAME" \
+                --base main \
+                --json number,url,headRefOid,baseRefName,state \
+                --jq '.[0] // empty'
+            )"
+
+            test -n "$PR_JSON"
+            test "$(jq -r '.headRefOid' <<< "$PR_JSON")" = "$REMOTE_SHA"
+            test "$(jq -r '.baseRefName' <<< "$PR_JSON")" = "main"
+            test "$(jq -r '.state' <<< "$PR_JSON")" = "OPEN"
           fi
 
-          gh pr create \
-            --title "$PR_TITLE" \
-            --body-file pr_body.txt \
-            --head "$BRANCH_NAME" \
-            --base main
+          jq -n \
+            --argjson pr "$PR_JSON" \
+            --arg repository "$REPOSITORY" \
+            --arg branch "$BRANCH_NAME" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg source_short_sha "$SOURCE_SHORT_SHA" \
+            --arg run_id "$WORKFLOW_RUN_ID" \
+            --arg run_attempt "$WORKFLOW_RUN_ATTEMPT" \
+            --arg build_mode "$BUILD_MODE" \
+            --arg platforms "$BUILD_PLATFORMS" \
+            --arg registry "$ECR_REGISTRY" \
+            --arg image_repository "$ECR_REPOSITORY" \
+            --argjson services "$(jq -c '.services' approved-images.json)" \
+            '{schemaVersion: 1, repository: $repository, branch: $branch,
+              sourceSha: $source_sha, sourceShortSha: $source_short_sha,
+              workflowRunId: $run_id, workflowRunAttempt: $run_attempt,
+              buildMode: $build_mode, platforms: $platforms,
+              registry: $registry, imageRepository: $image_repository,
+              promotionPr: {number: $pr.number, url: $pr.url,
+                            headSha: $pr.headRefOid, base: $pr.baseRefName,
+                            state: $pr.state},
+              services: $services}' > promotion-evidence.json
 
-          CREATED_PR_JSON="$(
-            gh pr list \
-              --state open \
-              --head "$BRANCH_NAME" \
-              --base main \
-              --json url,headRefOid,baseRefName,state \
-              --jq '.[0] // empty'
-          )"
-
-          test -n "$CREATED_PR_JSON"
-          test "$(jq -r '.headRefOid' <<< "$CREATED_PR_JSON")" = "$REMOTE_SHA"
-          test "$(jq -r '.baseRefName' <<< "$CREATED_PR_JSON")" = "main"
-          test "$(jq -r '.state' <<< "$CREATED_PR_JSON")" = "OPEN"
+      - name: Upload promotion evidence
+        if: env.no_changes != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: promotion-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: promotion-evidence.json
+          if-no-files-found: error
+          retention-days: 90
