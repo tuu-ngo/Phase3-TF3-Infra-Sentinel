@@ -3,11 +3,17 @@
 Bộ kịch bản để AIO02 chấm điểm AIOps engine bằng **lỗi thật trên cụm thật**, thay vì
 dữ liệu giả. Hạ tầng do CDO02 dựng; việc chạy và chấm là của AIO02.
 
-| Scenario | File | Cơ chế | Tự chạy được? |
+| Scenario | File | Cơ chế | Thời lượng |
 |---|---|---|---|
-| 1. Bắt đúng | [`experiments/scenario-1-payment-latency.yaml`](experiments/scenario-1-payment-latency.yaml) | NetworkChaos (tc netem) | ✅ |
-| 2. Không bị che | [`experiments/scenario-2-noise-vs-real.yaml`](experiments/scenario-2-noise-vs-real.yaml) | StressChaos + NetworkChaos | ✅ |
-| 3. Không kêu oan | [`experiments/scenario-3-flash-sale-load.md`](experiments/scenario-3-flash-sale-load.md) | Locust ramp (không phải CRD) | ✅ |
+| 1. Bắt đúng | [`scenario-1-payment-latency.yaml`](experiments/scenario-1-payment-latency.yaml) | NetworkChaos (tc netem) | 10m |
+| 2A. Không bị che — sự cố thật | [`scenario-2a-payment-real-issue.yaml`](experiments/scenario-2a-payment-real-issue.yaml) | NetworkChaos | 10m, apply ở **T+0** |
+| 2B. Không bị che — nhiễu | [`scenario-2b-recommendation-noise.yaml`](experiments/scenario-2b-recommendation-noise.yaml) | StressChaos | 2m, apply ở **T+5** |
+| 3. Không kêu oan | [`scenario-3-flash-sale-load.md`](experiments/scenario-3-flash-sale-load.md) | Locust ramp (không phải CRD) | giữ tải 10m |
+
+> **Scenario 2 phải apply LÀM HAI BƯỚC cách nhau ~5 phút** — engine start cùng lúc bơm
+> lỗi và cần ~5 phút warm-up, nên cửa sổ nó quan sát là T+5→T+10. Apply nhiễu cùng lúc
+> với sự cố thật ở T+0 thì nhiễu tắt trước khi engine kịp nhìn, và bài test no-masking
+> tự động thoái hoá thành bản sao của Scenario 1. Chi tiết trong header file 2A.
 
 ## Vì sao không dùng flagd
 
