@@ -37,6 +37,19 @@ grafana:
     limits:
       cpu: 200m
       memory: 1Gi
+  # REL-17-04: đẩy Grafana sang AZ KHÁC Prometheus (best-effort). Trước đây cả hai (mỗi
+  # cái 1 replica) cùng nằm trên ip-10-0-8-134 / AZ 1a → mất AZ 1a = mất CẢ dashboard lẫn
+  # nguồn metric đúng lúc demo req#2. Dùng preferred (soft) khớp convention repo (cloudflared/
+  # otel-gateway) + không rủi ro Pending; base node trải 3 AZ nên thực tế luôn tách được.
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: prometheus
+            topologyKey: topology.kubernetes.io/zone
 
 jaeger:
   jaeger:
@@ -88,6 +101,17 @@ prometheus:
       limits:
         cpu: 800m
         memory: 1200Mi
+    # REL-17-04: đẩy Prometheus sang AZ KHÁC Grafana (best-effort, đối xứng với
+    # grafana.affinity) → mất 1 AZ không mất cả hai nửa dashboard SLO cùng lúc.
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: grafana
+              topologyKey: topology.kubernetes.io/zone
 
 opentelemetry-collector:
   # Mandate 5 OTEL step 1 (tat truoc, xoa sau): otel-node-agent (host/kubelet/
