@@ -69,6 +69,58 @@ Nếu chỉ chạy read-only inventory cho Mandate 18 thì có thể làm song s
 | SLO spike do 13 | Không biết spike do 13 hay do cleanup 18 | Không chạy cleanup 18 trong cùng cửa sổ |
 | Cắt telemetry trong 18 | 13 mất bằng chứng Grafana/trace để pass | Giữ observability nguyên vẹn đến khi 13 xong |
 
+### 2.3.1. Nếu làm Mandate 13 trước Mandate 18
+
+Làm Mandate 13 trước không block Mandate 18. Đây còn là thứ tự hợp lý nếu team cần chứng minh compute/node cost trước. Tuy nhiên, Mandate 13 tạo load, scale node, spot interruption demo và pod reschedule, nên các số Mandate 18 có thể bị nhiễu nếu đo ngay sau đó.
+
+Không dùng cửa sổ Mandate 13 để claim các số Mandate 18 sau:
+
+- NAT data processing;
+- VPC endpoint processed bytes;
+- CloudWatch log ingestion;
+- Prometheus/Grafana/Jaeger telemetry volume;
+- EBS root volume/node inventory phát sinh do scale node;
+- SLO spike hoặc pod event do load/spot demo.
+
+Thứ tự an toàn:
+
+1. Chạy và nộp evidence Mandate 13 riêng: node-hours, spot %, Graviton, scale-down, SLO.
+2. Đợi hệ thống về steady-state tối thiểu 60 phút sau load/spot demo.
+3. Xác nhận không incident active, SLO xanh, pod/events ổn.
+4. Mới chụp baseline Mandate 18 và quyết định cleanup.
+
+Kết luận: Mandate 13 làm trước không phá Mandate 18, nhưng phải có cooldown/steady-state window riêng trước khi đo hoặc cut Mandate 18. Nếu không, client có thể coi evidence 18 bị lẫn với spike do chính Mandate 13 tạo ra.
+
+### 2.3.2. Nếu làm Mandate 18 trước Mandate 13
+
+Làm Mandate 18 trước cũng không block Mandate 13 nếu chỉ inventory read-only hoặc cleanup tài nguyên mồ côi thật sự không nằm trên runtime path. Rủi ro nằm ở việc cắt nhầm thứ Mandate 13 cần để chứng minh Reliability dưới tải: observability, private access, image pull, network egress, hoặc rollback/DR evidence.
+
+Các action Mandate 18 có thể làm trước Mandate 13:
+
+- read-only inventory EBS/EIP/LB/TG/S3/CloudWatch/Cost Explorer;
+- xác nhận EIP không orphan vì đang gắn NAT;
+- xác nhận ALB/TG không orphan vì target group còn attached và target healthy;
+- ghi decision record giữ NAT/VPC endpoints vì còn phục vụ private access/ECR/SSM;
+- ghi decision record giữ CloudTrail/S3 audit/CloudWatch audit vì còn phục vụ Mandate 11/12;
+- cleanup EBS PVC cũ chỉ khi gate Mandate 8 ở mục 5.1.1 đã `GO` và có SLO watch sau cleanup.
+
+Các action Mandate 18 không nên làm trước Mandate 13:
+
+- giảm hoặc tắt telemetry/log/trace/metric để tiết kiệm ingestion;
+- đổi NAT/VPC endpoint/route table nếu chưa chứng minh ECR pull, SSM tunnel, Cloudflare/private ops path và service egress không bị ảnh hưởng;
+- xóa snapshot/PVC/backup mà Mandate 8/20/21 còn dùng làm rollback hoặc DR evidence;
+- đổi ALB/TG/CloudFront/origin nếu chưa có zero-downtime rollout và rollback;
+- cắt resource quota/request/limit chỉ để giảm node nếu Mandate 13 chưa có baseline tải.
+
+Nếu buộc phải cleanup Mandate 18 trước Mandate 13, phải có một cửa sổ quan sát sau cleanup trước khi bắt đầu demo 13:
+
+1. Chụp before/after inventory của action 18.
+2. Theo dõi SLO tối thiểu 30 phút với cleanup không chạm runtime, 60 phút nếu action chạm network/telemetry/storage boundary.
+3. Xác nhận Grafana/Prometheus/Jaeger vẫn quan sát được, SSM/kubectl tunnel còn hoạt động, storefront smoke `200`, pod/events không lỗi mới.
+4. Chỉ khi trạng thái ổn định mới bắt đầu Mandate 13 load/spot demo.
+
+Kết luận: Mandate 18 làm trước 13 chỉ an toàn nếu 18 không cắt các thành phần giúp 13 giữ và chứng minh SLO. Với CDO02, saving không được tính nếu làm mất khả năng chứng minh Reliability; rẻ mà mù quan sát hoặc làm demo 13 rớt SLO là fail.
+
 ### 2.4. SLO gate trước khi làm cleanup Mandate 18
 
 Trước mọi cleanup/optimization có khả năng ảnh hưởng runtime, phải kiểm tra:
