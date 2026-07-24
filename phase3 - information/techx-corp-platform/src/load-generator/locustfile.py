@@ -9,7 +9,7 @@ import random
 import uuid
 import logging
 
-from locust import HttpUser, task, between
+from locust import HttpUser, task, between, LoadShape, constant_pacing
 from locust_plugins.users.playwright import PlaywrightUser, pw, PageWithRetry, event
 
 from opentelemetry import context, baggage, trace
@@ -282,3 +282,98 @@ async def add_baggage_header(route: Route, request: Request):
         'baggage': ', '.join(filter(None, (existing_baggage, 'synthetic_request=true')))
     }
     await route.continue_(headers=headers)
+
+class Mandate19User(HttpUser):
+    """
+    Profile Mandate 19 riêng:
+    - Loại bỏ AI, recommendation, reviews, ads, browser traffic, flagd.
+    - Traffic mix: 70% browse, 20% cart, 10% checkout.
+    - Dùng pacing 1 request/giây để dễ dàng scale theo số user (1 user = 1 RPS).
+    """
+    wait_time = constant_pacing(1)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tracer = trace.get_tracer(__name__)
+
+    def add_to_cart(self, user=""):
+        if user == "":
+            user = str(uuid.uuid1())
+        product = random.choice(products)
+        quantity = random.choice([1, 2, 3, 4, 5, 10])
+        with self.tracer.start_as_current_span("user_add_to_cart", context=Context(), attributes={"user.id": user, "product.id": product, "quantity": quantity}):
+            self.client.get("/api/products/" + product)
+            cart_item = {
+                "item": {
+                    "productId": product,
+                    "quantity": quantity,
+                },
+                "userId": user,
+            }
+            self.client.post("/api/cart", json=cart_item)
+
+    @task(7)
+    def browse_product(self):
+        product = random.choice(products)
+        with self.tracer.start_as_current_span("user_browse_product", context=Context(), attributes={"product.id": product}):
+            self.client.get("/api/products/" + product)
+
+    @task(2)
+    def read_cart(self):
+        with self.tracer.start_as_current_span("user_view_cart", context=Context()):
+            self.client.get("/api/cart")
+
+    @task(1)
+    def checkout_journey(self):
+        user = str(uuid.uuid1())
+        with self.tracer.start_as_current_span("user_checkout_journey", context=Context(), attributes={"user.id": user}):
+            self.add_to_cart(user=user)
+            checkout_person = random.choice(people)
+            checkout_person["userId"] = user
+            self.client.post("/api/checkout", json=checkout_person)
+
+    def on_start(self):
+        with self.tracer.start_as_current_span("user_session_start", context=Context()):
+            session_id = str(uuid.uuid4())
+            ctx = baggage.set_baggage("session.id", session_id)
+            ctx = baggage.set_baggage("synthetic_request", "true", context=ctx)
+            context.attach(ctx)
+
+
+class Mandate19LoadShape(LoadShape):
+    """
+    Kịch bản chạy tải Canonical cho PM-152:
+    1. Smoke: 1 phút ở R0/2
+    2. Warm-up: 5 phút ở R0
+    3. Stages: Mỗi 5 phút, R(n+1) = ceil(R(n) * 1.25)
+    """
+    
+    def __init__(self):
+        super().__init__()
+        # Calibration baseline R0. Có thể thay đổi qua ENV.
+        self.r0 = int(os.environ.get("MANDATE19_R0", 20))
+        self.r_smoke = max(1, self.r0 // 2)
+
+    def tick(self):
+        import math
+        run_time = self.get_run_time()
+        
+        # 1. Smoke (1 phút = 60s)
+        if run_time < 60:
+            return (self.r_smoke, self.r_smoke)
+            
+        # 2. Warm-up (5 phút = 300s) -> 60s đến 360s
+        if run_time < 360:
+            return (self.r0, self.r0)
+            
+        # 3. Stages tăng dần 25% mỗi 5 phút (300s)
+        stage_index = math.floor((run_time - 360) / 300)
+        
+        current_r = self.r0
+        for _ in range(stage_index + 1):
+            current_r = math.ceil(current_r * 1.25)
+            
+        # Tốc độ sinh user đủ mượt (khoảng 20% lượng user mục tiêu mỗi giây)
+        spawn_rate = max(10, current_r // 5)
+        return (current_r, spawn_rate)
+
