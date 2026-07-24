@@ -48,6 +48,11 @@ curl -s -X POST http://localhost:8089/swarm -d 'user_count=10&spawn_rate=5'
 `spawn_rate=5` cho đường ramp lên trong ~20 giây — dốc đủ để giống flash sale thật,
 không phải bậc thang tức thời khiến p95 vọt do cold start rồi bị chấm nhầm là sự cố.
 
+**Giữ ở 100 user trong 10 phút** rồi mới hạ về nền, để đồng bộ với 2 scenario kia.
+Engine start cùng lúc bắt đầu ramp và cần ~5 phút warm-up, nên cửa sổ nó thực sự quan
+sát là T+5 → T+10. Hạ tải sớm hơn 10 phút là engine gần như không có dữ liệu tải cao
+nào để đánh giá, và kết quả "không kêu oan" trở nên vô nghĩa vì nó có thấy gì đâu mà kêu.
+
 ## Điều kiện bài test chỉ hợp lệ khi
 
 Phải xác nhận **trước khi** chấm điểm engine — nếu hệ thống thật sự gãy dưới tải thì
