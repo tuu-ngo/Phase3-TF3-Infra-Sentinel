@@ -9,6 +9,7 @@ name: Validate Mandate 17 NetworkPolicies
       - "gitops/infrastructure/network-policy-staged/**"
       - "gitops/infrastructure/*.yaml"
       - "scripts/ci/test_mandate17_network_policy_contract.py"
+      - "scripts/network-policy/mandate-17-connectivity-test.sh"
   workflow_dispatch:
 
 permissions:

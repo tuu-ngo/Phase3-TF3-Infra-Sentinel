@@ -37,10 +37,46 @@ must use a separate PR and a low-traffic change window.
   path is `checkout -> shipping -> quote`, so no unnecessary direct rule is
   opened.
 
+## Active-policy replacement gate
+
+Kubernetes NetworkPolicy rules are additive for every policy selecting a pod.
+A narrow staged policy does not override a broader active policy. Before every
+promotion, capture the active inventory and identify every policy whose
+`podSelector` overlaps the workload being promoted:
+
+```bash
+mkdir -p outputs/mandate-17/pre-promotion
+kubectl -n techx-tf3 get networkpolicies -o yaml \
+  > outputs/mandate-17/pre-promotion/networkpolicies-before.yaml
+kubectl -n techx-tf3 get networkpolicies \
+  -o custom-columns=NAME:.metadata.name,POD-SELECTOR:.spec.podSelector
+```
+
+The promotion PR must include an inventory table with the active policy name,
+GitOps source file, selected workload, overlapping ingress/egress permissions,
+and one disposition: `retain`, `update-in-place`, or `replace`. Promotion is
+blocked when an overlapping policy has no documented disposition or retains a
+broader rule than the staged contract.
+
+Prefer updating the existing GitOps manifest in place and preserving its
+`metadata.name`. If replacement is unavoidable, remove the old manifest and
+add the reviewed replacement through Git in the same promotion PR. Never use
+`kubectl apply`, `patch`, `edit`, or `delete` to perform the replacement.
+After Argo CD synchronizes, verify the intended object was updated and any
+replaced object was pruned before accepting a negative connectivity test.
+
+Jaeger is an explicit blocker: active policy `jaeger-access` currently permits
+broader ingress than `02-jaeger.yaml`. Its promotion must update
+`gitops/infrastructure/network-policy-jaeger.yaml` in place while preserving
+the `jaeger-access` name, or document and verify an equivalent GitOps
+replacement. Adding `jaeger-platform-policy` beside the old policy is not a
+valid restriction because the old ingress allowance would remain effective.
+
 ## Promotion order
 
-1. Capture pre-change pods, events, Argo health, storefront HTTP 200, SLO, and
-   positive/negative connectivity evidence.
+1. Pass the active-policy replacement gate, then capture pre-change pods,
+   events, Argo health, storefront HTTP 200, SLO, and positive/negative
+   connectivity evidence.
 2. Promote only `14-ad.yaml` as the first canary. Verify frontend-to-ad, DNS,
    flagd, telemetry, an unrelated denied flow, readiness, storefront, and SLO.
 3. Soak the canary for at least one stable SLO window. If selector-only traffic

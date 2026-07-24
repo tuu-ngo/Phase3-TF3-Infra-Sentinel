@@ -21,21 +21,6 @@ usage() {
     '  mandate-17-connectivity-test.sh full'
 }
 
-if [[ "$MODE" != baseline && "$MODE" != policy && "$MODE" != full ]]; then
-  usage
-  exit 64
-fi
-if [[ "$MODE" == policy && -z "$POLICY" ]]; then
-  usage
-  exit 64
-fi
-
-command -v kubectl >/dev/null 2>&1 || exit 69
-command -v curl >/dev/null 2>&1 || exit 69
-
-OUT=outputs/mandate-17/$(date -u +%Y%m%dT%H%M%SZ)-$MODE
-mkdir -p "$OUT"
-exec > >(tee "$OUT/run.log") 2>&1
 failures=0
 blocked=0
 
@@ -48,6 +33,30 @@ check() {
     echo "FAIL $label"
     failures=$((failures + 1))
   fi
+}
+
+is_timeout_output() {
+  local output="$1"
+  grep -Eqi \
+    '(^|[^[:alpha:]])((operation|connection)[[:space:]]+)?timed[[:space:]]+out([^[:alpha:]]|$)' \
+    <<<"$output"
+}
+
+tcp_deny_confirmed() {
+  local rc="$1" output="$2"
+  [[ "$rc" -ne 0 ]] && is_timeout_output "$output"
+}
+
+https_deny_confirmed() {
+  local rc="$1" output="$2"
+  [[ "$rc" -eq 28 ]] && is_timeout_output "$output"
+}
+
+exec_or_tool_unavailable() {
+  local output="$1"
+  grep -Eqi \
+    'forbidden|unauthorized|executable file not found|command not found|no such file or directory' \
+    <<<"$output"
 }
 
 pod_for() {
@@ -86,15 +95,15 @@ tcp() {
   output="$(kubectl exec -n "$NS" "$pod" -- nc -z -v -w "$TIMEOUT" \
     "$destination" "$port" 2>&1)"
   rc=$?
-  if grep -Eqi 'forbidden|unauthorized|not found|executable file not found|no such file' <<<"$output"; then
+  if exec_or_tool_unavailable "$output"; then
     echo "BLOCKED [$policy] $name: exec or nc unavailable"
     blocked=$((blocked + 1))
   elif [[ "$MODE" == baseline && "$expected" == deny ]]; then
-    echo "OBSERVE [$policy] $name: baseline rc=$rc"
+    echo "OBSERVE [$policy] $name: baseline rc=$rc output=$output"
   elif [[ "$expected" == allow && $rc -eq 0 ]]; then
     echo "PASS [$policy] $name"
-  elif [[ "$expected" == deny && $rc -ne 0 ]]; then
-    echo "PASS [$policy] $name: denied"
+  elif [[ "$expected" == deny ]] && tcp_deny_confirmed "$rc" "$output"; then
+    echo "PASS [$policy] $name: denied by timeout"
   else
     echo "FAIL [$policy] $name: expected=$expected rc=$rc output=$output"
     failures=$((failures + 1))
@@ -114,20 +123,37 @@ https_test() {
   output="$(kubectl exec -n "$NS" "$pod" -- curl -sS -I \
     --connect-timeout "$TIMEOUT" "$destination" 2>&1)"
   rc=$?
-  if grep -Eqi 'forbidden|unauthorized|not found|executable file not found|no such file' <<<"$output"; then
+  if exec_or_tool_unavailable "$output"; then
     echo "BLOCKED [$policy] $name: exec or curl unavailable"
     blocked=$((blocked + 1))
   elif [[ "$MODE" == baseline && "$expected" == deny ]]; then
-    echo "OBSERVE [$policy] $name: baseline rc=$rc"
+    echo "OBSERVE [$policy] $name: baseline rc=$rc output=$output"
   elif [[ "$expected" == allow && $rc -eq 0 && "$output" == *HTTP/* ]]; then
     echo "PASS [$policy] $name"
-  elif [[ "$expected" == deny && $rc -ne 0 ]]; then
-    echo "PASS [$policy] $name: denied"
+  elif [[ "$expected" == deny ]] && https_deny_confirmed "$rc" "$output"; then
+    echo "PASS [$policy] $name: denied by connect timeout"
   else
-    echo "FAIL [$policy] $name: expected=$expected rc=$rc"
+    echo "FAIL [$policy] $name: expected=$expected rc=$rc output=$output"
     failures=$((failures + 1))
   fi
 }
+
+main() {
+  if [[ "$MODE" != baseline && "$MODE" != policy && "$MODE" != full ]]; then
+    usage
+    return 64
+  fi
+  if [[ "$MODE" == policy && -z "$POLICY" ]]; then
+    usage
+    return 64
+  fi
+
+  command -v kubectl >/dev/null 2>&1 || return 69
+  command -v curl >/dev/null 2>&1 || return 69
+
+  OUT=outputs/mandate-17/$(date -u +%Y%m%dT%H%M%SZ)-$MODE
+  mkdir -p "$OUT"
+  exec > >(tee "$OUT/run.log") 2>&1
 
 echo "Mandate 17 mode=$MODE policy=$POLICY namespace=$NS"
 check 'exec permission' kubectl auth can-i create pods/exec -n "$NS"
@@ -206,6 +232,11 @@ echo 'Manual smoke required: browse -> add-to-cart -> checkout'
 echo 'Manual protected path required: frontend-proxy -> /flagservice'
 echo "failures=$failures blocked=$blocked output=$OUT"
 
-(( failures > 0 )) && exit 1
-(( blocked > 0 )) && exit 2
-exit 0
+  (( failures > 0 )) && return 1
+  (( blocked > 0 )) && return 2
+  return 0
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

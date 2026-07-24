@@ -1,11 +1,17 @@
+import os
 from pathlib import Path
+import shutil
+import subprocess
 
+import pytest
 import yaml
 
 
 REPO = Path(__file__).resolve().parents[2]
 INFRA = REPO / "gitops/infrastructure"
 STAGED = INFRA / "network-policy-staged"
+CONNECTIVITY_SCRIPT = REPO / "scripts/network-policy/mandate-17-connectivity-test.sh"
+BASH = shutil.which("bash")
 
 EXPECTED_FILES = {
     "00-otel-gateway.yaml",
@@ -302,3 +308,76 @@ def test_rollout_runbook_requires_canary_owner_and_last_default_deny():
     assert "ownerReferences" in runbook
     assert "bare Pod is not accepted" in runbook
     assert "promotion-blocked" in runbook
+
+
+def test_rollout_runbook_requires_active_policy_inventory_and_replacement():
+    runbook = (STAGED / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(runbook.split())
+    required_markers = {
+        "NetworkPolicy rules are additive",
+        "networkpolicies-before.yaml",
+        "update-in-place",
+        "overlapping policy has no documented disposition",
+        "jaeger-access",
+        "Adding `jaeger-platform-policy` beside the old policy is not a valid restriction",
+        "replaced object was pruned",
+    }
+    for marker in required_markers:
+        assert marker in normalized
+
+
+def run_deny_classifier(function, rc, output):
+    completed = subprocess.run(
+        [
+            BASH,
+            "-c",
+            'source "$1"; "$2" "$3" "$4"',
+            "bash",
+            str(CONNECTIVITY_SCRIPT),
+            function,
+            str(rc),
+            output,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return completed.returncode == 0
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or BASH is None,
+    reason="deny classifier contract requires a native Bash runtime",
+)
+@pytest.mark.parametrize(
+    ("rc", "output", "expected"),
+    [
+        (1, "nc: connect to payment port 8080 (tcp) timed out", True),
+        (1, "nc: connect to payment port 8080 (tcp) failed: Connection refused", False),
+        (1, "nc: bad address 'payment'", False),
+        (1, "nc: connect to payment port 8080 (tcp) failed: No route to host", False),
+        (1, "nc: invalid timeout value", False),
+        (0, "Connection to payment 8080 port [tcp/*] succeeded!", False),
+    ],
+)
+def test_tcp_deny_classifier_only_accepts_timeouts(rc, output, expected):
+    assert run_deny_classifier("tcp_deny_confirmed", rc, output) is expected
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or BASH is None,
+    reason="deny classifier contract requires a native Bash runtime",
+)
+@pytest.mark.parametrize(
+    ("rc", "output", "expected"),
+    [
+        (28, "curl: (28) Connection timed out after 5001 milliseconds", True),
+        (7, "curl: (7) Failed to connect: Connection refused", False),
+        (6, "curl: (6) Could not resolve host: example.com", False),
+        (28, "curl exited without expected evidence", False),
+        (28, "curl: invalid timeout option", False),
+        (0, "HTTP/2 403", False),
+    ],
+)
+def test_https_deny_classifier_requires_curl_timeout(rc, output, expected):
+    assert run_deny_classifier("https_deny_confirmed", rc, output) is expected
