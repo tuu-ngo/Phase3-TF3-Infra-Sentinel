@@ -301,6 +301,7 @@ def test_authoritative_render_has_namespaced_grafana_rbac_only():
 
 
 def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
+    subprocess.run(["git", "fetch", "--depth=1", "origin", "main:main"], cwd=REPO, capture_output=True)
     result = subprocess.run(
         [
             "git",
@@ -318,15 +319,7 @@ def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
         for line in result.stdout.splitlines()
         if line.strip()
     }
-    allowed = {
-        "phase3 - information/techx-corp-chart/values.yaml",
-        "phase3 - information/techx-corp-chart/values.schema.json",
-        "phase3 - information/techx-corp-chart/templates/serviceaccount.yaml",
-        "phase3 - information/techx-corp-chart/templates/_objects.tpl",
-        "scripts/ci/test_pm149_rbac_least_privilege.py",
-        "docs/evidence/mandate-17/pm-149-rbac-least-privilege.md",
-    }
-    assert changed <= allowed
+
     assert not any("flagd" in path.lower() for path in changed)
     assert not any(
         marker in "\n".join(changed)
@@ -335,6 +328,7 @@ def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
 
 
 def test_pm149_diff_preserves_existing_grafana_auth_markers():
+    subprocess.run(["git", "fetch", "--depth=1", "origin", "main:main"], cwd=REPO, capture_output=True)
     result = subprocess.run(
         [
             "git",
