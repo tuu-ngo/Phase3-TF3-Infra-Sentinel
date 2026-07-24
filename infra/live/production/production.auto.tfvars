@@ -26,6 +26,17 @@ cloudflare_allowed_emails = [
 # Đặt = true để state khớp hạ tầng thật; nếu để default false, plan sau sẽ đòi XOÁ 3 store.
 enable_managed_datastores = true
 
+# Mandate 13: PostgreSQL/Valkey in-cluster da retire o production, nodegroup
+# stateful hien khong con pod techx-tf3 nao. Tat han nodegroup nay de bo node
+# on-demand rong, tang spot ratio ma khong ep giam headroom observability.
+enable_stateful_node_group = false
+
+# Mandate 13: giam day on-demand tu 4 ve 2 de buoc workload elastic chay that
+# tren Spot/Karpenter thay vi neo o node nen. Day la cach tao du headroom cost
+# de do node-hours va spot share theo Usage Quantity, khong chi theo node count.
+node_desired_size = 2
+node_min_size     = 2
+
 audit_detection_email_subscriptions = [
   "dophuc776@gmail.com",
   "huutai.ngo2409@gmail.com",
