@@ -50,11 +50,22 @@ export AWS_PROFILE=techx-corp
 
 ### Bước 1 — Mở tunnel (giữ terminal này chạy, đừng đóng)
 
+> **Đừng hardcode instance ID của bastion.** Terraform có thể replace bastion bất
+> cứ lúc nào — khi đó ID đổi và lệnh trỏ ID cũ sẽ báo `TargetNotConnected` (đã xảy
+> ra 23/07/2026). Hai biến dưới tự tra ID + endpoint hiện tại theo tag/tên cluster.
+
 ```sh
+BASTION_ID=$(aws ec2 describe-instances --region ap-southeast-1 \
+  --filters "Name=tag:Name,Values=techx-corp-tf3-bastion" \
+            "Name=instance-state-name,Values=running" \
+  --query "Reservations[].Instances[].InstanceId" --output text)
+EKS_HOST=$(aws eks describe-cluster --name techx-corp-tf3 --region ap-southeast-1 \
+  --query "cluster.endpoint" --output text | sed 's~^https://~~')
+
 aws ssm start-session \
-  --target i-02a8d3e39b87180ce \
+  --target "$BASTION_ID" \
   --document-name AWS-StartPortForwardingSessionToRemoteHost \
-  --parameters host="ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com",portNumber="443",localPortNumber="8443" \
+  --parameters host="$EKS_HOST",portNumber="443",localPortNumber="8443" \
   --region ap-southeast-1
 ```
 
@@ -120,7 +131,7 @@ phía client.
 
 | Giá trị | Nội dung |
 |---|---|
-| Bastion instance ID | `i-02a8d3e39b87180ce` |
+| Bastion instance ID | *(không cố định — tra động: `aws ec2 describe-instances --filters Name=tag:Name,Values=techx-corp-tf3-bastion Name=instance-state-name,Values=running --query "Reservations[].Instances[].InstanceId" --output text`)* |
 | Cluster endpoint (không có `https://`) | `ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com` |
 | Region | `ap-southeast-1` |
 | Cluster name | `techx-corp-tf3` |

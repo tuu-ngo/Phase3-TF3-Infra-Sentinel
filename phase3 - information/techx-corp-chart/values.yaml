@@ -64,6 +64,8 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
+  # Workloads using the shared ServiceAccount do not need Kubernetes API credentials.
+  automountServiceAccountToken: false
 
 components:
   ## Demo Components are named objects (services) with several properties
@@ -1259,6 +1261,7 @@ opentelemetry-collector:
             insecure: true
 
     processors:
+      batch: {}
       memory_limiter:
         check_interval: 5s
         limit_percentage: 80
@@ -1337,7 +1340,7 @@ otelGateway:
   replicas: 2
   minReadySeconds: 15
   revisionHistoryLimit: 5
-  serviceAccountName: otel-collector
+  serviceAccountName: otel-gateway
   terminationGracePeriodSeconds: 45
   image:
     repository: "otel/opentelemetry-collector-contrib"
@@ -1670,6 +1673,9 @@ prometheus:
 grafana:
   enabled: true
   fullnameOverride: grafana
+  rbac:
+    create: true
+    namespaced: true
   testFramework:
     enabled: false
   grafana.ini:

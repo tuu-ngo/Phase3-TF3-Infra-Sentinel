@@ -1,0 +1,47 @@
+# OUTPUT-01: 3 dich vu managed dang chay
+# Do: 2026-07-22T06:09:46Z UTC
+
+## RDS
+-----------------------------------
+|       DescribeDBInstances       |
++----------+----------------------+
+|  Class   |  db.t4g.micro        |
+|  Engine  |  17.9                |
+|  ID      |  techx-tf3-postgres  |
+|  MultiAZ |  True                |
+|  Public  |  False               |
+|  Status  |  available           |
++----------+----------------------+
+## ElastiCache
+-------------------------------------------------------------------------
+|                       DescribeReplicationGroups                       |
++--------+--------------------+----------+--------+------------+--------+
+| AtRest |        ID          | MultiAZ  | Nodes  |  Status    |  TLS   |
++--------+--------------------+----------+--------+------------+--------+
+|  True  |  techx-tf3-valkey  |  enabled |  2     |  available |  True  |
++--------+--------------------+----------+--------+------------+--------+
+## MSK
+---------------------------------------------------------
+|                    ListClustersV2                     |
++---------+-------------------+---------+---------------+
+| Brokers |       Name        |  State  |    Version    |
++---------+-------------------+---------+---------------+
+|  3      |  techx-tf3-kafka  |  ACTIVE |  3.9.x.kraft  |
++---------+-------------------+---------+---------------+
+
+# OUTPUT-02: app dang tro vao dau
+--- cart
+VALKEY_ADDR=master.techx-tf3-valkey.pkeslh.apse1.cache.amazonaws.com:6379/
+VALKEY_TLS=true/
+VALKEY_AUTH_TOKEN=techx-tf3-valkey-auth/auth_token
+--- accounting
+KAFKA_ADDR=b-1.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-2.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-3.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096/
+DB_CONNECTION_STRING=techx-tf3-postgres-conn/dotnet
+--- product-catalog
+DB_CONNECTION_STRING=techx-tf3-postgres-conn/go-dsn
+--- product-reviews
+DB_CONNECTION_STRING=techx-tf3-postgres-conn/libpq
+--- fraud-detection
+KAFKA_ADDR=b-1.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-2.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-3.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096/
+--- checkout (qua Rollout)
+KAFKA_ADDR=b-1.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-2.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096,b-3.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096

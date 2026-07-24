@@ -5,11 +5,21 @@ File này được Claude Code tự động đọc ở đầu mỗi phiên làm 
 là để **không phải giải thích lại bối cảnh dự án từ đầu mỗi lần mở chat mới**. Giữ file này
 cập nhật; nó có giá trị bằng đúng mức nó phản ánh đúng thực tế hiện tại.
 
-> **Cập nhật gần nhất: 20/07/2026** (Mandate #2 + #3 đã demo PASS; AI Bedrock live cho product-reviews;
-> **Mandate #8 HOÀN TẤT — 3/3 store lên managed: Valkey→ElastiCache ✅, Postgres→RDS ✅, Kafka→MSK ✅
-> (zero-loss, zero-downtime)**; Cloudflare Access đã thêm mail mentor; supply-chain image gate PM-101.
-> **⚠️ Sự cố 20/07: batch NetworkPolicy Mandate #5 của CDO01 gây checkout+3 service outage ~30ph —
-> đã rollback, xem postmortem 0012.**)
+> **Cập nhật gần nhất: 23/07/2026** (Mandate #2 + #3 demo PASS; AI Bedrock live cho product-reviews;
+> **Mandate #8 HOÀN TẤT + §8 XONG — 3/3 store lên managed, đã TẮT 3 component tự host (PR #324):
+> Valkey→ElastiCache ✅, Postgres→RDS ✅, Kafka→MSK ✅**; Cloudflare Access thêm mail mentor; PM-101.
+> **⚠️ Sự cố 20/07: batch NetworkPolicy Mandate #5 của CDO01 gây outage ~30ph — rollback, postmortem 0012.**)
+>
+> **🔴 NGÂN SÁCH ĐANG VƯỢT TRẦN (đo 21/07, `RECORD_TYPE=Usage`): $426/tuần / trần $300/TF.**
+> Phân rã: CDO $306,5 (MSK $129,4) · AI $96,7 ($80,6 là 2 OCU OpenSearch Serverless mồ côi của AIO02)
+> · ngoài Phase 3 $23,2 (stack `thermal-power-plant-*` Tokyo). Kế hoạch 5 việc về **$269,7/tuần** KHÔNG
+> đụng Mandate #8 — xem [`docs/cost-breakdown-2026-07-22.md`](docs/cost-breakdown-2026-07-22.md).
+>
+> **⚠️ HỒ SƠ MANDATE #8 CHƯA COMMIT** (git status `??`): `docs/mandate-08-nghiem-thu.md` (báo cáo
+> nghiệm thu, 769 dòng, 15 ảnh), `docs/evidence/mandate-08/`, `docs/cost-breakdown-2026-07-22.md`,
+> `docs/docx_cdo02/mandate11-review-feedback.md`, 15 ảnh ở `docs/`, + ADR 0009 (modified). **Việc kế
+> tiếp = gom vào 1 PR để nộp.** Trước khi sửa `nghiem-thu.md` phải xác nhận user đã đóng file (editor
+> đè mất sửa đổi 1 lần rồi).
 
 ## Bối cảnh (không đổi trong suốt 3 tuần)
 
@@ -77,12 +87,20 @@ Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"tea
 ### Truy cập cluster — 2 đường song song
 - **⚠️ PHẢI dùng `export AWS_PROFILE=techx-new`** cho mọi lệnh AWS/kubectl. Profile `default` trỏ
   account CŨ `012619468490` (không còn dùng) — quên set là truy cập nhầm account, mọi thứ fail.
-- **SSM bastion** (mặc định): bastion `i-02a8d3e39b87180ce`, cluster endpoint
-  `ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com`. Mở tunnel:
+- **SSM bastion** (mặc định): bastion ID **không cố định** (Terraform replace là đổi ID — 23/07 id cũ
+  `i-02a8d3e39b87180ce` bị terminate, hiện là `i-0f5959afa0eb31e7c`; luôn tra động theo tag, xem lệnh
+  dưới). Cluster endpoint `ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com`. Mở tunnel:
   ```sh
   export AWS_PROFILE=techx-new; export MSYS_NO_PATHCONV=1   # Windows git-bash
-  aws ssm start-session --target i-02a8d3e39b87180ce --document-name AWS-StartPortForwardingSessionToRemoteHost \
-    --parameters host="ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com",portNumber="443",localPortNumber="8443" --region ap-southeast-1
+  # KHÔNG hardcode bastion ID — Terraform replace bastion là ID đổi (đã xảy ra 23/07: id cũ
+  # i-02a8d3e39b87180ce bị terminate). Tra động theo tag + endpoint theo tên cluster:
+  BASTION_ID=$(aws ec2 describe-instances --region ap-southeast-1 \
+    --filters "Name=tag:Name,Values=techx-corp-tf3-bastion" "Name=instance-state-name,Values=running" \
+    --query "Reservations[].Instances[].InstanceId" --output text)
+  EKS_HOST=$(aws eks describe-cluster --name techx-corp-tf3 --region ap-southeast-1 \
+    --query "cluster.endpoint" --output text | sed 's~^https://~~')
+  aws ssm start-session --target "$BASTION_ID" --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters host="$EKS_HOST",portNumber="443",localPortNumber="8443" --region ap-southeast-1
   # terminal khác:
   kubectl config set-cluster arn:aws:eks:ap-southeast-1:197826770971:cluster/techx-corp-tf3 --server=https://localhost:8443 --insecure-skip-tls-verify=true
   ```
@@ -111,16 +129,28 @@ Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"tea
   single-replica → blip 502 ~1 phút khi drain node chứa nó (monitoring plane, không phải sản phẩm);
   **cloudflared 2 replica đang chung 1 node** → cần anti-affinity (đề xuất). Service phụ trợ
   (ad/recommendation/llm/accounting/fraud/email/image-provider) **cố ý giữ 1 replica**.
-- **Mandate #8 (migrate 3 datastore lên managed)** — 🟢🟢🟢 **HOÀN TẤT (CDO02) — 3/3 store XONG**.
+- **Mandate #8 (migrate 3 datastore lên managed)** — 🟢🟢🟢 **HOÀN TẤT + §8 XONG (CDO02) — 3/3 store**.
+  - **§8 (22/07, PR #324):** đã TẮT 3 component tự host (`postgresql`/`valkey-cart`/`kafka`, `enabled:false`)
+    → ArgoCD prune → pod techx-tf3 45→38, cart+checkout 0 restart, MSK LAG=0, **không gián đoạn**. Trước
+    đó gỡ mọi phụ thuộc (PR #307/#308: 3 initContainer `wait-for-kafka` + `wait-for-valkey-cart`, credential
+    plaintext, receiver `kafkametrics`). **3 PVC (postgresql-data/kafka-data/valkey-cart) GIỮ CÓ CHỦ ĐÍCH** —
+    cả 3 PV `reclaimPolicy:Delete`, xoá PVC là huỷ EBS vĩnh viễn; directive chỉ đòi "không còn POD" nên đã đạt.
+    **Chỉ xoá 3 PVC + 3 EBS mồ côi (gp2, `available`) SAU khi mentor nghiệm thu.**
+  - **Đường lui (Plan B) sau §8:** snapshot RDS `techx-tf3-postgres-pre-cleanup-20260721-2242` + ElastiCache
+    `techx-tf3-valkey-pre-cleanup-20260721-2243` + PITR 7 ngày + MSK retention 168h + chart store cũ ở commit
+    `6432e49`. Store cũ KHÔNG còn là đường lui thật (dữ liệu đã phân kỳ, rollback về = mất ~128k đơn).
   - **✅ Valkey → ElastiCache** (`master.techx-tf3-valkey.pkeslh.apse1.cache.amazonaws.com:6379`): cart
     đọc/ghi ElastiCache (TLS+auth). Cutover bằng dual-write + hội tụ TTL 60ph (827/827 giỏ khớp).
-    **Vẫn giữ reverse dual-write** cart→valkey-cart cũ làm đường lui (chưa gỡ tới §8).
+    Reverse dual-write đã GỠ (PR #307).
   - **✅ Postgres → RDS** (`techx-tf3-postgres.czwcs2ocww3q.ap-southeast-1.rds.amazonaws.com:5432`,
     Multi-AZ, managed master password): accounting (người ghi duy nhất) + product-catalog/product-reviews
     (đọc) đã trỏ RDS `sslmode=require`. Cutover bằng "đóng băng accounting → dump(root)+restore →
     parity khớp tuyệt đối → đổi conn → thả accounting replay backlog" (70478→70556 đơn, LAG=0, zero-loss).
   - **✅ Kafka → MSK** (`b-1/b-2/b-3.techxtf3kafka.4xa0zb.c6.kafka.ap-southeast-1.amazonaws.com:9096`,
-    SASL/SCRAM-SHA-512 + TLS): checkout (producer) + accounting/fraud-detection (consumer) đã trỏ MSK,
+    SASL/SCRAM-SHA-512 + TLS): **`kafka.m7g.large` × 3 broker** = **$558/tháng** (KHÔNG phải $130 như bản
+    nháp — kiểm chứng 22/07 bằng `CreateCluster`: `t3.small` bị chặn bởi **KRaft mode** chứ không phải số
+    version; `m7g.large` là instance rẻ nhất KRaft cho phép, $558 là giá sàn tuyệt đối — đừng điều tra lại).
+    checkout (producer) + accounting/fraud-detection (consumer) đã trỏ MSK,
     LAG=0, zero-loss. Cutover: producer trước (PR #276, promote qua canary) → chờ Kafka cũ LAG=0 →
     consumer sau (PR #278, Earliest ăn sạch backlog). **Bug đã sửa (PR #269/#271):** checkout (Go/sarama)
     trước nhét cả CSV nhiều broker vào 1 phần tử `[]string{KAFKA_ADDR}` → "too many colons" (gây sự cố
@@ -160,9 +190,16 @@ Auditability là trụ chung. Nếu người dùng nói "trụ của mình"/"tea
 - **☁️ Cloudflare Access**: đã thêm 4 mail mentor (`nghia.huynh`/`toan.le`/`khanh.nguyen`/`namhong.ta`
   @techxcorp.com) + 2 gmail vào allowlist cả 4 app (kubectl/grafana/jaeger/argocd). **Cần bật One-Time
   PIN** ở Zero Trust → Settings → Authentication thì mail ngoài mới login được (đã bật tay).
-- **Datastore không HA**: ~~postgres/valkey/kafka~~ — **CẢ 3 đã lên managed HA (Mandate #8 XONG 3/3):
-  ElastiCache Multi-AZ + RDS Multi-AZ + MSK 3-broker**. Hết SPOF datastore. 3 store cũ
-  (postgresql/valkey-cart/kafka) **vẫn chạy làm đường lui**, chỉ gỡ ở §8 sau khi mentor nghiệm thu.
+- **Datastore không HA**: ~~postgres/valkey/kafka~~ — **CẢ 3 đã lên managed HA + §8 đã tắt store cũ
+  (Mandate #8 XONG): ElastiCache Multi-AZ + RDS Multi-AZ + MSK 3-broker**. Hết SPOF datastore.
+- **💰 Cost — 3 directive Cost/Reliability đang MỞ (16/17/18, đều quá hạn 21-22/07):** đo cluster 23/07:
+  cụm 45% CPU request nhưng chỉ 6,7% dùng thật; ràng buộc t3.large là **RAM** (t3.large=t3.medium=2vCPU).
+  Node `db-1a` (t3.medium on-demand, taint stateful) sau §8 **rỗng** (chỉ 4 DaemonSet) → gỡ = −$8,9/tuần
+  + đóng rủi ro AZ 1a. Nodegroup `default` **4×t3.large min=4**; hạ 4→3 giữ 3-AZ (an toàn Mandate #17),
+  hạ 4→2 PHÁ phủ 3 AZ (chỉ còn 2 AZ) → không nên. **VPC endpoint tốn $142/mo để né NAT chỉ $7/mo.**
+  ⚠️ CDO01 đang chạy dở batch Karpenter elastic (PR #316→#330) — **đừng đụng nodegroup khi họ chưa xong**.
+- **⚠️ 3 EBS mồ côi** (gp2, `available`): `vol-05d59d76…`(1G), `vol-0f4b0c53…`(2G), `vol-0a22f1049…`(3G)
+  — là PVC store cũ sau §8. Xoá SAU nghiệm thu (Mandate #18 YC1 đòi "không EBS available").
 - **⚠️ Network policy (Mandate #5 CDO01) — đã rollback sau sự cố 20/07**: batch 20 NetworkPolicy chặn egress
   ra managed datastore (dùng podSelector store cũ thay `ipBlock`) + lỗi podSelector-egress-ClusterIP trên
   VPC CNI → outage checkout+3 service ~30ph. Đã xoá cả batch (backup ở `docs/postmortem/artifacts/0012-...`).

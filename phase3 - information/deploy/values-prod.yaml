@@ -37,6 +37,19 @@ grafana:
     limits:
       cpu: 200m
       memory: 1Gi
+  # REL-17-04: đẩy Grafana sang AZ KHÁC Prometheus (best-effort). Trước đây cả hai (mỗi
+  # cái 1 replica) cùng nằm trên ip-10-0-8-134 / AZ 1a → mất AZ 1a = mất CẢ dashboard lẫn
+  # nguồn metric đúng lúc demo req#2. Dùng preferred (soft) khớp convention repo (cloudflared/
+  # otel-gateway) + không rủi ro Pending; base node trải 3 AZ nên thực tế luôn tách được.
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: prometheus
+            topologyKey: topology.kubernetes.io/zone
 
 jaeger:
   jaeger:
@@ -88,6 +101,17 @@ prometheus:
       limits:
         cpu: 800m
         memory: 1200Mi
+    # REL-17-04: đẩy Prometheus sang AZ KHÁC Grafana (best-effort, đối xứng với
+    # grafana.affinity) → mất 1 AZ không mất cả hai nửa dashboard SLO cùng lúc.
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: grafana
+              topologyKey: topology.kubernetes.io/zone
 
 opentelemetry-collector:
   # Mandate 5 OTEL step 1 (tat truoc, xoa sau): otel-node-agent (host/kubelet/
@@ -442,8 +466,8 @@ components:
           seconds: 5
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
-      digest: sha256:efb7eff627bf064ee66c8f77a76d0e1ce222b96fe98fe6c6a94b5af25b13ae33
-      tag: 33d062e-29720289535-checkout
+      digest: sha256:ebea1f1d2ab51dac3a1de5493d4a8e97e6607601f966315eb1608a4d6f9aeeb8
+      tag: 5511bed-29978396050-checkout
     # Mandate #8 buoc 3/3 (cutover Kafka -> MSK, runbook §6 buoc 2): PRODUCER TRUOC.
     # checkout doi KAFKA_ADDR -> MSK bootstrap (nhieu broker, phan tach dau phay - da fix
     # split o main.go PR #271) + SASL_SSL + SCRAM tu secret techx-tf3-kafka-scram.

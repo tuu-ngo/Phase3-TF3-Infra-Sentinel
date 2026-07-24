@@ -3,9 +3,7 @@ name: Test Image Bump PR
 "on":
   pull_request:
     paths:
-      - ".github/workflows/build-push-ecr.yml"
-      - ".github/workflows/secure-delivery-gate.yml"
-      - ".github/workflows/test-image-bump.yml"
+      - ".github/workflows/**"
       - ".semgrep/**"
       - ".trivy-secret.yaml"
       - "scripts/ci/**"
@@ -19,10 +17,12 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.10"
 
@@ -49,8 +49,15 @@ jobs:
       - name: Run Actionlint
         run: |
           set -euo pipefail
-          bash -c "curl -sL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash"
-          ./actionlint \
-            .github/workflows/build-push-ecr.yml \
-            .github/workflows/secure-delivery-gate.yml \
-            .github/workflows/test-image-bump.yml
+          ACTIONLINT_VERSION=1.7.12
+          ACTIONLINT_ARCHIVE="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --show-error --silent --location \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${ACTIONLINT_ARCHIVE}" \
+            --output "$ACTIONLINT_ARCHIVE"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $ACTIONLINT_ARCHIVE" |
+            sha256sum --check --strict
+          tar -xzf "$ACTIONLINT_ARCHIVE" actionlint
+          ./actionlint
+
+      - name: Verify immutable dependency pins
+        run: python3 scripts/ci/verify-immutable-pins.py

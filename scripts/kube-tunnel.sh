@@ -5,13 +5,33 @@
 set -euo pipefail
 
 LOCAL_PORT=8443
-BASTION_ID="i-02a8d3e39b87180ce"
-ENDPOINT="ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com"
 CLUSTER_NAME="techx-corp-tf3"
 REGION="ap-southeast-1"
 LOG_FILE="/tmp/eks_ssm_tunnel.log"
 
 echo "=== EKS SSM Bastion Tunnel Manager ==="
+
+# Resolve bastion instance ID and EKS endpoint at runtime — do NOT hardcode.
+# Terraform can replace the bastion at any time, changing its instance ID; a
+# hardcoded ID then fails with TargetNotConnected (this happened 23/07/2026).
+BASTION_ID="$(aws ec2 describe-instances \
+    --region "$REGION" \
+    --filters "Name=tag:Name,Values=${CLUSTER_NAME}-bastion" \
+              "Name=instance-state-name,Values=running" \
+    --query "Reservations[].Instances[].InstanceId" --output text)"
+
+ENDPOINT="$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" \
+    --query "cluster.endpoint" --output text | sed 's~^https://~~')"
+
+if [ -z "$BASTION_ID" ] || [ "$BASTION_ID" = "None" ]; then
+    echo "❌ No running bastion found (tag Name=${CLUSTER_NAME}-bastion). Check EC2 console or ask CDO."
+    exit 1
+fi
+if [ -z "$ENDPOINT" ] || [ "$ENDPOINT" = "None" ]; then
+    echo "❌ Could not resolve EKS endpoint for cluster ${CLUSTER_NAME}."
+    exit 1
+fi
+echo "▶ Resolved bastion=$BASTION_ID  eks_host=$ENDPOINT"
 
 # 1. Check if tunnel is already active
 if lsof -i :$LOCAL_PORT -sTCP:LISTEN >/dev/null 2>&1; then
