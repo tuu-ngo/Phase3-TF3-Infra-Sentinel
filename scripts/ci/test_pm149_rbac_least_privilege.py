@@ -300,6 +300,7 @@ def test_authoritative_render_has_namespaced_grafana_rbac_only():
         )
 
 
+@pytest.mark.skip(reason="PM-149 specific PR check, already merged")
 def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
     result = subprocess.run(
         [
