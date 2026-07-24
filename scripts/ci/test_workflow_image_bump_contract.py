@@ -20,8 +20,9 @@ def test_t51_actionlint_gate_is_mandatory():
     ]
 
     assert len(actionlint_steps) == 1
-    assert "build-push-ecr.yml" in actionlint_steps[0]["run"]
-    assert "test-image-bump.yml" in actionlint_steps[0]["run"]
+    assert "ACTIONLINT_VERSION=1.7.12" in actionlint_steps[0]["run"]
+    assert "sha256sum --check --strict" in actionlint_steps[0]["run"]
+    assert "./actionlint" in actionlint_steps[0]["run"]
 
 def test_t52_production_service_matrix_jobs():
     build, _ = get_workflows()
@@ -142,3 +143,12 @@ def test_t62_aggregate_is_fail_closed_for_exact_expected_services():
     assert "duplicate service evidence" in raw
     assert 'test("^sha256:[0-9a-f]{64}$")' in raw
     assert "manifestMediaType" in raw
+
+
+def test_t63_scoped_canary_and_promotion_evidence_contract():
+    build_raw = Path(".github/workflows/build-push-ecr.yml").read_text()
+    assert 'services:' in build_raw
+    assert "INPUT_SERVICES" in build_raw
+    assert "unknown production service" in build_raw
+    assert "promotion-evidence-${{ github.run_id }}-${{ github.run_attempt }}" in build_raw
+    assert "retention-days: 90" in build_raw

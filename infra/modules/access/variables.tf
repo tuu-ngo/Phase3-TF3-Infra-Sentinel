@@ -10,6 +10,11 @@ variable "vpc_id" {
   type = string
 }
 
+variable "vpc_cidr" {
+  description = "VPC CIDR used to restrict bastion HTTPS egress to private AWS endpoints and the EKS API."
+  type        = string
+}
+
 variable "private_subnet_ids" {
   type = list(string)
 }

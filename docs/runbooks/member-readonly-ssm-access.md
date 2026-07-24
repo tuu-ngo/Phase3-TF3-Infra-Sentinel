@@ -105,15 +105,40 @@ scripts/setup-readonly-aws-profile.sh <ten>-readonly
 
 ## Mo SSM tunnel
 
-Mo terminal rieng va giu terminal nay chay:
+> **QUAN TRONG — dung hardcode instance ID cua bastion.** Terraform co the thay
+> the (replace) bastion bat cu luc nao; khi do instance ID doi va moi runbook
+> tro ID cu se bao `TargetNotConnected`. Vi du: ngay 23/07/2026 mot lan
+> `terraform apply` da replace bastion, ID cu `i-02a8d3e39b87180ce` bi terminate
+> va thay bang ID moi. Luon **tra ID dong theo tag** nhu duoi day.
+
+Mo terminal rieng va giu terminal nay chay. Hai bien duoi day tu resolve bastion
+ID (theo tag `Name`) va EKS API endpoint (theo ten cluster), nen khong bao gio
+lac hau du ha tang co thay doi:
 
 ```bash
+# 1. Tra ID bastion dang chay (khong hardcode)
+BASTION_ID=$(aws ec2 describe-instances \
+  --region ap-southeast-1 \
+  --filters "Name=tag:Name,Values=techx-corp-tf3-bastion" \
+            "Name=instance-state-name,Values=running" \
+  --query "Reservations[].Instances[].InstanceId" --output text)
+
+# 2. Tra EKS private API endpoint (bo tien to https://)
+EKS_HOST=$(aws eks describe-cluster --name techx-corp-tf3 --region ap-southeast-1 \
+  --query "cluster.endpoint" --output text | sed 's~^https://~~')
+
+echo "bastion=$BASTION_ID  eks_host=$EKS_HOST"   # kiem tra ca hai deu co gia tri
+
+# 3. Mo port-forward tunnel qua bastion vua tra duoc
 aws ssm start-session \
-  --target i-02a8d3e39b87180ce \
+  --target "$BASTION_ID" \
   --document-name AWS-StartPortForwardingSessionToRemoteHost \
-  --parameters host="ADA05FFC84146C0AED730F78786EB320.gr7.ap-southeast-1.eks.amazonaws.com",portNumber="443",localPortNumber="8443" \
+  --parameters host="$EKS_HOST",portNumber="443",localPortNumber="8443" \
   --region ap-southeast-1
 ```
+
+> Windows (git-bash): them `export MSYS_NO_PATHCONV=1` truoc lenh de git-bash
+> khong bien doi duong dan trong tham so.
 
 Thanh cong khi thay:
 
@@ -183,6 +208,8 @@ LoadBalancer, NodePort, hay cong public.
 | `AccessDeniedException` voi `ssm:StartSession` | Dang chay bang IAM user goc, chua assume role | Chay `aws sts get-caller-identity`; neu ra `user/tf3-members-readonly`, chay lai script setup |
 | `SessionManagerPlugin is not found` | May chua cai Session Manager Plugin | Cai plugin roi chay lai |
 | `connection refused localhost:8443` | SSM tunnel chua mo hoac da dong | Mo lai lenh `aws ssm start-session` va giu terminal do |
+| `TargetNotConnected` / `InvalidInstanceId` khi `start-session` | Dang tro ID bastion cu da bi terminate (Terraform replace bastion) | Chay lai buoc 1 (`BASTION_ID=$(aws ec2 describe-instances ...)`) de lay ID moi; **dung hardcode ID** |
+| `$BASTION_ID` rong sau buoc 1 | Chua co bastion running, hoac thieu quyen `ec2:DescribeInstances` | Kiem tra bastion o EC2 console; role `tf3-production-readonly` co `ec2:Describe*` — neu van rong, bao CDO |
 | `x509 ... not localhost` | Kubeconfig chua set localhost tunnel | Chay lai lenh `kubectl config set-cluster` o tren |
 
 ## Audit

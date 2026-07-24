@@ -1,0 +1,46 @@
+# OUTPUT-09: Terraform quan ly 3 datastore (IaC)
+# Do: 2026-07-22T06:12:12Z UTC
+# Lenh: terraform state list | grep datastores   (chi doc, KHONG khoa state)
+
+## Tong so resource trong state: 303
+
+## module.datastores (day du):
+module.datastores.data.aws_iam_policy_document.external_secrets_datastores[0]
+module.datastores.aws_db_instance.postgres[0]
+module.datastores.aws_db_parameter_group.postgres[0]
+module.datastores.aws_db_subnet_group.postgres[0]
+module.datastores.aws_elasticache_replication_group.valkey[0]
+module.datastores.aws_elasticache_subnet_group.valkey[0]
+module.datastores.aws_iam_role_policy.external_secrets_datastores[0]
+module.datastores.aws_kms_alias.datastores[0]
+module.datastores.aws_kms_key.datastores[0]
+module.datastores.aws_msk_cluster.kafka[0]
+module.datastores.aws_msk_configuration.kafka[0]
+module.datastores.aws_msk_scram_secret_association.kafka[0]
+module.datastores.aws_secretsmanager_secret.elasticache_auth[0]
+module.datastores.aws_secretsmanager_secret.msk_scram[0]
+module.datastores.aws_secretsmanager_secret_version.elasticache_auth[0]
+module.datastores.aws_secretsmanager_secret_version.msk_scram[0]
+module.datastores.aws_security_group.elasticache[0]
+module.datastores.aws_security_group.msk[0]
+module.datastores.aws_security_group.rds[0]
+module.datastores.aws_security_group_rule.elasticache_ingress["sg-05b1a13ae5f49ebbd"]
+module.datastores.aws_security_group_rule.elasticache_ingress["sg-07041162a3127bae5"]
+module.datastores.aws_security_group_rule.elasticache_ingress["sg-0d85d3fcbb6020137"]
+module.datastores.aws_security_group_rule.msk_ingress["sg-07041162a3127bae5-9092"]
+module.datastores.aws_security_group_rule.msk_ingress["sg-07041162a3127bae5-9094"]
+module.datastores.aws_security_group_rule.msk_ingress["sg-07041162a3127bae5-9096"]
+module.datastores.aws_security_group_rule.msk_ingress["sg-0d85d3fcbb6020137-9092"]
+module.datastores.aws_security_group_rule.msk_ingress["sg-0d85d3fcbb6020137-9094"]
+module.datastores.aws_security_group_rule.msk_ingress["sg-0d85d3fcbb6020137-9096"]
+module.datastores.aws_security_group_rule.rds_ingress["sg-05b1a13ae5f49ebbd"]
+module.datastores.aws_security_group_rule.rds_ingress["sg-07041162a3127bae5"]
+module.datastores.aws_security_group_rule.rds_ingress["sg-0d85d3fcbb6020137"]
+module.datastores.random_password.elasticache_auth[0]
+module.datastores.random_password.msk_scram[0]
+
+## Ket qua kiem tra drift (terraform plan, chay 21/07):
+   Plan: 0 to add, 2 to change, 0 to destroy
+   -> 0 DRIFT tren module.datastores (3 datastore khop hoan toan giua code va thuc te)
+   -> 2 thay doi duy nhat: nang version EKS addon (kube-proxy, vpc-cni) - KHONG lien quan datastore
+   -> Drift parameter group RDS truoc day (apply_method) da HET sau PR #275

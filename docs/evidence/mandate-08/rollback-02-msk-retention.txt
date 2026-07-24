@@ -1,0 +1,23 @@
+# MSK — retention topic orders (nen tang rollback Plan B cho Kafka)
+# Thoi diem do: 2026-07-21T15:45:12Z UTC
+
+=== Topic orders: cau hinh (retention/RF/min.insync) ===
+Topic: orders	TopicId: p21W1mthQ-COc6TnjbYY1w	PartitionCount: 3	ReplicationFactor: 3	Configs: min.insync.replicas=2,message.format.version=3.0-IV1,unclean.leader.election.enable=true
+	Topic: orders	Partition: 0	Leader: 3	Replicas: 3,1,2	Isr: 3,1,2	Elr: 	LastKnownElr: 
+	Topic: orders	Partition: 1	Leader: 1	Replicas: 1,2,3	Isr: 1,2,3	Elr: 	LastKnownElr: 
+	Topic: orders	Partition: 2	Leader: 2	Replicas: 2,3,1	Isr: 2,3,1	Elr: 	LastKnownElr: 
+
+=== Retention config chi tiet ===
+
+## 4. MSK cluster configuration (nen tang retention)
+default.replication.factor=3
+min.insync.replicas=2
+log.retention.hours=168   # = 7 ngay -> cua so rollback Plan B cho Kafka
+
+## 5. Topic orders: 3 partition, RF=3, min.insync=2, ISR day du ca 3 replica
+   (xem chi tiet phia tren)
+
+## GHI CHU CAI THIEN (khong chan nghiem thu)
+   unclean.leader.election.enable=true tren topic orders. Voi du lieu don hang nen cannhac
+   dat =false de tuyet doi khong bau leader ngoai ISR. Hien rui ro da duoc giam nho
+   min.insync.replicas=2 + producer acks=all (REL-09).

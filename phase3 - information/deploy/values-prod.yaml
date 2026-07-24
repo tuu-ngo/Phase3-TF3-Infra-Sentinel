@@ -37,6 +37,19 @@ grafana:
     limits:
       cpu: 200m
       memory: 1Gi
+  # REL-17-04: đẩy Grafana sang AZ KHÁC Prometheus (best-effort). Trước đây cả hai (mỗi
+  # cái 1 replica) cùng nằm trên ip-10-0-8-134 / AZ 1a → mất AZ 1a = mất CẢ dashboard lẫn
+  # nguồn metric đúng lúc demo req#2. Dùng preferred (soft) khớp convention repo (cloudflared/
+  # otel-gateway) + không rủi ro Pending; base node trải 3 AZ nên thực tế luôn tách được.
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: prometheus
+            topologyKey: topology.kubernetes.io/zone
 
 jaeger:
   jaeger:
@@ -88,8 +101,26 @@ prometheus:
       limits:
         cpu: 800m
         memory: 1200Mi
+    # REL-17-04: đẩy Prometheus sang AZ KHÁC Grafana (best-effort, đối xứng với
+    # grafana.affinity) → mất 1 AZ không mất cả hai nửa dashboard SLO cùng lúc.
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: grafana
+              topologyKey: topology.kubernetes.io/zone
 
 opentelemetry-collector:
+  # Mandate 5 OTEL step 1 (tat truoc, xoa sau): otel-node-agent (host/kubelet/
+  # cluster metrics) + otel-gateway (app traces/metrics) da chung minh du chuc
+  # nang thay the qua verify song 22/07 - agent cu con 0 span/metric that (loai
+  # tru self-telemetry) trong 2 phut gan nhat. Tat truoc, theo doi on dinh, roi
+  # moi xoa han khoi chart o buoc sau. Xem
+  # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md.
+  enabled: false
   resources:
     requests:
       cpu: 50m
@@ -108,9 +139,28 @@ otelGateway:
       memory: 768Mi
 
 otel-node-agent:
-  # Disabled after the production rollout exhausted CPU request headroom on the
-  # on-demand nodes. Re-enable only after the capacity/right-sizing gate passes.
-  enabled: false
+  # Re-enabled 22/07/2026 after verifying CPU headroom on all 7 nodes (min free
+  # 555m on the tightest node ip-10-0-8-134, vs this DaemonSet's 10m/pod request -
+  # 55x margin). ip-10-0-26-153, the node that caused the original Pending
+  # incident (only 15m free at the time), now has 565m free after batch2/3
+  # Karpenter elastic migration moved load off the on-demand fleet.
+  enabled: true
+  # Without tolerations this DaemonSet skips nodes carrying the custom taint
+  # techx.io/workload=<elastic|stateful> - confirmed live: it only scheduled on
+  # 4/7 nodes, missing both Karpenter elastic Spot nodes (now running 11
+  # services from the batch 2/3 migration) and the stateful node (postgres/
+  # valkey). Old otel-collector-agent ran on all 7 nodes (no such taint existed
+  # when it was deployed), so this closes a real coverage gap vs what it's
+  # meant to replace.
+  tolerations:
+    - key: techx.io/workload
+      operator: Equal
+      value: elastic
+      effect: NoSchedule
+    - key: techx.io/workload
+      operator: Equal
+      value: stateful
+      effect: NoSchedule
   resources:
     requests:
       cpu: 10m
@@ -184,15 +234,26 @@ components:
       rollingUpdate:
         maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
         maxSurge: 1
+    # Mandate 13 elastic (batch 3): opt-in NodePool flash-sale-spot + hard spread
+    # ca hostname va zone (minDomains:2) - pattern da fix o batch 1 (PR #319).
     schedulingRules:
+      nodeSelector:
+        techx.io/workload: elastic
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: elastic
+          effect: NoSchedule
       topologySpreadConstraints:
         - maxSkew: 1
+          minDomains: 2
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
               opentelemetry.io/name: frontend
         - maxSkew: 1
+          minDomains: 2
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
@@ -405,8 +466,8 @@ components:
           seconds: 5
     replicas: 2
     imageOverride: # CDO02 fix kafka/producer.go + main.go - xem comment imageOverride đầu components:
-      digest: sha256:efb7eff627bf064ee66c8f77a76d0e1ce222b96fe98fe6c6a94b5af25b13ae33
-      tag: 33d062e-29720289535-checkout
+      digest: sha256:ebea1f1d2ab51dac3a1de5493d4a8e97e6607601f966315eb1608a4d6f9aeeb8
+      tag: 5511bed-29978396050-checkout
     # Mandate #8 buoc 3/3 (cutover Kafka -> MSK, runbook §6 buoc 2): PRODUCER TRUOC.
     # checkout doi KAFKA_ADDR -> MSK bootstrap (nhieu broker, phan tach dau phay - da fix
     # split o main.go PR #271) + SASL_SSL + SCRAM tu secret techx-tf3-kafka-scram.
@@ -433,15 +494,29 @@ components:
     # là mất cả 2 pod dù có PDB. hostname dùng ScheduleAnyway (soft) để không chặn
     # HPA scale lên tới 8 pod nếu node chưa kịp Karpenter cung cấp; zone dùng
     # DoNotSchedule (hard) vì luôn dư số AZ, không có rủi ro kẹt lịch.
+    # Mandate 13 elastic (batch 3): opt-in NodePool flash-sale-spot + hard spread
+    # ca hostname va zone (minDomains:2) - pattern da fix o batch 1 (PR #319).
+    # Pod template nay duoc Argo Rollouts (checkout-rollout) tham chieu qua
+    # workloadRef nen thay doi se di qua canary co san (20%->analysis->50%->
+    # analysis->100%), khong phai rolling update thuong.
     schedulingRules:
+      nodeSelector:
+        techx.io/workload: elastic
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: elastic
+          effect: NoSchedule
       topologySpreadConstraints:
         - maxSkew: 1
+          minDomains: 2
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
               opentelemetry.io/name: checkout
         - maxSkew: 1
+          minDomains: 2
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
@@ -1301,15 +1376,26 @@ components:
       rollingUpdate:
         maxUnavailable: 0        # rollout không bao giờ tụt dưới số replica mong muốn
         maxSurge: 1
+    # Mandate 13 elastic (batch 3): opt-in NodePool flash-sale-spot + hard spread
+    # ca hostname va zone (minDomains:2) - pattern da fix o batch 1 (PR #319).
     schedulingRules:
+      nodeSelector:
+        techx.io/workload: elastic
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: elastic
+          effect: NoSchedule
       topologySpreadConstraints:
         - maxSkew: 1
+          minDomains: 2
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
               opentelemetry.io/name: frontend-proxy
         - maxSkew: 1
+          minDomains: 2
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
           labelSelector:

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-FROM docker.io/library/node:22.22.0-slim AS builder
+FROM docker.io/library/node:22.22.0-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94 AS builder
 
 WORKDIR /usr/src/app/
 
@@ -13,7 +13,7 @@ RUN npm ci --omit=dev --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
 
-FROM docker.io/library/node:22.22.0-alpine3.23
+FROM docker.io/library/node:22.22.0-alpine3.23@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34
 
 RUN apk upgrade --no-cache \
     && rm -rf /usr/local/lib/node_modules/npm \

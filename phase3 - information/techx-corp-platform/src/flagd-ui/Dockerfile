@@ -18,7 +18,7 @@ ARG ELIXIR_VERSION=1.19.3
 ARG OTP_VERSION=27.3.4
 ARG DEBIAN_VERSION=bookworm-20260610-slim
 
-ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
+ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}@sha256:89d266de65b13b483863daade8bddd6c4f9b7806b8a6733f81b16c38bd72f3b5"
 ARG RUNNER_IMAGE="gcr.io/distroless/cc-debian13:nonroot@sha256:d97bc0a941b8d4be647dc0ee75b264ddbb772f1ac5ba690a4309c00723b23775"
 
 # Pin the official Tailwind v4 binary so `mix assets.setup` never depends on a

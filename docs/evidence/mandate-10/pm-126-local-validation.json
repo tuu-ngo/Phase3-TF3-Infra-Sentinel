@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "ticket": "PM-126",
+  "validatedAt": "2026-07-22",
+  "baseSha": "855e1753d6e504445bb7ca8ee43883499f89b982",
+  "implementationCommits": [
+    "2cf73c2",
+    "dd16dc6",
+    "00affd8"
+  ],
+  "positiveBaseline": {
+    "tfsec": {
+      "image": "aquasec/tfsec:v1.28.14@sha256:ac46d48a384ae2c0bbd0413cd2a18229e45e21a44d22c8be28b56de5b38d74c3",
+      "scope": "infra/live/production",
+      "blockingFindings": 0,
+      "exitCode": 0,
+      "artifact": "tfsec.json"
+    },
+    "trivySecret": {
+      "image": "aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f",
+      "scope": "repository tree",
+      "blockingFindings": 0,
+      "exitCode": 0,
+      "rawRetained": false,
+      "artifact": "sanitized.json + summary.json"
+    },
+    "semgrep": {
+      "image": "semgrep/semgrep:1.170.0@sha256:c98f8829eea377274ee4b10656458b078b88232469b2ff913f091c2317347c9d",
+      "scope": "phase3 - information/techx-corp-platform/src",
+      "filesScanned": 328,
+      "blockingFindings": 0,
+      "exitCode": 0,
+      "artifact": "semgrep.json + semgrep.sarif"
+    }
+  },
+  "negativeFixtures": {
+    "iacPublicEgress": {
+      "rule": "AVD-AWS-0104",
+      "severity": "CRITICAL",
+      "scannerExitCode": 1,
+      "fixtureLifecycle": "created under /tmp, scanned, deleted"
+    },
+    "syntheticSecret": {
+      "rule": "techx-mandate10-synthetic-key",
+      "severity": "HIGH",
+      "evaluatorExitCode": 1,
+      "sanitizedReportContainsMatchOrCode": false,
+      "fixtureLifecycle": "created under /tmp, scanned, deleted"
+    },
+    "sastEval": {
+      "rule": "pm126-python-dynamic-eval",
+      "severity": "ERROR (PM-126 HIGH tier)",
+      "scannerExitCode": 1,
+      "fixtureLifecycle": "created under /tmp, scanned, deleted"
+    }
+  },
+  "requiredStatusCheck": {
+    "name": "Secure delivery gate",
+    "workflow": ".github/workflows/secure-delivery-gate.yml",
+    "adminConfigured": false,
+    "mergeLockNegativePr": null,
+    "blocker": "repository owner/admin must configure branch protection after this workflow is merged"
+  },
+  "runtimeSafety": {
+    "terraformApply": false,
+    "awsWrites": false,
+    "kubernetesWrites": false,
+    "ecrPush": false,
+    "downtime": false
+  }
+}
