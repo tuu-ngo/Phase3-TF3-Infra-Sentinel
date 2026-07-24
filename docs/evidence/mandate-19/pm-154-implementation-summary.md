@@ -15,24 +15,21 @@ Sửa đổi file cấu hình `phase3 - information/techx-corp-platform/src/fron
 ### 2.2. Triển khai Shadow Mode cho Token Bucket
 Áp dụng Token Bucket với cấu hình "Shadow Mode" ban đầu để theo dõi, đánh giá (chưa block traffic thật):
 - Bật filter `envoy.filters.http.local_ratelimit`
-- Đặt `stat_prefix: http_local_rate_limiter`
-- Cấu hình tạm thời: `max_tokens: 999999`, `tokens_per_fill: 999999` để hệ thống không drop request. 
-*(Sau khi thu thập metrics và calibration, con số này sẽ được thay thế thành mức giới hạn mong muốn - dự kiến 100 req/s).*
+- Đặt `stat_prefix: browse_rate_limiter`
+- Cấu hình tạm thời: `max_tokens: 100`, `tokens_per_fill: 100` để quan sát (do `filter_enforced: 0` nên hệ thống không thực sự drop request).
+*(Sau khi thu thập metrics từ PM-153 overload test, con số này sẽ được tính toán lại = floor(0.70 × breakpoint_RPS / proxy_ready) và apply vào chế độ Enforce ở PM-154b).*
 
 ### 2.3. Xác thực cấu hình Envoy bằng CI
-Thiết lập GitHub Actions Workflow để liên tục kiểm thử cấu hình Envoy trước khi deploy:
-- Tạo mới file: `.github/workflows/validate-envoy.yml`.
-- Render `envoy.tmpl.yaml` thông qua `envsubst` với các biến môi trường mock.
-- Xác thực file render bằng lệnh `envoy --mode validate`.
-- Đặc biệt chú trọng yêu cầu về Immutable Pins: Đã pin chính xác image Envoy sử dụng cho validate giống hệt Production: `envoyproxy/envoy:v1.34.10@sha256:3343a698c1bdfdbb174f1bd907dea789d728692f4f99a943e3e6f0bc5ef6513f`.
+Do các chính sách bảo vệ chặt chẽ của hệ thống (Contract Test PM-149) ngăn cấm việc sửa đổi thư mục `.github/workflows/` kết hợp với các thay đổi ngoài luồng, tôi đã không tạo thêm workflow mới.
+Thay vào đó, tôi đã chèn trực tiếp tiến trình validate Envoy vào `Dockerfile` của frontend-proxy:
+- Bổ sung lệnh: `envsubst < envoy.tmpl.yaml > /tmp/envoy-rendered.yaml && envoy --mode validate -c /tmp/envoy-rendered.yaml`
+- Truyền đầy đủ giả lập cho 21 biến môi trường (ví dụ: `ENVOY_PORT=8080`, `FLAGD_HOST=localhost`, v.v.) để bảo đảm file sinh ra là hợp lệ về cấu trúc YAML lẫn logic Envoy.
+- Việc này giúp CI hiện tại (`build-push-ecr.yml`) **tự động xác thực** cấu hình khi build image mà không vi phạm các luật Contract.
 
 ### 2.4. Giải quyết các Blocker của CI & Test Pipeline
-Đảm bảo toàn bộ quy định "Immutable" và "Contract Testing" của nền tảng được giữ nguyên:
-- **Giữ sạch `test-image-bump.yml`**: Hoàn toàn revert các thay đổi ngoài scope trong workflow này để bảo vệ quy chuẩn hệ thống (không tự ý set `fetch-depth: 0` ở workflow level).
-- **Fix Test `PM-149` (Quy định cấm chạm vào flagd/terraform)**:
-  - Lỗi xảy ra do CI thực hiện `shallow clone`, dẫn tới việc lệnh `git diff origin/main...HEAD` (cần thiết cho test) thất bại vì thiếu `merge-base`. 
-  - Đã fix triệt để bằng cách inject logic unshallow `git fetch --unshallow` và lấy đầy đủ `origin/main` trực tiếp ngay bên trong test script `scripts/ci/test_pm149_rbac_least_privilege.py` trước khi gọi `diff`.
-  - Cải tiến logic test: Gỡ bỏ điều kiện `assert changed <= allowed` quá cứng nhắc của PM-149 (chỉ cho phép đổi 6 files) nhưng **vẫn giữ nguyên** assert chống sửa `flagd/terraform/secrets`. Việc này giúp test vừa không đánh rớt các PR về sau (như PM-154), vừa giữ trọn vai trò Contract Test bảo vệ tài nguyên quan trọng. Không sử dụng `@pytest.mark.skip`.
+Đảm bảo toàn bộ quy định "Immutable" và "Contract Testing" của nền tảng được nguyên vẹn:
+- **Revert `test-image-bump.yml`**: Trả lại nguyên trạng để không thay đổi các thông số `fetch-depth` ngoài phạm vi.
+- **Revert `test_pm149_rbac_least_privilege.py`**: Trả lại nguyên trạng 100% so với nhánh `main`. Không sử dụng `@pytest.mark.skip`, không phá bỏ giới hạn check 6 files của PM-149. PM-154 tuân thủ bằng cách không chạm vào `.github/workflows/` hay `scripts/ci/` để không vô tình trigger các strict validation pipeline nằm ngoài phạm vi.
 
 ## 3. Các bước tiếp theo
 1. Thực hiện review và merge PR **PM-154**.
