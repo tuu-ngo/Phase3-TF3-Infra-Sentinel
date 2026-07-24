@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           docker run --rm \
             -v /tmp/envoy-rendered.yaml:/etc/envoy/envoy.yaml:ro \
-            envoyproxy/envoy:v1.32-latest \
+            envoyproxy/envoy:v1.34.10@sha256:3343a698c1bdfdbb174f1bd907dea789d728692f4f99a943e3e6f0bc5ef6513f \
             envoy --mode validate -c /etc/envoy/envoy.yaml
 
           echo "✓ Envoy config validation PASSED"
