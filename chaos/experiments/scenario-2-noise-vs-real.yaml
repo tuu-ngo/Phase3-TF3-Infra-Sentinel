@@ -48,11 +48,14 @@ spec:
     - recommendation
   stressors:
     cpu:
-      # 1 worker / load 80 = ăn ~80% của 1 core trong cgroup của container.
-      # Đủ để metric CPU nhảy rõ trên Grafana nhưng còn chừa CPU cho service phục vụ
-      # request — đó là ranh giới giữa "nhiễu" và "sự cố".
+      # load 20 = ~200m, tức ~40% của CPU limit 500m mà recommendation đang đặt.
+      # Chốt bằng đo thật (dry-run 24/07): CPU nhảy 8m -> 173m (spike rõ trên Grafana)
+      # trong khi fail_ratio giữ 0 và endpoint /api/recommendations p95 18-41ms không lỗi.
+      # ĐỪNG nâng lên 80 (giá trị nháp ban đầu): cgroup chỉ 500m, load 80 (~800m yêu cầu)
+      # bóp nghẹt app -> recommendation bắt đầu timeout -> hết "nhiễu vô hại" và bài test
+      # no-masking mất ý nghĩa. Nếu sau này recommendation được nới CPU limit thì đo lại.
       workers: 1
-      load: 80
+      load: 20
 ---
 apiVersion: chaos-mesh.org/v1alpha1
 kind: NetworkChaos
