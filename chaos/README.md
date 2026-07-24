@@ -3,12 +3,18 @@
 Bộ kịch bản để AIO02 chấm điểm AIOps engine bằng **lỗi thật trên cụm thật**, thay vì
 dữ liệu giả. Hạ tầng do CDO02 dựng; việc chạy và chấm là của AIO02.
 
+> 📘 **Bản hướng dẫn đầy đủ để gửi AIO02:**
+> [`docs/runbooks/mandate-15-aiops-chaos-runbook.md`](../docs/runbooks/mandate-15-aiops-chaos-runbook.md)
+> — gồm 4 kịch bản, lệnh khắc phục đã kiểm chứng, tiêu chí đạt, số đo từ chạy nháp,
+> query Grafana và lệnh dừng khẩn cấp. File này chỉ là ghi chú kỹ thuật của CDO02.
+
 | Scenario | File | Cơ chế | Thời lượng |
 |---|---|---|---|
 | 1. Bắt đúng | [`scenario-1-payment-latency.yaml`](experiments/scenario-1-payment-latency.yaml) | NetworkChaos (tc netem) | 10m |
 | 2A. Không bị che — sự cố thật | [`scenario-2a-payment-real-issue.yaml`](experiments/scenario-2a-payment-real-issue.yaml) | NetworkChaos | 10m, apply ở **T+0** |
 | 2B. Không bị che — nhiễu | [`scenario-2b-recommendation-noise.yaml`](experiments/scenario-2b-recommendation-noise.yaml) | StressChaos | 2m, apply ở **T+5** |
 | 3. Không kêu oan | [`scenario-3-flash-sale-load.md`](experiments/scenario-3-flash-sale-load.md) | Locust ramp (không phải CRD) | giữ tải 10m |
+| 4. Tự khắc phục thành công | [`scenario-4-capacity-shortage.yaml`](experiments/scenario-4-capacity-shortage.yaml) | NetworkChaos, chậm 1 pod | 10m |
 
 > **Scenario 2 phải apply LÀM HAI BƯỚC cách nhau ~5 phút** — engine start cùng lúc bơm
 > lỗi và cần ~5 phút warm-up, nên cửa sổ nó quan sát là T+5→T+10. Apply nhiễu cùng lúc
