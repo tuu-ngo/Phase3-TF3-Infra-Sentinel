@@ -1,0 +1,44 @@
+# KAFKA CU (in-cluster) — trang thai tai thoi diem thu thap bang chung
+# Thoi diem do: 2026-07-21T15:40Z UTC
+
+## KET QUA DO LAI (21/07, sau khi pod kafka cu bi tao lai)
+
+  $ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+  (rong - khong con consumer group nao)
+
+  $ kafka-get-offsets.sh --bootstrap-server localhost:9092 --topic orders
+  Error occurred: Could not match any topic-partitions with the specified filters
+
+=> Kafka CU hien KHONG con topic `orders`, KHONG con consumer group.
+
+## GIAI THICH
+
+Pod kafka cu da bi TAO LAI (pod moi `kafka-756d5dfb95-sgxrm`, tuoi ~5h26m tai thoi diem do;
+truoc do la `kafka-7cdc4476fb-9fww2` tuoi 3d21h). PVC `kafka-data` (3Gi) VAN con Bound va VAN
+duoc mount vao pod moi, nhung metadata KRaft khong con topic `orders`.
+
+## ANH HUONG
+
+1. KHONG anh huong production. Kafka cu da NGHI HUU tu luc cutover: khong con producer
+   (checkout da tro MSK), khong con consumer (accounting + fraud-detection da tro MSK).
+   Kiem chung cung thoi diem: MSK chay binh thuong, ca 2 consumer group LAG=0
+   -> xem parity-04-msk.txt
+
+2. KHONG the tai tao bang chung "kafka cu dong bang o offset 141242 / LAG=0 / has no active
+   members" bang lenh moi. Phep do do da thuc hien TRUOC DO (20-21/07) va duoc ghi nhan tai:
+     - docs/postmortem/0012-mandate5-networkpolicy-batch-outage.md
+     - docs/mandate-08-nghiem-thu.md (muc C.3)
+   Ket qua do luc do:
+     accounting      orders  0  141242  141242  0   -  -  -   (has no active members)
+     fraud-detection orders  0  141242  141242  0   -  -  -   (has no active members)
+
+3. KHANG DINH THEM ket luan o muc E.1 cua bao cao nghiem thu: Kafka cu KHONG con la duong lui
+   thuc su. Truoc day ly do la "du lieu da phan ky" (kho cu dong bang, don moi deu o MSK);
+   nay con manh hon: kho cu da RONG. Duong lui that cho Kafka la PLAN B - retention topic
+   `orders` tren MSK (168h) + redeploy chart kafka cu tu git neu can.
+
+## KHUYEN NGHI
+
+Khong can dieu tra them nguyen nhan mat topic o kafka cu, vi no khong phuc vu luu luong nao
+va nam trong danh sach SE XOA o buoc §8. Neu mentor hoi: day la kho da nghi huu, mat state
+khong gay thiet hai, va bang chung LAG=0 da duoc do TRUOC khi pod bi tao lai.

@@ -1,0 +1,342 @@
+{
+  "schemaVersion": 1,
+  "resolvedAt": "2026-07-23T02:24:40+00:00",
+  "occurrences": [
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 49,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 193,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 349,
+      "action": "aws-actions/configure-aws-credentials",
+      "version": "v4.3.1",
+      "sha": "7474bc4690e29a8392af63c5b98e7449536d5c3a"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 356,
+      "action": "aws-actions/amazon-ecr-login",
+      "version": "v2.1.6",
+      "sha": "d539f0932e70871a027e9d5a9d8fc38589180a64"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 360,
+      "action": "docker/setup-qemu-action",
+      "version": "v3.7.0",
+      "sha": "c7c53464625b32c7a7e944ae62b3e17d2b600130"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 364,
+      "action": "docker/setup-buildx-action",
+      "version": "v3.12.0",
+      "sha": "8d2750c68a42422c14e847fe6c8ac0403b4cbd6f"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 406,
+      "action": "aquasecurity/setup-trivy",
+      "version": "v0.3.1",
+      "sha": "81e514348e19b6112ce2a7e3ecbafe19c1e1f567"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 444,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 668,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 678,
+      "action": "sigstore/cosign-installer",
+      "version": "v4.1.2",
+      "sha": "6f9f17788090df1f26f669e9d70d6ae9567deba6"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 936,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 946,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 964,
+      "action": "actions/download-artifact",
+      "version": "v4.3.0",
+      "sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 1058,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 1078,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 1084,
+      "action": "actions/setup-python",
+      "version": "v5.6.0",
+      "sha": "a26af69be951a213d495a4c3e4e4022e16d87065"
+    },
+    {
+      "workflow": ".github/workflows/build-push-ecr.yml",
+      "line": 1102,
+      "action": "actions/download-artifact",
+      "version": "v4.3.0",
+      "sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093"
+    },
+    {
+      "workflow": ".github/workflows/immutable-dependency-audit.yml",
+      "line": 17,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/immutable-dependency-audit.yml",
+      "line": 32,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/scan-external-images.yml",
+      "line": 18,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/scan-external-images.yml",
+      "line": 21,
+      "action": "actions/setup-python",
+      "version": "v6.3.0",
+      "sha": "ece7cb06caefa5fff74198d8649806c4678c61a1"
+    },
+    {
+      "workflow": ".github/workflows/scan-external-images.yml",
+      "line": 29,
+      "action": "aquasecurity/setup-trivy",
+      "version": "v0.3.1",
+      "sha": "81e514348e19b6112ce2a7e3ecbafe19c1e1f567"
+    },
+    {
+      "workflow": ".github/workflows/scan-external-images.yml",
+      "line": 54,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/secret-scan.yml",
+      "line": 17,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/secret-scan.yml",
+      "line": 22,
+      "action": "gitleaks/gitleaks-action",
+      "version": "v3.0.0",
+      "sha": "e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e"
+    },
+    {
+      "workflow": ".github/workflows/secure-delivery-gate.yml",
+      "line": 18,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/secure-delivery-gate.yml",
+      "line": 42,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/secure-delivery-gate.yml",
+      "line": 54,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/secure-delivery-gate.yml",
+      "line": 83,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/secure-delivery-gate.yml",
+      "line": 101,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/secure-delivery-gate.yml",
+      "line": 126,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/secure-delivery-gate.yml",
+      "line": 138,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/terraform-apply.yml",
+      "line": 44,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/terraform-apply.yml",
+      "line": 46,
+      "action": "hashicorp/setup-terraform",
+      "version": "v3.1.2",
+      "sha": "b9cd54a3c349d3f38e8881555d616ced269862dd"
+    },
+    {
+      "workflow": ".github/workflows/terraform-apply.yml",
+      "line": 51,
+      "action": "aws-actions/configure-aws-credentials",
+      "version": "v4.3.1",
+      "sha": "7474bc4690e29a8392af63c5b98e7449536d5c3a"
+    },
+    {
+      "workflow": ".github/workflows/terraform-apply.yml",
+      "line": 78,
+      "action": "actions/upload-artifact",
+      "version": "v4.6.2",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+    },
+    {
+      "workflow": ".github/workflows/terraform-apply.yml",
+      "line": 104,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/terraform-apply.yml",
+      "line": 108,
+      "action": "hashicorp/setup-terraform",
+      "version": "v3.1.2",
+      "sha": "b9cd54a3c349d3f38e8881555d616ced269862dd"
+    },
+    {
+      "workflow": ".github/workflows/terraform-apply.yml",
+      "line": 113,
+      "action": "aws-actions/configure-aws-credentials",
+      "version": "v4.3.1",
+      "sha": "7474bc4690e29a8392af63c5b98e7449536d5c3a"
+    },
+    {
+      "workflow": ".github/workflows/terraform-apply.yml",
+      "line": 128,
+      "action": "actions/download-artifact",
+      "version": "v4.3.0",
+      "sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093"
+    },
+    {
+      "workflow": ".github/workflows/terraform-plan.yml",
+      "line": 41,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/terraform-plan.yml",
+      "line": 43,
+      "action": "hashicorp/setup-terraform",
+      "version": "v3.1.2",
+      "sha": "b9cd54a3c349d3f38e8881555d616ced269862dd"
+    },
+    {
+      "workflow": ".github/workflows/terraform-plan.yml",
+      "line": 48,
+      "action": "aws-actions/configure-aws-credentials",
+      "version": "v4.3.1",
+      "sha": "7474bc4690e29a8392af63c5b98e7449536d5c3a"
+    },
+    {
+      "workflow": ".github/workflows/test-image-bump.yml",
+      "line": 20,
+      "action": "actions/checkout",
+      "version": "v4.4.0",
+      "sha": "11d5960a326750d5838078e36cf38b85af677262"
+    },
+    {
+      "workflow": ".github/workflows/test-image-bump.yml",
+      "line": 23,
+      "action": "actions/setup-python",
+      "version": "v5.6.0",
+      "sha": "a26af69be951a213d495a4c3e4e4022e16d87065"
+    },
+    {
+      "workflow": ".github/workflows/validate-production-access.yml",
+      "line": 33,
+      "action": "actions/checkout",
+      "version": "v6.1.0",
+      "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+    },
+    {
+      "workflow": ".github/workflows/validate-production-access.yml",
+      "line": 36,
+      "action": "actions/setup-python",
+      "version": "v5.6.0",
+      "sha": "a26af69be951a213d495a4c3e4e4022e16d87065"
+    },
+    {
+      "workflow": ".github/workflows/validate-production-access.yml",
+      "line": 51,
+      "action": "hashicorp/setup-terraform",
+      "version": "v3.1.2",
+      "sha": "b9cd54a3c349d3f38e8881555d616ced269862dd"
+    }
+  ]
+}

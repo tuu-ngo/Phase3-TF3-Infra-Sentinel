@@ -1,9 +1,30 @@
-schemaVersion: 1
+schemaVersion: 2
 targetNamespace: techx-tf3
 generatedFor: mandate-05-runtime-admission-enforcement
+# schemaVersion 2 (22/07/2026): enforcement mechanism migrated from Kyverno
+# ClusterPolicy (PM-166/167/168/169/170) to native ValidatingAdmissionPolicy
+# (image/resource, Deny, live since PR #291) + Pod Security Admission
+# (root/privileged, enforce=restricted, live since PR #338). Kyverno itself
+# retired entirely (PM-172, PR #339/#340/#341) after both native controls
+# were proven full-parity replacements - see
+# docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md and
+# ADR docs/adr/0010-mandate-05-runtime-hardening.md ("Update 2026-07-22").
+#
+# IMPORTANT: native PSA has NO per-workload/label-based exception mechanism,
+# unlike Kyverno's `preconditions`. Entries below with status "closed" are
+# historical record (the workload no longer exists, so the exception is
+# moot). The one entry still "open" is not a working exception in the old
+# sense - it is an accepted, tracked risk: the already-running pod is
+# unaffected, but PSA will reject its NEXT recreate (crash restart, node
+# drain, redeploy) until the owner remediates or the workload is isolated to
+# a differently-scoped namespace. There is no config here that "allows" it
+# through - it is simply not yet fixed.
 exceptions:
   - id: m05-baseline-kafka-init-chown
-    policy: custom-baseline-security-context
+    status: closed
+    closedDate: 2026-07-22
+    closedReason: "In-cluster Kafka removed entirely (Mandate #8 cleanup, PR #324) - confirmed via `kubectl get pods,pvc -n techx-tf3 -l app.kubernetes.io/name=kafka` (empty) and `git log --grep=kafka`, not taken on faith. The workload this exception covered no longer exists; nothing to except."
+    formerEnforcementMechanism: "Kyverno ClusterPolicy custom-baseline-security-context (retired PM-172, see above)"
     rules:
       - require-effective-non-root
       - deny-container-run-as-user-zero
@@ -12,28 +33,25 @@ exceptions:
     selector:
       matchLabels:
         app.kubernetes.io/name: kafka
-    observedViolation: "Kafka init-kafka-data runs as UID 0 to mkdir/chown the mounted EBS data directory before the broker starts."
-    reason: "Stateful write path compatibility is required before replacing root chown with a non-root or CSI ownership approach."
+    observedViolation: "Kafka init-kafka-data ran as UID 0 to mkdir/chown the mounted EBS data directory before the broker started."
     owner: CDO02 / TF3 Reliability
-    approval: pending mentor review
-    reviewDate: 2026-07-24
-    remediationPlan: "Validate fsGroup/subPath-free ownership or pre-provisioned volume ownership, then remove root init and the exception."
-    rollbackBehavior: "Revert the Kafka hardening/remediation commit if broker startup or PVC writes regress."
 
   - id: m05-baseline-aiops-engine-runtime
-    policy: custom-baseline-security-context
+    status: open
+    enforcementMechanism: "Pod Security Admission 'restricted' (techx-tf3, enforce live since PR #338) - no per-workload exception mechanism exists; this is an accepted risk record, not a configured bypass."
     rules:
-      - require-effective-non-root
-      - require-allow-privilege-escalation-false
-      - drop-all-capabilities
-      - require-seccomp-profile-runtime-default
+      - "PSA restricted: allowPrivilegeEscalation=false"
+      - "PSA restricted: capabilities.drop=[ALL]"
+      - "PSA restricted: runAsNonRoot=true"
+      - "PSA restricted: seccompProfile.type=RuntimeDefault|Localhost"
     selector:
       matchLabels:
         app: aiops-engine
-    observedViolation: "Live aiops-engine pods in techx-tf3 still run without the container-level baseline hardening required by Mandate #5."
-    reason: "The aiops-engine workload is currently managed outside this GitOps tree; record the live residual risk as a temporary Audit exception instead of mutating the cluster directly."
+    observedViolation: "Live aiops-engine pod in techx-tf3 (kubectl apply --dry-run=server against the real enforce=restricted namespace, 22/07) still violates: allowPrivilegeEscalation != false, unrestricted capabilities, runAsNonRoot != true, seccompProfile unset. Confirmed as the ONLY remaining PSA violation in the namespace."
+    currentImpact: "Already-running pod unaffected (PSA only evaluates at CREATE/UPDATE admission). Next recreate (crash restart, node drain, redeploy) will be rejected until remediated."
+    reason: "aiops-engine is kubectl-apply-managed by AIO02 directly, outside this GitOps tree (confirmed via last-applied-configuration annotation) - no manifest exists in this repo to edit."
     owner: AIO02 / TF3 AI
     approval: pending mentor review
     reviewDate: 2026-07-24
-    remediationPlan: "Bring the aiops-engine manifest under the same GitOps source of truth or apply equivalent chart-level securityContext hardening, then remove this exception before Enforce."
-    rollbackBehavior: "Revert the exception entry once the owning manifest is hardened; do not kubectl edit the live workload."
+    remediationPlan: "AIO02 to either (a) add securityContext hardening matching restricted (runAsNonRoot, drop ALL capabilities, allowPrivilegeEscalation=false, seccompProfile=RuntimeDefault) to the aiops-engine manifest and bring it under GitOps, or (b) isolate the workload to a separate namespace with a looser PSA level if (a) is not feasible in time. Decision explicitly deferred to user/AIO02 - not resolved as part of Mandate 5 native migration."
+    rollbackBehavior: "N/A - there is no exception configuration to roll back. If aiops-engine gets stuck failing admission before AIO02 remediates, the only mitigations are: fix the manifest, isolate to another namespace, or (not recommended) temporarily revert PR #338 to audit/warn-only for the whole namespace."

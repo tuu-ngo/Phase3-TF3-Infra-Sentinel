@@ -5,6 +5,11 @@
 **Namespace:** techx-tf3
 **Goal:** Replace Kyverno admission enforcement with Kubernetes-native controls without downtime, without gutting Kyverno's Cosign `verifyImages` capability (kept, see Status below).
 
+> Historical scope note: statements below that retain Kyverno describe the
+> 2026-07-21 migration stage. They are superseded by the 2026-07-22 retirement
+> addendum, which records the approved Mandate 05 retirement and the separate
+> future Mandate 10 webhook-plus-VAP boundary.
+
 **Status as of this commit: NOT YET LIVE-VERIFIED.** All checks below were run as `kubectl apply --dry-run=server` against the real API server (schema/CEL-compile validation only). The actual GitOps deploy (PR #291 → merge → Argo CD sync of `native-admission-policies` + `techx-infrastructure-app`) has **not happened yet** at the time this doc was written. Do not read any line below as a claim that native controls are already blocking production traffic — they are code-complete and dry-run-clean, not live-enforced yet.
 
 ## Native Controls — target state (this PR)
@@ -106,3 +111,213 @@ curl -sS -o /dev/null -w 'status=%{http_code} latency=%{time_total}\n' https://d
 ## Kyverno Retirement — not in scope here
 
 Kyverno controller and its 4 `ClusterPolicy` objects are **untouched** by this PR. Removing them is tracked as PM-172, which has not been approved to start. This migration's goal is to make native controls the authoritative enforcement path for the mentor's "no third-party admission tool" requirement; Kyverno keeps running in parallel for `verifyImages`/Cosign and background PolicyReport reconciliation, which native VAP/PSA cannot do.
+
+## Otel PSA Migration PR1 — gateway added, no traffic moved
+
+Branch `fix/mandate05-otel-gateway` starts the Otel PSA migration by adding a new `otel-gateway` Deployment/Service/ConfigMap and PDB. It does **not** change `OTEL_COLLECTOR_NAME`; rendered application workloads still point to `otel-collector`, so this PR does not move application telemetry traffic.
+
+Rendered checks:
+
+```text
+ConfigMap otel-gateway 1
+Deployment otel-gateway 1
+Service otel-gateway 1
+replicas 2
+maxUnavailable 0
+maxSurge 1
+hostPorts []
+hostPaths []
+runAsNonRoot True
+allowPrivilegeEscalation False
+drop ['ALL']
+seccomp RuntimeDefault
+```
+
+Server-side dry-run, with the EKS API reached through the SSM tunnel:
+
+```text
+configmap/otel-gateway created (server dry run)
+service/otel-gateway created (server dry run)
+deployment.apps/otel-gateway created (server dry run)
+poddisruptionbudget.policy/otel-gateway-pdb created (server dry run)
+networkpolicy.networking.k8s.io/prometheus-access configured (server dry run)
+networkpolicy.networking.k8s.io/opensearch-access configured (server dry run)
+```
+
+Local verification:
+
+```text
+helm lint phase3 - information/techx-corp-chart ...: 1 chart(s) linted, 0 chart(s) failed
+python3 -m pytest scripts/ci/test_runtime_hardening.py -q: 5 passed
+python3 -m pytest scripts/ci/test_production_access_contract.py -q: 9 passed
+git diff --check: clean
+```
+
+Quota headroom from the live snapshot at `2026-07-21T16:39:23+07:00` remains sufficient for two gateway replicas. Current quota use is `requests.cpu=3750m/12`, `requests.memory=7896Mi/16Gi`, `limits.cpu=16900m/48`, and `limits.memory=17523Mi/30Gi`; PR1 adds only `requests.cpu=200m`, `requests.memory=512Mi`, `limits.cpu=1000m`, and `limits.memory=1536Mi`.
+
+## Otel PSA Migration PR2 — app telemetry endpoint switch
+
+Branch `fix/mandate05-otel-switch` changes only the default application collector name:
+
+```yaml
+default:
+  env:
+    - name: OTEL_COLLECTOR_NAME
+      value: otel-gateway
+```
+
+All application `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_COLLECTOR_HOST` values continue to use `$(OTEL_COLLECTOR_NAME)`, so rendered application telemetry clients move from `otel-collector` to `otel-gateway` without changing per-service code.
+
+Safety dependency: live snapshot `2026-07-21T16:47:51+07:00` showed `origin/main=3e2114e` but Argo `techx-corp` was still live at `fb4a59e`; `otel-gateway` was therefore not live-verified yet. This PR must not be merged/deployed until PR1 has reconciled and these checks pass:
+
+```bash
+kubectl get application techx-corp -n argocd -o jsonpath='{.status.sync.revision}{" sync="}{.status.sync.status}{" health="}{.status.health.status}{"\n"}'
+kubectl get deploy,svc,endpointslice,pdb -n techx-tf3 -l app.kubernetes.io/name=otel-gateway -o wide
+kubectl get pods -n techx-tf3 -l app.kubernetes.io/name=otel-gateway -o wide
+```
+
+Expected before PR2 merge/deploy:
+
+```text
+techx-corp revision is at or after 3e2114e, Synced, Healthy
+deployment/otel-gateway READY 2/2
+otel-gateway Service and EndpointSlice have ready endpoints
+otel-gateway-pdb exists
+```
+
+Local verification for PR2:
+
+```text
+helm lint phase3 - information/techx-corp-chart ...: 1 chart(s) linted, 0 chart(s) failed
+helm template with Argo values: pass
+render assertion: app OTEL_COLLECTOR_NAME values all resolve to otel-gateway; old otel-collector-agent still renders; otel-gateway still has no hostPort/hostPath
+python3 -m pytest scripts/ci/test_runtime_hardening.py -q: 5 passed
+python3 -m pytest scripts/ci/test_production_access_contract.py -q: 9 passed
+git diff --check: clean
+```
+
+Server-side dry-run for 29 rendered workload objects passed. Kubernetes emitted the known PSA warning for the existing old `otel-collector-agent` (`hostPort` + `hostPath`), which remains the PR3/PR4 blocker; all app workload templates with `OTEL_COLLECTOR_NAME=otel-gateway` were accepted by admission in server dry-run.
+
+## Otel PSA Migration PR3 — dedicated host metrics node-agent
+
+Branch `fix/mandate05-otel-node-agent` adds a second OpenTelemetry Collector
+subchart instance named `otel-node-agent`. This PR is additive: application
+telemetry remains pointed at `otel-gateway`, and the old `otel-collector-agent`
+DaemonSet remains deployed as a fallback.
+
+What this PR introduces:
+
+- `observability-system` namespace with PSA `audit`/`warn=baseline`.
+- `otel-node-agent` DaemonSet rendered into `observability-system`.
+- Host/kubelet metrics only: `hostmetrics` and `kubeletstats` receivers, no
+  OTLP/Jaeger/Zipkin receiver ports for application traffic.
+- Prometheus ingress allow-rule from
+  `observability-system/app.kubernetes.io/name=otel-node-agent` to port 9090.
+- Production resources of `requests.cpu=10m`, `requests.memory=128Mi`,
+  `limits.cpu=250m`, and `limits.memory=256Mi` per scheduled node.
+
+Expected rendered properties before merge:
+
+```text
+DaemonSet otel-node-agent exactly 1
+namespace observability-system
+hostPorts []
+hostPath / readOnly true
+runAsNonRoot true
+allowPrivilegeEscalation false
+capabilities.drop ["ALL"]
+seccomp RuntimeDefault
+updateStrategy RollingUpdate maxUnavailable=0 maxSurge=1
+application OTEL_COLLECTOR_NAME remains otel-gateway
+old otel-collector-agent still renders
+```
+
+Local render assertions captured before PR:
+
+```text
+DaemonSet otel-node-agent namespace observability-system
+hostPorts []
+hostPaths [{'name': 'hostfs', 'hostPath': {'path': '/'}}]
+hostfsMounts [{'name': 'hostfs', 'mountPath': '/hostfs', 'readOnly': True, 'mountPropagation': 'HostToContainer'}]
+securityContext {'allowPrivilegeEscalation': False, 'capabilities': {'drop': ['ALL']}, 'runAsGroup': 10001, 'runAsNonRoot': True, 'runAsUser': 10001, 'seccompProfile': {'type': 'RuntimeDefault'}}
+updateStrategy {'rollingUpdate': {'maxSurge': 1, 'maxUnavailable': 0}, 'type': 'RollingUpdate'}
+oldCollectorRendered 1
+appCollectorNameMismatch []
+nodeAgentReceivers ['hostmetrics', 'kubeletstats']
+metricsPipeline {'exporters': ['otlphttp/prometheus'], 'processors': ['k8sattributes', 'memory_limiter', 'resourcedetection', 'resource', 'batch'], 'receivers': ['hostmetrics', 'kubeletstats']}
+prometheusExporterEndpoint http://prometheus.techx-tf3.svc.cluster.local:9090/api/v1/otlp
+networkPolicyAllowsNodeAgent True
+observabilityNamespacePSA {'pod-security.kubernetes.io/audit': 'baseline', 'pod-security.kubernetes.io/audit-version': 'v1.35', 'pod-security.kubernetes.io/warn': 'baseline', 'pod-security.kubernetes.io/warn-version': 'v1.35'}
+```
+
+Server-side dry-run captured before PR:
+
+```text
+namespace/observability-system created (server dry run)
+networkpolicy.networking.k8s.io/prometheus-access configured (server dry run)
+serviceaccount/otel-node-agent created (server dry run)
+configmap/otel-node-agent created (server dry run)
+clusterrole.rbac.authorization.k8s.io/otel-node-agent created (server dry run)
+clusterrolebinding.rbac.authorization.k8s.io/otel-node-agent created (server dry run)
+Warning: would violate PodSecurity "restricted:v1.35": restricted volume types (volume "hostfs" uses restricted volume type "hostPath")
+daemonset.apps/otel-node-agent created (server dry run)
+```
+
+Note: the node-agent server dry-run used a temporary rendered manifest with
+namespace changed from `observability-system` to existing namespace `techx-tf3`,
+because Kubernetes server dry-run does not persist the new namespace for later
+objects in the same PR. The exact `observability-system` namespace manifest
+itself dry-ran clean, and the local Helm render verifies the final node-agent
+namespace is `observability-system`.
+
+Local verification:
+
+```text
+helm lint phase3 - information/techx-corp-chart ...: 1 chart(s) linted, 0 chart(s) failed
+helm template with Argo values: pass
+python3 -m pytest scripts/ci/test_runtime_hardening.py -q: 5 passed
+python3 -m pytest scripts/ci/test_production_access_contract.py -q: 9 passed
+git diff --check: clean
+```
+
+Post-merge scheduling hotfix:
+
+```text
+Observed after PR3 merge: otel-node-agent was created but one DaemonSet pod
+remained Pending on ip-10-0-26-153 because that node had 1915m/1930m CPU
+requests allocated. The original node-agent request of 50m could not fit even
+though actual CPU usage was low. Reduce the node-agent CPU request to 10m while
+keeping the 250m limit so the collector can still burst without blocking
+DaemonSet coverage on tightly packed nodes.
+```
+
+Required after this PR merges and Argo reconciles:
+
+```bash
+kubectl get ns observability-system --show-labels
+kubectl get ds,pods -n observability-system -l app.kubernetes.io/name=otel-node-agent -o wide
+kubectl get networkpolicy prometheus-access -n techx-tf3 -o yaml
+kubectl get application techx-corp techx-infrastructure-app -n argocd
+```
+
+Prometheus live validation should prove that the new node-agent exports without
+breaking the already-working gateway path:
+
+```promql
+sum(rate(otelcol_receiver_accepted_metric_points_total{service_name=~".*node.*|otel-node-agent"}[5m]))
+sum(rate(otelcol_exporter_sent_metric_points_total{service_name=~".*node.*|otel-node-agent", exporter="otlphttp/prometheus"}[5m]))
+sum(rate(otelcol_exporter_send_failed_metric_points_total{service_name=~".*node.*|otel-node-agent"}[5m]))
+```
+
+Do not delete or disable the old `otel-collector-agent` in this PR. Deletion is
+only safe after the node-agent has been live long enough to compare host/kubelet
+metric continuity and no Prometheus exporter failures are observed.
+
+## Retirement addendum — 2026-07-22
+
+- Native VAP enforcement: `LIVE-VERIFIED`, both bindings `Deny`.
+- PSA Restricted enforcement: `LIVE-VERIFIED` on approved application/platform namespaces.
+- `observability-system`: intentional `warn/audit` exception; no Restricted enforcement.
+- `kube-system`: intentional VAP/PSA system exception.
+- Mandate 05 Kyverno policies: removal proposed by the retirement PR; not complete until Argo prune and post-reconcile gates pass.
+- Mandate 10: not implemented; future design is a dedicated signature/provenance webhook plus VAP.

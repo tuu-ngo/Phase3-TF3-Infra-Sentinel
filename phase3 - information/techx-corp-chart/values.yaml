@@ -8,7 +8,7 @@ default:
           apiVersion: v1
           fieldPath: "metadata.labels['app.kubernetes.io/component']"
     - name: OTEL_COLLECTOR_NAME
-      value: otel-collector
+      value: otel-gateway
     - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       value: cumulative
   # Allows overriding and additions to .Values.default.env
@@ -64,6 +64,8 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
+  # Workloads using the shared ServiceAccount do not need Kubernetes API credentials.
+  automountServiceAccountToken: false
 
 components:
   ## Demo Components are named objects (services) with several properties
@@ -206,31 +208,21 @@ components:
         value: kafka:9092
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
         value: http://$(OTEL_COLLECTOR_NAME):4318
+      # Mandate #8: KHONG dat credential plaintext o day. Production lay connection string
+      # (bao gom mat khau) tu Secrets Manager qua ExternalSecret `techx-tf3-postgres-conn`
+      # key `dotnet`, override bang envOverrides trong values-prod.yaml.
       - name: DB_CONNECTION_STRING
-        value: Host=postgresql;Username=otelu;Password=otelp;Database=otel
+        value: ""
       - name: OTEL_DOTNET_AUTO_TRACES_ENTITYFRAMEWORKCORE_INSTRUMENTATION_ENABLED
         value: "false"
     resources:
       limits:
         memory: 120Mi
-    initContainers:
-      - name: wait-for-kafka
-        image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
-        securityContext:
-          runAsUser: 65534
-          runAsGroup: 65534
-          runAsNonRoot: true
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-        resources:
-          requests:
-            cpu: 5m
-            memory: 8Mi
-          limits:
-            cpu: 50m
-            memory: 32Mi
+    # Mandate #8: DA GO initContainer `wait-for-kafka`. No hardcode `nc -z kafka 9092` (Kafka CU
+    # in-cluster), nen sau khi cutover sang MSK no se CHAN pod khoi dong vinh vien khi kho cu bi
+    # xoa o §8 (da xac nhan trong su co 0012: ca pod env-cu lan env-MSK deu ket o Init:0/1).
+    # Khong con can thiet: checkout da FAIL-FAST khi khong tao duoc producer (PR #269) - cong chan
+    # tot hon initContainer; accounting/fraud la consumer, client (librdkafka/Java) tu retry ket noi.
     securityContext:
       runAsUser: 1654  # app
       runAsGroup: 1654
@@ -299,24 +291,12 @@ components:
     resources:
       limits:
         memory: 160Mi
-    initContainers:
-      - name: wait-for-valkey-cart
-        image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        command: ["sh", "-c", "until nc -z -v -w30 valkey-cart 6379; do echo waiting for valkey-cart; sleep 2; done;"]
-        securityContext:
-          runAsUser: 65534
-          runAsGroup: 65534
-          runAsNonRoot: true
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-        resources:
-          requests:
-            cpu: 5m
-            memory: 8Mi
-          limits:
-            cpu: 50m
-            memory: 32Mi
+    # Mandate #8: DA GO initContainer `wait-for-valkey-cart`. No hardcode
+    # `nc -z valkey-cart 6379` (Valkey CU in-cluster), nen khi xoa kho cu o §8 thi pod cart
+    # se KET VINH VIEN o Init:0/1 -> cart chet -> checkout chet theo (cart la dependency cua
+    # checkout health check). Day la cung loai bay voi `wait-for-kafka` da go o PR #307.
+    # Khong con can: cart doc/ghi ElastiCache (endpoint managed, luon san sang); client Valkey
+    # tu retry ket noi neu co gian doan.
     securityContext:
       runAsUser: 65532
       runAsGroup: 65532
@@ -368,24 +348,11 @@ components:
     resources:
       limits:
         memory: 20Mi
-    initContainers:
-      - name: wait-for-kafka
-        image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
-        securityContext:
-          runAsUser: 65534
-          runAsGroup: 65534
-          runAsNonRoot: true
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-        resources:
-          requests:
-            cpu: 5m
-            memory: 8Mi
-          limits:
-            cpu: 50m
-            memory: 32Mi
+    # Mandate #8: DA GO initContainer `wait-for-kafka`. No hardcode `nc -z kafka 9092` (Kafka CU
+    # in-cluster), nen sau khi cutover sang MSK no se CHAN pod khoi dong vinh vien khi kho cu bi
+    # xoa o §8 (da xac nhan trong su co 0012: ca pod env-cu lan env-MSK deu ket o Init:0/1).
+    # Khong con can thiet: checkout da FAIL-FAST khi khong tao duoc producer (PR #269) - cong chan
+    # tot hon initContainer; accounting/fraud la consumer, client (librdkafka/Java) tu retry ket noi.
     securityContext:
       runAsUser: 65532
       runAsGroup: 65532
@@ -484,24 +451,11 @@ components:
     resources:
       limits:
         memory: 300Mi
-    initContainers:
-      - name: wait-for-kafka
-        image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-        command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
-        securityContext:
-          runAsUser: 65534
-          runAsGroup: 65534
-          runAsNonRoot: true
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-        resources:
-          requests:
-            cpu: 5m
-            memory: 8Mi
-          limits:
-            cpu: 50m
-            memory: 32Mi
+    # Mandate #8: DA GO initContainer `wait-for-kafka`. No hardcode `nc -z kafka 9092` (Kafka CU
+    # in-cluster), nen sau khi cutover sang MSK no se CHAN pod khoi dong vinh vien khi kho cu bi
+    # xoa o §8 (da xac nhan trong su co 0012: ca pod env-cu lan env-MSK deu ket o Init:0/1).
+    # Khong con can thiet: checkout da FAIL-FAST khi khong tao duoc producer (PR #269) - cong chan
+    # tot hon initContainer; accounting/fraud la consumer, client (librdkafka/Java) tu retry ket noi.
     securityContext:
       runAsUser: 65532  # nonroot
       runAsGroup: 65532
@@ -778,7 +732,9 @@ components:
       - name: GOMEMLIMIT
         value: 16MiB
       - name: DB_CONNECTION_STRING
-        value: postgres://otelu:otelp@postgresql/otel?sslmode=disable
+        # Mandate #8: KHONG dat credential plaintext. Production lay tu Secrets Manager qua
+        # ExternalSecret `techx-tf3-postgres-conn` key `go-dsn` (override o values-prod.yaml).
+        value: ""
       - name: OTEL_SEMCONV_STABILITY_OPT_IN
         value: database
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -825,7 +781,9 @@ components:
       - name: FLAGD_PORT
         value: "8013"
       - name: DB_CONNECTION_STRING
-        value: host=postgresql user=otelu password=otelp dbname=otel
+        # Mandate #8: KHONG dat credential plaintext. Production lay tu Secrets Manager qua
+        # ExternalSecret `techx-tf3-postgres-conn` key `libpq` (override o values-aio-llm.yaml).
+        value: ""
       - name: PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
         value: python
       - name: OTEL_PYTHON_LOG_CORRELATION
@@ -1276,14 +1234,11 @@ opentelemetry-collector:
               allowed_origins:
                 - "http://*"
                 - "https://*"
-      kafkametrics:
-        scrapers:
-          - brokers
-          - topics
-          - consumers
-        brokers:
-          - kafka:9092
-        collection_interval: 10s
+      # Mandate #8: DA GO receiver `kafkametrics`. No scrape Kafka CU in-cluster (kafka:9092);
+      # sau cutover sang MSK thi kho cu khong con -> receiver bao loi ket noi lien tuc. Chi
+      # MSK (SASL_SSL) thi receiver nay se can credential trong config collector -> khong lam.
+      # Metric broker/topic/consumer-lag cua MSK lay qua CloudWatch (AWS cung cap san).
+      # Da go kem tham chieu trong pipeline metrics ben duoi (bo sot se lam collector khong khoi dong).
     exporters:
       otlp/jaeger:
         endpoint: jaeger:4317
@@ -1306,6 +1261,7 @@ opentelemetry-collector:
             insecure: true
 
     processors:
+      batch: {}
       memory_limiter:
         check_interval: 5s
         limit_percentage: 80
@@ -1360,7 +1316,7 @@ opentelemetry-collector:
           processors: [memory_limiter, k8sattributes, resourcedetection, resource, transform, batch]
           exporters: [otlp/jaeger, debug, spanmetrics]
         metrics:
-          receivers: [otlp, kafkametrics, spanmetrics]
+          receivers: [otlp, spanmetrics]   # Mandate #8: bo kafkametrics (xem receiver da go o tren)
           processors: [memory_limiter, resourcedetection, resource, batch]
           exporters: [otlphttp/prometheus, debug]
         logs:
@@ -1379,6 +1335,168 @@ opentelemetry-collector:
                     endpoint: http://otel-collector:4318
                     insecure: true
 
+otelGateway:
+  enabled: true
+  replicas: 2
+  minReadySeconds: 15
+  revisionHistoryLimit: 5
+  serviceAccountName: otel-gateway
+  terminationGracePeriodSeconds: 45
+  image:
+    repository: "otel/opentelemetry-collector-contrib"
+    tag: "0.151.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+otel-node-agent:
+  enabled: true
+  namespaceOverride: observability-system
+  fullnameOverride: otel-node
+  nameOverride: otel-node-agent
+  mode: daemonset
+  revisionHistoryLimit: 5
+  image:
+    repository: "otel/opentelemetry-collector-contrib"
+    tag: "0.151.0"
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: otel-node-agent
+    automountServiceAccountToken: true
+  clusterRole:
+    # PR1 (mandate05 otel parity): create:true de chart tu sinh du RBAC theo
+    # preset dang bat (clusterMetrics can quyen doc rong + Lease de leader-elect,
+    # giong het otel-collector-agent cu - xem gitops evidence
+    # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md).
+    create: true
+    name: otel-node-agent
+    clusterRoleBinding:
+      name: otel-node-agent
+  service:
+    enabled: false
+  ports:
+    otlp:
+      enabled: false
+    otlp-http:
+      enabled: false
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+    metrics:
+      enabled: true
+      containerPort: 8888
+      servicePort: 8888
+      protocol: TCP
+  presets:
+    hostMetrics:
+      enabled: true
+    kubeletMetrics:
+      enabled: true
+    kubernetesAttributes:
+      enabled: true
+    # PR1 (mandate05 otel parity): bat k8s_cluster receiver + k8s_leader_elector,
+    # dung dung preset co san cua chart (khong tu viet raw OTel config) - copy
+    # nguyen cach otel-collector-agent cu da lam. Leader election dam bao chi 1/7
+    # pod thuc su bao cao metric cluster-wide (k8s_deployment_available,
+    # k8s_namespace_phase...), khong bi 7 pod bao trung.
+    clusterMetrics:
+      enabled: true
+    # PR2 (mandate05 otel parity): bat receiver_creator/metrics + extension
+    # k8s_observer, dung preset co san - copy nguyen cach otel-collector-agent
+    # cu da lam. Phuc vu dung 3 pod dang phu thuoc annotation
+    # prometheus.io/scrape=true de tu-phat-hien: aws-load-balancer-controller
+    # (2 replica, kube-system) va jaeger (techx-tf3) - da xac nhan bang
+    # `kubectl get pods -A -o json` loc annotation nay, xem
+    # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md.
+    # Chi bat metrics, KHONG bat logs (agent nay khong lam logs pipeline).
+    annotationDiscovery:
+      metrics:
+        enabled: true
+      logs:
+        enabled: false
+    logsCollection:
+      enabled: false
+  rollout:
+    strategy: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  terminationGracePeriodSeconds: 30
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+  alternateConfig:
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+    receivers: {}
+    processors:
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      resourcedetection:
+        detectors: [env, system]
+      resource:
+        attributes:
+          - key: telemetry.role
+            value: node-agent
+            action: upsert
+      batch: {}
+    exporters:
+      otlphttp/prometheus:
+        endpoint: http://prometheus.techx-tf3.svc.cluster.local:9090/api/v1/otlp
+        tls:
+          insecure: true
+        sending_queue:
+          batch: {}
+        retry_on_failure:
+          enabled: true
+    service:
+      extensions: [health_check]
+      pipelines:
+        metrics:
+          receivers: []
+          processors: [memory_limiter, resourcedetection, resource, batch]
+          exporters: [otlphttp/prometheus]
+      telemetry:
+        metrics:
+          level: detailed
+
 jaeger:
   enabled: true
   fullnameOverride: jaeger
@@ -1390,8 +1508,13 @@ jaeger:
         value: "25000"
       - name: PROMETHEUS_ADDR
         value: prometheus:9090
+      # PR3 (mandate05 otel parity): jaeger khong nam trong `components:` nen
+      # khong tu dong doi theo default.env.OTEL_COLLECTOR_NAME nhu 18 service
+      # khac (PR #301) - day la ly do duy nhat jaeger van tu gui trace/metric
+      # ve otel-collector-agent cu (da xac nhan qua Prometheus, service_name=
+      # jaeger). Doi tay sang otel-gateway de dong bo voi kien truc moi.
       - name: OTEL_COLLECTOR_HOST
-        value: otel-collector
+        value: otel-gateway
       - name: OTEL_COLLECTOR_PORT_HTTP
         value: "4318"
       - name: JAEGER_HOST
@@ -1550,6 +1673,9 @@ prometheus:
 grafana:
   enabled: true
   fullnameOverride: grafana
+  rbac:
+    create: true
+    namespaced: true
   testFramework:
     enabled: false
   grafana.ini:

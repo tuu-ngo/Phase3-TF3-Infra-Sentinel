@@ -26,6 +26,12 @@
     "opentelemetry-collector": {
       "type": "object"
     },
+    "otelGateway": {
+      "type": "object"
+    },
+    "otel-node-agent": {
+      "type": "object"
+    },
     "jaeger": {
       "type": "object"
     },
@@ -56,6 +62,9 @@
         },
         "name": {
           "type": "string"
+        },
+        "automountServiceAccountToken": {
+          "type": "boolean"
         }
       },
       "required": [
