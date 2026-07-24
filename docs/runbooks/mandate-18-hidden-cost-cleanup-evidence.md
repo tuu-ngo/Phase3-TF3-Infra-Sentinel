@@ -102,6 +102,23 @@ Evidence tối thiểu:
 - nếu action liên quan network, xác nhận SSM/kubectl tunnel, ECR pull path và private ops UI vẫn hoạt động;
 - nếu action liên quan telemetry, xác nhận dashboard/trace/log vẫn đủ điều tra.
 
+### 2.6. Cross-mandate GO/NO-GO matrix
+
+Mục này dùng ngay trước khi quyết định cutdown. Mandate 18 chỉ được pass nếu cost giảm mà không phá Reliability, Security/Auditability hoặc evidence của mandate khác.
+
+| Mandate/team | Có thể bị Mandate 18 gạt ở đâu? | Quyết định an toàn |
+|---|---|---|
+| Mandate 8 - managed migration | 3 EBS `available` là volume PVC cũ của `valkey-cart`, `kafka-data`, `postgresql-data`. `available` không đủ chứng minh orphan vì PVC `Bound` nhưng không mount cũng hiện `available` trên AWS. | Chỉ xóa sau gate riêng ở mục 5.1.1. Nếu chưa có tunnel/PV/PVC evidence thì ghi pending, không xóa. |
+| Mandate 11 - audit detection | CloudTrail, audit S3, SNS, EventBridge, Lambda, KMS, CloudWatch log group là đường báo động hành động nguy hiểm. | Không giảm retention, không xóa bucket/log group/topic/rule/key. Chỉ ghi evidence lifecycle/Object Lock hiện tại. |
+| Mandate 12 - audit anti-defeat | Heartbeat/fallback, digest/integrity và audit-control detection cần log + SNS + KMS còn chạy. | Không tối ưu bằng cách tắt heartbeat/rule/log. Nếu thấy heartbeat hoặc SNS pending/lỗi thì ghi blocker riêng, không lấy làm saving. |
+| Mandate 13 - elastic cost | Load test/Spot/Karpenter làm node, NAT, telemetry biến động; cleanup trong cùng cửa sổ sẽ làm nhiễu SLO/cost evidence. | Tách cửa sổ. Inventory read-only thì OK; cleanup thì tránh 60 phút trước/trong/sau demo 13. |
+| Mandate 17 - resilience/containment | NetworkPolicy/RBAC/service fallback đang được siết; cắt endpoint/NAT/telemetry có thể làm mất image pull, Bedrock/Cloudflare/SSM path hoặc mất dấu trace. | Không đụng NAT/VPC endpoints/network/telemetry nếu chưa có dependency map và rollback. |
+| Mandate 20 - backup/restore | Xóa snapshot/PVC cũ có thể làm mất nguồn DR/evidence restore. | Không xóa snapshot thủ công hoặc backup có tên rõ liên quan pre-cleanup/DR. EBS cũ chỉ xóa nếu Plan B đã chứng minh đủ. |
+| Mandate 21 - AZ failover | Cắt endpoint theo AZ, subnet, NAT hoặc managed-store setting có thể làm failover/traffic shift xấu đi. | Không đổi network topology trong Mandate 18 nếu chưa có failover impact review. |
+| CDO01 Security/Mandate 10 | S3/ECR/KMS/IAM/CloudWatch có thể là bằng chứng image provenance, audit hoặc CI security. | Không xóa bucket/artifact/log/KMS/IAM policy không rõ owner. Chỉ cleanup tài nguyên mồ côi đã có owner approval. |
+
+Kết luận vận hành: candidate an toàn nhất hiện tại chỉ là EBS cũ sau-Mandate-8, nhưng vẫn là `GO` có điều kiện. Các nhóm NAT, VPC endpoint, S3 audit, CloudWatch audit và security artifacts nên nộp dưới dạng "đã inventory + decision keep" thay vì cố cắt để lấy số.
+
 ## 3. Điều kiện tiên quyết
 
 Máy chạy cần có:
@@ -168,11 +185,11 @@ Residual risks:
 
 ## 5. Current cutdown snapshot
 
-Snapshot này là baseline live đã kiểm tra bằng AWS CLI read-only trong account `197826770971`, region `ap-southeast-1`, ngày 2026-07-23. Trước khi cleanup thật, phải chạy lại các lệnh inventory ở phần sau vì hạ tầng thay đổi nhanh.
+Snapshot này là baseline live đã kiểm tra bằng AWS CLI read-only trong account `197826770971`, region `ap-southeast-1`, cập nhật ngày 2026-07-24. Trước khi cleanup thật, phải chạy lại các lệnh inventory ở phần sau vì hạ tầng thay đổi nhanh.
 
 | Nhóm | Snapshot hiện tại | Cutdown candidate | Evidence để pass |
 |---|---|---|---|
-| EBS `available` | 3 volume `gp2`, tổng 6GiB, có tag PVC cũ `valkey-cart`, `kafka-data`, `postgresql-data` | Có, candidate rõ nhất | Verify không còn PV/PVC/workload live, approval owner, delete sau approval, after evidence volume not found |
+| EBS `available` | 3 volume `gp2`, tổng 6GiB, có tag PVC cũ `valkey-cart`, `kafka-data`, `postgresql-data` | Có, nhưng chỉ là candidate sau-Mandate-8 | Verify Mandate 8 đã nghiệm thu/đã chuyển sang Plan B, không còn PV/PVC/workload live, approval owner, delete sau approval, after evidence volume not found |
 | EIP unattached | Không thấy; EIP `13.213.127.91` đang gắn NAT | Không | Screenshot/CLI chứng minh EIP có `AssociationId` |
 | Snapshot self-owned | 0 | Không | CLI count/output bằng 0 |
 | AMI self-owned | 0 | Không | CLI count/output bằng 0 |
@@ -180,11 +197,13 @@ Snapshot này là baseline live đã kiểm tra bằng AWS CLI read-only trong a
 | NAT | 1 public NAT `nat-0b963ceaf95a7817f` | Không cleanup ngay | Decision record: NAT còn phục vụ private egress, chỉ tối ưu khi có route/endpoint analysis |
 | VPC endpoints | S3 Gateway + 5 Interface endpoints x 3 subnets | Có thể là optimization candidate | Decision record endpoint-hour vs NAT data, không phá SSM/ECR/private access |
 | S3 lifecycle | Audit trail 30 ngày, sosflow ALB logs 7 ngày, bucket khác cần owner | Có owner-matrix candidate | Bucket owner matrix, lifecycle hoặc lý do giữ lại |
-| CloudWatch | EKS cluster log retention 90 ngày, stored ~4.38GB; audit Lambda 14 ngày | Không cắt mù audit | Decision record giữ audit log; nếu tối ưu phải nhắm ingestion/cardinality/sampling |
+| CloudWatch | EKS cluster log retention 90 ngày, stored ~4.8GB; audit Lambda router 14 ngày; M12 heartbeat log group 90 ngày | Không cắt mù audit | Decision record giữ audit log; nếu tối ưu phải nhắm ingestion/cardinality/sampling |
 
 ### 5.1. Candidate cutdown đang rõ nhất
 
 Ba EBS volume sau là mũi có thể làm evidence nhanh nhất, vì chúng đang `available`, không attach instance nào, tổng 6GiB `gp2`:
+
+> Cảnh báo quan trọng: với EBS do Kubernetes PVC tạo, `available` chỉ nghĩa là volume không đang attach vào EC2 node. Một PV/PVC `Bound` nhưng không có pod đang mount cũng có thể hiện là `available` ở AWS. Vì vậy không được kết luận đây là orphan chỉ từ AWS console/CLI.
 
 | Volume | AZ | Type | Size | PVC tag | PV tag |
 |---|---|---|---|---|---|
@@ -201,6 +220,42 @@ Pass evidence tối thiểu cho mũi này:
 5. Grafana/SLO và kubectl events không có regression sau cleanup.
 
 Nếu không có kubectl hoặc không verify được PV/PVC, không được xóa. Ghi `NO-GO` và để candidate ở trạng thái pending evidence.
+
+### 5.1.1. Gate riêng với Mandate 8 trước khi xóa 3 EBS cũ
+
+Ba volume `valkey-cart`, `kafka-data`, `postgresql-data` là dấu vết của các datastore in-cluster cũ. Vì vậy đây không chỉ là cleanup cost; nó cũng là điểm đóng hẳn đường rollback nóng của Mandate 8. Chỉ được coi là `GO` khi các điều kiện sau đều đúng:
+
+1. Mandate 8 đã được owner/mentor nghiệm thu phần managed migration hoặc team đã chốt rõ rằng hệ thống đang dùng Plan B thay cho Plan A.
+2. App live đang trỏ sang managed services:
+   - `cart` dùng ElastiCache, TLS/auth bật, không còn dual-write ngược về `valkey-cart`.
+   - `checkout`, `accounting`, `fraud-detection` dùng Amazon MSK.
+   - `accounting`, `product-catalog`, `product-reviews` dùng RDS.
+3. Managed rollback đã có evidence:
+   - RDS snapshot/PITR còn dùng được.
+   - ElastiCache snapshot còn dùng được.
+   - MSK retention/topic còn đủ cho replay/khôi phục.
+4. Kubernetes live không còn pod/PVC/PV đang phụ thuộc các volume đó, hoặc owner Mandate 8 xác nhận rõ PVC đó chỉ còn giữ làm evidence/rollback lịch sử và đã được phép xóa.
+5. GitOps không còn trạng thái sẽ tạo lại PVC cũ ngoài ý muốn, hoặc nếu còn manifest lịch sử thì phải có owner xác nhận rằng nó không còn được sync/apply vào runtime.
+
+`NO-GO` nếu một trong các điểm sau xảy ra:
+
+- chưa mở được tunnel để chạy `kubectl get pv,pvc -A`;
+- vẫn thấy PVC/PV `Bound` hoặc pod cũ `postgresql`, `valkey-cart`, `kafka`;
+- Mandate 8 vẫn cần giữ PVC cũ làm nguồn so sánh parity/evidence;
+- chưa xác nhận snapshot/PITR/retention managed;
+- đang có incident hoặc Mandate 13 load/spot demo đang chạy.
+
+Nhận định hiện tại theo Git/AWS read-only ngày 2026-07-24:
+
+- AWS vẫn thấy 3 volume ở trạng thái `available`, không attach instance nào.
+- RDS `techx-tf3-postgres` đang `available`, Multi-AZ, private endpoint.
+- ElastiCache `techx-tf3-valkey` đang `available`, bật transit encryption và at-rest encryption.
+- MSK `techx-tf3-kafka` đang `ACTIVE`.
+- Snapshot Plan B đã thấy `available`: `techx-tf3-postgres-pre-cleanup-20260721-2242` và `techx-tf3-valkey-pre-cleanup-20260721-2243`.
+- Chưa xác minh được PV/PVC live vì tunnel `localhost:8443` không mở trong phiên kiểm tra này.
+- `origin/main` vẫn còn `gitops/infrastructure/datastore-pvc.yaml` khai báo `postgresql-data` và `kafka-data`; đây là lý do phải coi phần K8s/GitOps live là gate bắt buộc, không phải thủ tục phụ.
+
+Kết luận: 3 EBS này có thể là evidence tốt cho Mandate 18, nhưng không được xóa chỉ dựa trên tag AWS. Cần chạy lại gate K8s live ngay trước cleanup; nếu gate sạch hoặc owner Mandate 8 đã chốt xóa PVC sau nghiệm thu thì việc xóa không gạt Mandate 8, vì Mandate 8 lúc đó đã chuyển sang Plan B. Nếu gate không sạch thì giữ lại và ghi pending.
 
 ### 5.2. Candidate lớn hơn nhưng cần decision, không cleanup vội
 
