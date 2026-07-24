@@ -1,8 +1,8 @@
 # PM-149 — RBAC least privilege evidence
 
-Status: implemented and reconciled in production. Read-only runtime, rollout,
-and smoke verification completed on 2026-07-24; the two ServiceAccount
-impersonation checks remain pending a pre-authorized privileged verifier.
+Status: implemented, reconciled, and verified in production on 2026-07-24.
+SEC-01 and SEC-02 acceptance checks passed; privileged verifier identity capture
+remains as an audit-metadata follow-up.
 
 ## Scope
 
@@ -29,7 +29,7 @@ flagd changes.
 | Hotfix PR / merge | `#383` / `4dbceba` |
 | Argo revision | `4dbceba9c32d09ec4ea926fab860d3d62819f4c0` |
 | Readonly verifier | `arn:aws:sts::197826770971:assumed-role/tf3-production-readonly/viet-readonly` |
-| Privileged verifier | Pending; current identity cannot impersonate ServiceAccounts or read RBAC resources directly |
+| Privileged verifier | User-supplied authorized operator output; identity capture pending |
 
 ## Render evidence
 
@@ -129,20 +129,23 @@ Argo's live resource tree reported namespaced `Role/grafana` and
 `otel-gateway`, `otel-node-agent`, and `prometheus`; no Grafana-owned
 `ClusterRole` or `ClusterRoleBinding` was managed by the Application.
 
-Direct RBAC reads and both required impersonation checks were inconclusive
-because the verifier received:
+The first read-only attempt was inconclusive because that identity could not
+impersonate ServiceAccounts or read RBAC resources. A subsequent authorized
+operator supplied the required production results:
 
 ```text
-cannot impersonate resource "serviceaccounts" ... in namespace "techx-tf3"
-cannot get resource "roles" ... in namespace "techx-tf3"
-cannot get resource "rolebindings" ... in namespace "techx-tf3"
-cannot list resource "clusterroles" ... at the cluster scope
-cannot list resource "clusterrolebindings" ... at the cluster scope
+kube-system list secrets: no
+techx-tf3 list secrets: yes
+Role/grafana: resources=configmaps,secrets; verbs=get,watch,list
+RoleBinding/grafana: Role/grafana -> ServiceAccount/techx-tf3/grafana
+Grafana ClusterRole/ClusterRoleBinding grep: no output
 ```
 
-Do not close the privileged SEC-01 acceptance line until an existing authorized
-operator records the expected `no` for `kube-system` and `yes` for `techx-tf3`.
-No extra production RBAC should be granted solely to run this verification.
+This proves that Grafana cannot read Secrets across namespace boundaries, can
+read the required objects only in `techx-tf3`, has no mutate verb, and is bound
+only through a namespaced Role. SEC-01 therefore passes. The operator should
+still attach `kubectl auth whoami` output to identify the verifier in the audit
+record; no extra production RBAC is required.
 
 ### SEC-02 result
 
