@@ -1,0 +1,46 @@
+# Mandate #15 — Scenario 2, BƯỚC B: nhiễu vô hại ở `recommendation`
+#
+# ⚠️ APPLY FILE NÀY Ở T+5, tức ~5 PHÚT SAU khi apply scenario-2a-payment-real-issue.yaml.
+# Apply ngay cùng lúc với A là hỏng bài test — xem phần giải thích dòng thời gian trong
+# file A. Tóm tắt: engine cần ~5 phút warm-up, nhiễu bắn ở T+0 thì nó không kịp thấy.
+#
+# Đây là "nhiễu phụ": chỉ số tài nguyên nhảy rõ nhưng KHÔNG gây lỗi. Engine phải nhận ra
+# đây là chuyện nhỏ, tách riêng khỏi sự cố `payment`, và tuyệt đối không để nó che mất
+# `payment`.
+#
+# Vì sao KHÔNG dùng flag `recommendationCacheFailure`: flag đó làm hỏng cache thật, tức
+# là gây lỗi — trong khi spec đòi nhiễu "không gây lỗi". Dùng nó là tự phá bài test, vì
+# lúc đó engine gom cả 2 vào một cluster "đều là lỗi" cũng không sai. StressChaos tạo
+# đúng thứ spec cần: CPU nhảy, error rate vẫn 0.
+#
+# CHẠY:  kubectl apply -f chaos/experiments/scenario-2b-recommendation-noise.yaml
+# GỠ:    kubectl delete -f chaos/experiments/scenario-2b-recommendation-noise.yaml
+#
+# `duration: 2m` — đủ dài để nằm gọn trong cửa sổ engine đang quan sát (T+5..T+7) nhưng
+# vẫn ngắn hơn hẳn sự cố thật 10 phút, giữ đúng tính chất "spike thoáng qua" của spec và
+# chừa giai đoạn T+7..T+10 chỉ còn mình payment.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: m15-s2-recommendation-noise
+  namespace: techx-tf3
+spec:
+  mode: all
+  duration: 2m
+  selector:
+    namespaces:
+      - techx-tf3
+    labelSelectors:
+      app.kubernetes.io/name: recommendation
+  containerNames:
+    - recommendation
+  stressors:
+    cpu:
+      # load 20 = ~200m, tức ~40% của CPU limit 500m mà recommendation đang đặt.
+      # Chốt bằng đo thật (dry-run 24/07): CPU nhảy 8m -> 173m (spike rõ trên Grafana)
+      # trong khi fail_ratio giữ 0 và endpoint /api/recommendations p95 18-41ms không lỗi.
+      # ĐỪNG nâng lên 80 (giá trị nháp ban đầu): cgroup chỉ 500m, load 80 (~800m yêu cầu)
+      # bóp nghẹt app -> recommendation bắt đầu timeout -> hết "nhiễu vô hại" và bài test
+      # no-masking mất ý nghĩa. Nếu sau này recommendation được nới CPU limit thì đo lại.
+      workers: 1
+      load: 20
