@@ -192,6 +192,20 @@ def test_component_scoped_irsa_values_are_preserved():
     ].endswith("techx-corp-tf3-product-reviews-bedrock")
 
 
+def test_authoritative_render_sets_global_service_account_automount():
+    documents = rendered_documents(render_chart_with_dependencies())
+    service_accounts = [
+        document
+        for document in documents
+        if document.get("kind") == "ServiceAccount"
+        and metadata(document).get("name") == SHARED_SERVICE_ACCOUNT
+    ]
+
+    assert len(service_accounts) == 1
+    assert service_accounts[0]["automountServiceAccountToken"] is False
+    assert "automountServiceAccountToken" not in service_accounts[0]["metadata"]
+
+
 def test_authoritative_render_has_no_shared_sa_workload_without_false():
     documents = rendered_documents(render_chart_with_dependencies())
     targets = []
