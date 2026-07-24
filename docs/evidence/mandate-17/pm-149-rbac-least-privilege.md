@@ -1,7 +1,8 @@
 # PM-149 — RBAC least privilege evidence
 
-Status: implementation evidence template; production verification is pending an
-operator identity with ServiceAccount impersonation and `pods/exec` permission.
+Status: implemented and reconciled in production. Read-only runtime, rollout,
+and smoke verification completed on 2026-07-24; the two ServiceAccount
+impersonation checks remain pending a pre-authorized privileged verifier.
 
 ## Scope
 
@@ -24,11 +25,11 @@ flagd changes.
 | Region | `ap-southeast-1` |
 | Namespace | `techx-tf3` |
 | Git branch | `feat/pm-149-mandate17-rbac-least-privilege` |
-| Git commit | fill after implementation |
-| PR | fill after opening |
-| Argo revision | fill after reconciliation |
-| Readonly verifier | fill identity |
-| Privileged verifier | fill identity |
+| PM-149 PR / merge | `#382` / `0d05aaf` |
+| Hotfix PR / merge | `#383` / `4dbceba` |
+| Argo revision | `4dbceba9c32d09ec4ea926fab860d3d62819f4c0` |
+| Readonly verifier | `arn:aws:sts::197826770971:assumed-role/tf3-production-readonly/viet-readonly` |
+| Privileged verifier | Pending; current identity cannot impersonate ServiceAccounts or read RBAC resources directly |
 
 ## Render evidence
 
@@ -87,25 +88,108 @@ Expected:
 If readonly access returns `Forbidden`, record the exact error and mark the
 check inconclusive; do not interpret it as a security pass.
 
+## Production verification — 2026-07-24
+
+Verification ran read-only through the existing SSM tunnel against EKS
+`v1.35.6-eks-8f14419`. STS confirmed account `197826770971` before any
+Kubernetes query. The documented local profile name `techx-new` was not present
+on this workstation; profile `default` was used only after STS proved that it
+resolved to the production read-only role above.
+
+### Reconciliation and rollout
+
+| Check | Result |
+|---|---|
+| Argo Application | `techx-corp` `Synced/Healthy` at `4dbceba9c32d09ec4ea926fab860d3d62819f4c0` |
+| Deployments | All expected Deployments available; no non-ready application Pod at final gate |
+| Checkout Rollout | `Healthy`, step `7`, stable/current hash `b5479c5d6`, `2/2` ready and updated |
+| Checkout 20% analysis | `checkout-rollout-b5479c5d6-30-1` `Successful` |
+| Checkout 50% analysis | `checkout-rollout-b5479c5d6-30-4` `Successful`, three measurements |
+| Restarts | Newly rolled PM-149 application Pods had zero restarts |
+
+Final checkout 50% measurements:
+
+| Metric | Result |
+|---|---:|
+| Request rate | `2.4833333333333334` requests/second |
+| Canary success rate | `1` |
+| Success-rate regression | `0` |
+| Canary p95 | `22.909090909090875` ms |
+| p95 regression | `19.084090909090875` ms |
+
+The first mass rollout briefly emitted CNI IP-assignment, readiness, and HPA
+missing-metric warnings while replacement Pods started. All affected workloads
+became Ready, no new warning persisted, and the checkout analyses passed, so the
+rollback gate was not triggered.
+
+### SEC-01 result
+
+Argo's live resource tree reported namespaced `Role/grafana` and
+`RoleBinding/grafana` as `Synced`. It reported cluster roles only for
+`otel-gateway`, `otel-node-agent`, and `prometheus`; no Grafana-owned
+`ClusterRole` or `ClusterRoleBinding` was managed by the Application.
+
+Direct RBAC reads and both required impersonation checks were inconclusive
+because the verifier received:
+
+```text
+cannot impersonate resource "serviceaccounts" ... in namespace "techx-tf3"
+cannot get resource "roles" ... in namespace "techx-tf3"
+cannot get resource "rolebindings" ... in namespace "techx-tf3"
+cannot list resource "clusterroles" ... at the cluster scope
+cannot list resource "clusterrolebindings" ... at the cluster scope
+```
+
+Do not close the privileged SEC-01 acceptance line until an existing authorized
+operator records the expected `no` for `kube-system` and `yes` for `techx-tf3`.
+No extra production RBAC should be granted solely to run this verification.
+
+### SEC-02 result
+
+- The initial `#382` render placed the ServiceAccount automount field under
+  `metadata`, which the API server dropped. Regression test `f74d88d` reproduced
+  the missing top-level field.
+- Hotfix `604b78c`, merged by `#383`, moved the field to the Kubernetes
+  ServiceAccount top level.
+- Live `ServiceAccount/techx-corp` returned
+  `automountServiceAccountToken=false`.
+- All 18 shared-SA Deployment templates returned Pod-level automount `false`:
+  `accounting`, `ad`, `cart`, `checkout`, `currency`, `email`, `flagd`,
+  `fraud-detection`, `frontend`, `frontend-proxy`, `image-provider`, `llm`,
+  `load-generator`, `payment`, `product-catalog`, `quote`, `recommendation`,
+  and `shipping`.
+- After canary promotion both checkout Pods used hash `b5479c5d6`, returned
+  Pod-level automount `false`, and had no `kube-api-access-*` volume.
+- `product-reviews` continued to use `product-reviews-bedrock` with role
+  `arn:aws:iam::197826770971:role/techx-corp-tf3-product-reviews-bedrock`.
+
+The focused regression suite passed `11/11` after the hotfix.
+
 ## Availability and smoke tests
 
-Record:
+Final read-only smoke results:
 
-- Argo `Synced/Healthy`;
-- all expected Deployments available;
-- checkout Rollout healthy;
-- Grafana HTTP health through the approved Cloudflare Access path;
-- products and cart smoke tests;
-- approved checkout flow;
-- unchanged flag evaluation behavior;
-- no repeated Grafana sidecar `Forbidden` errors;
-- no IRSA/WebIdentity errors from product-reviews.
+| Endpoint / check | Result |
+|---|---|
+| CloudFront storefront `/` | `200` |
+| CloudFront `/api/products` | `200` |
+| CloudFront `/grafana/` | `403` |
+| CloudFront `/jaeger/` | `403` |
+| CloudFront `/loadgen/` | `403` |
+| CloudFront `/feature/` | `403` |
+| Cloudflare Grafana | `302` to the approved Access login flow |
+| Grafana recent logs | No `Forbidden`, `AccessDenied`, or WebIdentity match |
+| Product-reviews recent logs | No `Forbidden`, `AccessDenied`, `WebIdentity`, or invalid identity token match |
+
+No flagd manifest, token, sync source, `/flagservice` route, or fault-injection
+mechanism was changed.
 
 ## Rollback readiness
 
 | Field | Value |
 |---|---|
-| PM-149 merge commit | fill after merge |
-| Revert branch/PR | fill before merge |
-| Rollback owner | fill before merge |
+| PM-149 merge commit | `0d05aaf` |
+| Corrective hotfix | PR `#383`, merge `4dbceba` |
+| Revert branch/PR | Not created; rollback gate was not triggered |
+| Rollback owner | TF3 production operator through normal reviewed GitOps PR |
 | Argo expected behavior | reconcile reverted Git state; no manual live patch |
