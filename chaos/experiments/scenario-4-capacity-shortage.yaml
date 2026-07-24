@@ -1,52 +1,68 @@
 # Mandate #15 — Scenario 4: "TỰ KHẮC PHỤC THÀNH CÔNG" (remediation actually works)
 #
-# ⚠️ File này CHỈ là một phần của Scenario 4. Phải chạy theo runbook:
-#    chaos/experiments/scenario-4-capacity-shortage.md
-#    Apply riêng file này KHÔNG tạo ra kịch bản đúng (thiếu bước hạ replica + tăng tải).
+# Kịch bản DUY NHẤT trong bộ này chấm được "sau khi engine hành động thì sự cố hết".
+# Ba kịch bản kia chỉ chấm được phát hiện + ra quyết định.
 #
-# VÌ SAO CẦN KỊCH BẢN NÀY (khác hẳn 3 kịch bản kia):
-# Scenario 1/2/3 đo được engine PHÁT HIỆN đúng và RA QUYẾT ĐỊNH đúng, nhưng KHÔNG đo
-# được "sau khi engine hành động thì sự cố hết". Lý do: netem/stress do Chaos Mesh giữ
-# tới hết `duration`, nên engine có scale hay restart thì lỗi vẫn còn nguyên. Sự cố hết
-# là do hết giờ, không phải do engine. Chấm "khắc phục thành công" trên 3 kịch bản đó
-# thì engine chắc chắn trượt dù nó không làm gì sai.
+# THIẾT KẾ NÀY ĐÃ ĐƯỢC KIỂM CHỨNG BẰNG CHẠY NHÁP 24/07 — số đo thật ở cuối file.
 #
-# Kịch bản này thuộc loại lỗi KHÁC: **thiếu năng lực phục vụ**. `payment` bị hạ còn 1
-# replica và replica đó bị ép cạn CPU, trong khi tải đang cao. Đây là loại sự cố mà
-# THÊM REPLICA CHỮA ĐƯỢC THẬT — vì pod mới sinh ra KHÔNG bị stress (Chaos Mesh chốt
-# danh sách pod đích tại thời điểm inject, không đuổi theo pod mới).
+# ==== VÌ SAO KHÔNG DÙNG StressChaos (bản nháp đầu đã bị loại) ====
+# Bản đầu ép cạn CPU payment + hạ còn 1 replica. Chạy nháp cho thấy KHÔNG DÙNG ĐƯỢC:
+# ở ~20 rps, payment tiêu rất ít CPU nên dù bị bóp xuống một phần của limit 300m nó vẫn
+# thừa sức phục vụ. Đo được: load 60 -> checkout p95 chỉ 120ms->150ms; đẩy lên
+# workers 4/load 100 cũng chỉ 270ms; tăng tải lên 300 user thì p95 lên 330ms NHƯNG
+# products cũng lên 250ms -> mất luôn tín hiệu "payment là nguyên nhân gốc".
 #
-# => Engine scale payment 1 -> 3: hai pod mới hoàn toàn khoẻ gánh phần lớn traffic
-#    => checkout p95 tụt xuống THẬT. Đây là thứ đo được và chấm được.
+# ==== CƠ CHẾ CỦA BẢN HIỆN TẠI ====
+# Làm chậm ĐÚNG 1 pod payment (`mode: fixed` + `value: "1"`), không đụng pod còn lại.
+# Một nửa lệnh gọi đi vào pod chậm -> checkout p95 vọt lên, trong khi cart/product vẫn
+# sạch nguyên. Đây là "thiếu năng lực phục vụ" ở dạng đo được rõ nhất.
 #
-# `mode: all` ở đây an toàn vì lúc apply chỉ còn ĐÚNG 1 replica (runbook đã hạ trước),
-# nên chỉ 1 pod bị stress. Sau khi engine scale lên, các pod mới không nằm trong danh
-# sách đã chốt -> vẫn khoẻ. Đó chính là cơ chế làm cho remediation có tác dụng thật.
+# `latency: 1s` chọn có chủ đích: NHỎ HƠN readinessProbe timeout (2s) và livenessProbe
+# timeout (3s) của payment, nên pod GIỮ Ready và KHÔNG bị restart. Đây chính là bài học
+# từ Scenario 1 (PR #400) — delay 5s làm probe fail, pod rơi khỏi endpoint, và sự cố
+# trượt từ "chậm" thành "chết". ĐỪNG nâng latency lên quá 1.5s.
 #
-# ⚠️ CHƯA CHẠY NHÁP BAO GIỜ. Trước buổi chấm phải chạy thử một lần để chỉnh `load`:
-# payment có CPU limit chỉ 300m (chặt hơn recommendation nhiều) và readinessProbe
-# tcpSocket timeout 2s. Ép quá tay thì pod fail probe -> bị loại khỏi endpoint -> sự cố
-# trượt từ "quá tải" thành "chết hẳn", và lúc đó scale vẫn cứu được nhưng chữ ký sự cố
-# lại sai giống bài học Scenario 1 (xem PR #400). Chạy nháp: xem payment còn `1/1 Ready`
-# và checkout còn phục vụ được (dù chậm) thì mới đạt.
+# ==== KHẮC PHỤC: PHẢI LÀ `rollout restart`, KHÔNG PHẢI `scale` ====
+# Chạy nháp phát hiện: `kubectl scale deploy/payment --replicas=4` KHÔNG cứu được gì
+# (p95 vẫn ~2000ms). Lý do: checkout gọi payment qua gRPC với kết nối HTTP/2 dài hạn,
+# thêm pod mới KHÔNG kéo được traffic sang — client vẫn bám các pod cũ, gồm cả pod chậm.
+#
+# `kubectl rollout restart deploy/payment` mới có tác dụng: buộc client gRPC kết nối lại,
+# đồng thời pod mang netem bị thay thế. Chaos Mesh KHÔNG bơm lại vào pod mới (nó chốt
+# danh sách pod đích tại thời điểm inject), nên sự cố hết THẬT.
+#
+# ==== SỐ ĐO THỰC TẾ (chạy nháp 24/07, 100 user) ====
+#   Baseline ................. checkout p95  120ms | avg   44ms
+#   Sau khi bơm (1/2 pod) .... checkout p95 1600ms | avg 1169ms   <- vọt 13x
+#   Sau `scale 2->4` ......... checkout p95 2000ms | avg 1226ms   <- KHONG cai thien
+#   Sau `rollout restart` .... checkout p95 1100ms | avg  165ms
+#   Ổn định .................. checkout p95   87ms | avg   57ms   <- hoi phuc hoan toan
+#   Suốt quá trình: cart/products giữ 12-24ms, cả 2 pod payment 1/1 Ready, 0 restart,
+#   fail_ratio = 0.
+#
+# CHẠY:  kubectl apply -f chaos/experiments/scenario-4-capacity-shortage.yaml
+# GỠ:    kubectl delete -f chaos/experiments/scenario-4-capacity-shortage.yaml
+#
+# Không cần hạ replica trước như bản cũ — cứ để payment ở 2 replica mặc định.
 apiVersion: chaos-mesh.org/v1alpha1
-kind: StressChaos
+kind: NetworkChaos
 metadata:
-  name: m15-s4-payment-cpu-saturation
+  name: m15-s4-payment-partial-degradation
   namespace: techx-tf3
 spec:
-  mode: all
+  action: delay
+  # `fixed` + value "1" = chỉ 1 pod bị chậm, bất kể payment đang có mấy replica.
+  # Đây là điều kiện để remediation có ý nghĩa: phải còn pod khoẻ để so sánh.
+  mode: fixed
+  value: "1"
   duration: 10m
   selector:
     namespaces:
       - techx-tf3
     labelSelectors:
       app.kubernetes.io/name: payment
-  containerNames:
-    - payment
-  stressors:
-    cpu:
-      # payment limit = 300m. load 60 (~600m yêu cầu) ép cạn hẳn cgroup để tạo nghẽn
-      # rõ rệt dưới tải. Nếu chạy nháp thấy pod mất Ready thì hạ dần (40 -> 30).
-      workers: 1
-      load: 60
+  delay:
+    # 1s < probe timeout 2s -> pod giữ Ready. Xem giải thích ở đầu file.
+    latency: "1s"
+    jitter: "100ms"
+    correlation: "50"
