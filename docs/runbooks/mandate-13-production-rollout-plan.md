@@ -6,9 +6,9 @@ Tai lieu nay giai thich ro thay doi du kien cho Mandate 13, tai sao can thay doi
 
 Thay doi nay nham day production toi trang thai co the dat cac dieu kien con thieu cua Mandate 13:
 
-1. spot ratio dat it nhat 50% theo node count
+1. spot share vuot 50% theo huong evidence cua mandate
 2. co arm64/Graviton live tren production
-3. khong dong truc tiep vao duong checkout/place-order truoc khi quay video
+3. khong tao SPOF moi truoc khi quay video
 
 ## 2. Hien trang truoc thay doi
 
@@ -29,7 +29,7 @@ Nhan dinh:
 
 ## 3. Thay doi duoc dua vao PR
 
-## 3.1. Tat stateful nodegroup dang rong
+### 3.1. Tat stateful nodegroup dang rong
 
 Phan Terraform duoc them de cho phep tat han `stateful_1a` bang bien `enable_stateful_node_group = false`.
 
@@ -43,36 +43,45 @@ Ly do:
 Tac dung mong doi:
 
 - Giam 1 on-demand node rong
-- Khong giam headroom cua 4 node on-demand dang gang observability va workload nen
+- Khong giam headroom cua 4 node on-demand dang ganh observability va workload nen
 
-## 3.2. Them 1 arm64 spot NodePool rieng
+### 3.2. Them arm64 spot NodePool rieng va bo freeze consolidation
 
 Them `flash-sale-spot-arm64` trong Karpenter voi:
 
 - `kubernetes.io/arch = arm64`
 - `karpenter.sh/capacity-type = spot`
 - taint rieng `techx.io/arch = arm64:NoSchedule`
+- `limits.nodes = 2`
+
+Dong thoi:
+
+- bo `budgets.nodes: "0"` tren pool Spot hien co
+- ha `consolidateAfter` ve `3m` de con co the chung minh co xuong
 
 Ly do:
 
 - NodePool spot hien tai hardcode `amd64`
 - Du image da multi-arch thi production van khong len duoc arm64 neu khong mo nodepool rieng
+- Freeze consolidation se auto-fail yeu cau co xuong
 - Tach nodepool arm64 rieng giup rollout theo cach co kiem soat, khong day toan bo workload sang arm64 ngay
 
-## 3.3. Chi opt-in `recommendation` sang arm64
+### 3.3. Chi opt-in `product-catalog` sang arm64
 
 Them file override rieng `values-mandate13.yaml` va moc vao Argo Application.
 
 Workload duoc chon:
 
-- `recommendation`
+- `product-catalog`
 
 Ly do chon:
 
 - la workload stateless
-- khong nam tren duong place-order truc tiep
+- da co `2 replicas`
+- da co PDB
+- da co topology spread hard theo zone/hostname
 - image dang deploy la OCI image index, co the hien la multi-arch
-- failure cua no co tac dong hep hon so voi `checkout`, `frontend-proxy`, `cart`
+- failure cua no khong tao SPOF moi nhu phuong an `recommendation`
 
 ## 4. Tai sao khong sua manh tay hon
 
@@ -104,7 +113,7 @@ Da kiem tra:
    - khong co pod `techx-tf3` nao tren node stateful
 3. `kubectl get nodeclaims`
    - hien co 3 spot nodeclaim
-4. `aws ecr describe-images` cho tag recommendation dang deploy
+4. `aws ecr describe-images` cho tag product-catalog dang deploy
    - `imageManifestMediaType = application/vnd.oci.image.index.v1+json`
    - xac nhan la manifest list, khong phai single-arch image
 5. `terraform validate`
@@ -121,20 +130,19 @@ Da kiem tra:
 Neu rollout thanh cong:
 
 - `stateful_1a` bi go bo
-- Karpenter co the tao 1 arm64 spot node moi khi `recommendation` can schedule
-- Tong the node sau on dinh du kien:
-  - 4 spot
-  - 4 on-demand
-  - ty le spot = `50%`
-- Production co arm64 live de claim Graviton
+- baseline default on-demand giam tu `4 -> 2`
+- Karpenter co the tao toi da `2` arm64 spot node cho `product-catalog`
+- production co arm64 live de claim Graviton
+- co cua so thuc te de do lai spot share va node-hours thay vi chi dem node
 
 ## 7. Rui ro con lai
 
-Van con 3 nhom rui ro can theo doi sau merge:
+Van con 4 nhom rui ro can theo doi sau merge:
 
-1. `recommendation` co the image multi-arch nhung runtime van gap issue rieng tren arm64
-2. Karpenter co the chua tao arm64 node neu scheduler chua canh tranh du de dat pod moi
-3. Go `stateful_1a` la thay doi ha tang that, can xac nhan lai khong con phu thuoc an danh nao ngoai `techx-tf3`
+1. `product-catalog` co the image multi-arch nhung runtime van gap issue rieng tren arm64
+2. Karpenter co the chua tao du `2` arm64 spot node neu scheduler chua canh tranh du de dat pod moi
+3. Ha baseline on-demand tu `4 -> 2` la thay doi ha tang that, can theo doi sat observability headroom
+4. Go `stateful_1a` can xac nhan lai khong con phu thuoc an danh nao ngoai `techx-tf3`
 
 ## 8. Cach verify sau merge
 
@@ -162,14 +170,14 @@ $total = ($nodes | Measure-Object).Count
 Dieu can thay:
 
 - co node `arm64`
-- `recommendation` nam tren node `arm64`
-- spot ratio dat `>= 50%`
+- `product-catalog` nam tren node `arm64`
+- scale-down con hoat dong, khong bi freeze
 - he thong van xanh, khong co pod critical bi Pending
 
 ## 9. Binh luan cho buoi review
 
 Noi gon:
 
-- thay doi nay khong co tinh chat “toi uu dep”
-- day la rollout co chu dich de dat 2 gap con thieu cua Mandate 13 la `spot ratio` va `arm64 live`
-- chon workload nhe va bo node rong de giam rui ro production
+- thay doi nay khong co tinh chat "toi uu dep"
+- day la rollout co chu dich de sua dung 3 gap that cua Mandate 13: `arm64 live`, `khong tao SPOF`, `co xuong that`
+- chon workload 2 replica + PDB thay vi workload 1 replica

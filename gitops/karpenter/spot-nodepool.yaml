@@ -48,13 +48,7 @@ spec:
     nodes: 6
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
-    consolidateAfter: 10m
-    # Freeze voluntary replacements until elastic workload placement and N-1 gates pass.
-    budgets:
-      - nodes: "0"
-        reasons:
-          - Drifted
-          - Underutilized
+    consolidateAfter: 3m
 ---
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
@@ -127,17 +121,12 @@ spec:
       expireAfter: 168h
       terminationGracePeriod: 10m
   limits:
-    cpu: "4"
-    memory: 16Gi
-    nodes: 1
+    cpu: "8"
+    memory: 32Gi
+    nodes: 2
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
-    consolidateAfter: 10m
-    budgets:
-      - nodes: "0"
-        reasons:
-          - Drifted
-          - Underutilized
+    consolidateAfter: 3m
 ---
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
