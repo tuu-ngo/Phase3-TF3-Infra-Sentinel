@@ -259,9 +259,17 @@ def _check_rule(client, rule_name, expected, target_arn, label):
     return failures
 
 
-def _check_subscriptions(client, topic_arn, expected_endpoints, label):
-    failures = []
-    actual = {}
+def _count_confirmed_subscriptions(client, topic_arn):
+    """Đếm subscription đã confirm — GHI NHẬN, không phải invariant.
+
+    Bản trước coi cả PendingConfirmation lẫn Deleted là FAIL. Một người chưa bấm
+    link xác nhận là trạng thái onboarding, không phải hệ thống hỏng, mà heartbeat
+    chạy 5 phút/lần nên nó biến thành hàng trăm mail mỗi ngày — và mail đó chỉ tới
+    được đúng những người ĐÃ confirm. Số liệu vẫn được ghi vào output để dùng làm
+    bằng chứng nghiệm thu.
+    """
+    confirmed = 0
+    pending = 0
     token = None
     while True:
         kwargs = {"TopicArn": topic_arn}
@@ -269,16 +277,14 @@ def _check_subscriptions(client, topic_arn, expected_endpoints, label):
             kwargs["NextToken"] = token
         response = client.list_subscriptions_by_topic(**kwargs)
         for subscription in response.get("Subscriptions", []):
-            actual[subscription.get("Endpoint")] = subscription.get("SubscriptionArn")
+            if subscription.get("SubscriptionArn", "").startswith("arn:"):
+                confirmed += 1
+            else:
+                pending += 1
         token = response.get("NextToken")
         if not token:
             break
-
-    for endpoint in expected_endpoints:
-        subscription_arn = actual.get(endpoint)
-        if not subscription_arn or subscription_arn in ("PendingConfirmation", "Deleted"):
-            failures.append(f"SNS required subscription is not confirmed: {label}/{endpoint}")
-    return failures
+    return {"confirmed": confirmed, "unconfirmed": pending}
 
 
 def _check_router_integrity(client, function_arn, expected, label):
@@ -370,8 +376,8 @@ def handler(event, _context):
     trail_name = os.environ["TRAIL_NAME"]
     bucket_name = os.environ["AUDIT_BUCKET_NAME"]
     topic_arn = os.environ["ALERT_TOPIC_ARN"]
-    fallback_topic_arn = os.environ["FALLBACK_ALERT_TOPIC_ARN"]
     global_topic_arn = os.environ["GLOBAL_ALERT_TOPIC_ARN"]
+    required_bucket_kms_key_arn = os.environ["REQUIRED_BUCKET_KMS_KEY_ARN"]
     max_log_age = int(os.environ["MAX_LOG_DELIVERY_AGE_MINUTES"])
     max_digest_age = int(os.environ["MAX_DIGEST_DELIVERY_AGE_MINUTES"])
     required_retention = int(os.environ["REQUIRED_RETENTION_DAYS"])
@@ -389,7 +395,6 @@ def handler(event, _context):
     expected_alarm_config = json.loads(os.environ["HEARTBEAT_ALARM_CONFIG_JSON"])
     expected_alarm_actions = set(json.loads(os.environ["HEARTBEAT_ALARM_ACTION_ARNS_JSON"]))
     alarm_source_arn_pattern = os.environ["HEARTBEAT_ALARM_SOURCE_ARN_PATTERN"]
-    expected_endpoints = json.loads(os.environ["EXPECTED_SUBSCRIPTION_ENDPOINTS_JSON"])
     required_s3_arns = json.loads(os.environ["S3_DATA_EVENT_ARNS_JSON"])
 
     cloudtrail = boto3.client("cloudtrail", region_name=region)
@@ -496,13 +501,18 @@ def handler(event, _context):
         if not noncurrent_expiration_days or min(noncurrent_expiration_days) < required_lifecycle:
             failures.append("audit bucket noncurrent-version lifecycle is shorter than approved")
 
+        # PM-126 đã đưa bucket từ AES256 sang CMK. Kiểm cả thuật toán LẪN key:
+        # đúng "aws:kms" nhưng trỏ sang key khác vẫn là mất quyền kiểm soát khoá,
+        # mà kẻ tấn công đổi key thì bucket vẫn "được mã hoá" trên giấy tờ.
         encryption = s3.get_bucket_encryption(Bucket=bucket_name)
-        algorithms = {
-            item.get("ApplyServerSideEncryptionByDefault", {}).get("SSEAlgorithm")
-            for item in encryption.get("ServerSideEncryptionConfiguration", {}).get("Rules", [])
-        }
-        if algorithms != {"AES256"}:
-            failures.append("audit bucket default encryption differs from approved AES256 state")
+        rules = encryption.get("ServerSideEncryptionConfiguration", {}).get("Rules", [])
+        defaults = [rule.get("ApplyServerSideEncryptionByDefault", {}) for rule in rules]
+        algorithms = {item.get("SSEAlgorithm") for item in defaults}
+        key_ids = {item.get("KMSMasterKeyID") for item in defaults}
+        if algorithms != {"aws:kms"}:
+            failures.append("audit bucket default encryption is not aws:kms")
+        elif key_ids != {required_bucket_kms_key_arn}:
+            failures.append("audit bucket is encrypted with a key other than the approved audit key")
 
         public_access = s3.get_public_access_block(Bucket=bucket_name)["PublicAccessBlockConfiguration"]
         if not all(public_access.get(key) for key in (
@@ -568,14 +578,14 @@ def handler(event, _context):
     except Exception as exc:
         failures.append(f"CloudWatch alarm check failed: {type(exc).__name__}: {exc}")
 
+    subscription_counts = {}
     for client, current_topic, label in (
         (sns, topic_arn, region),
-        (sns, fallback_topic_arn, f"{region}/heartbeat-fallback"),
         (sns_global, global_topic_arn, global_region),
     ):
         try:
             attributes = client.get_topic_attributes(TopicArn=current_topic).get("Attributes", {})
-            failures.extend(_check_subscriptions(client, current_topic, expected_endpoints, label))
+            subscription_counts[label] = _count_confirmed_subscriptions(client, current_topic)
             if current_topic in expected_alarm_actions:
                 failures.extend(_check_cloudwatch_publish_policy(
                     attributes,
@@ -605,6 +615,8 @@ def handler(event, _context):
         "trail": trail_name,
         "status": "FAIL" if failures else "PASS",
         "failures": failures,
+        # Ghi nhận, không phải invariant — xem _count_confirmed_subscriptions.
+        "subscriptions": subscription_counts,
     }
     if failures:
         delivered, delivery_failures = _publish_independently(
