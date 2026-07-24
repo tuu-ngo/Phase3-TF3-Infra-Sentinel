@@ -211,9 +211,23 @@ resource "aws_sns_topic" "m12_heartbeat_fallback" {
 }
 
 data "aws_iam_policy_document" "m12_heartbeat_fallback" {
+  # Liệt kê tường minh thay vì "sns:*". Topic policy của SNS chỉ nhận các action
+  # phạm vi topic; "sns:*" nở ra cả action mức account (CreateTopic, ListTopics,
+  # Unsubscribe...) và SetTopicAttributes trả về
+  # "InvalidParameter: Policy statement action out of service scope".
+  # Đây đúng là danh sách trong default topic policy của AWS.
   statement {
-    sid       = "AllowAccountManagement"
-    actions   = ["sns:*"]
+    sid = "AllowAccountManagement"
+    actions = [
+      "sns:AddPermission",
+      "sns:DeleteTopic",
+      "sns:GetTopicAttributes",
+      "sns:ListSubscriptionsByTopic",
+      "sns:Publish",
+      "sns:RemovePermission",
+      "sns:SetTopicAttributes",
+      "sns:Subscribe",
+    ]
     resources = [aws_sns_topic.m12_heartbeat_fallback.arn]
 
     principals {
@@ -255,9 +269,20 @@ resource "aws_sns_topic_policy" "m12_heartbeat_fallback" {
 # nó, alarm action sẽ fail âm thầm. Thêm ở production root vì đây là nơi sở hữu
 # alarm; module M11 giữ nguyên.
 data "aws_iam_policy_document" "m12_primary_alarm_topic" {
+  # Cùng lý do như topic fallback: "sns:*" bị SNS từ chối vì lọt action ngoài
+  # phạm vi topic.
   statement {
-    sid       = "AllowAccountManagement"
-    actions   = ["sns:*"]
+    sid = "AllowAccountManagement"
+    actions = [
+      "sns:AddPermission",
+      "sns:DeleteTopic",
+      "sns:GetTopicAttributes",
+      "sns:ListSubscriptionsByTopic",
+      "sns:Publish",
+      "sns:RemovePermission",
+      "sns:SetTopicAttributes",
+      "sns:Subscribe",
+    ]
     resources = [module.audit_detection_ap_southeast_1.sns_topic_arn]
 
     principals {
@@ -372,6 +397,21 @@ data "aws_iam_policy_document" "m12_audit_heartbeat" {
     resources = [
       module.audit_detection_ap_southeast_1.sns_topic_arn,
       module.audit_detection_us_east_1.sns_topic_arn,
+    ]
+  }
+
+  # Cả hai topic M11 mã hoá bằng CMK riêng của từng region, nên sns:Publish
+  # không đủ — publisher phải gọi được KMS. Đúng lỗi đã làm sập luồng alert của
+  # router M11; heartbeat publish vào chính hai topic đó nên dính y hệt.
+  statement {
+    sid = "EncryptAuditAlert"
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+    ]
+    resources = [
+      module.audit_detection_ap_southeast_1.kms_key_arn,
+      module.audit_detection_us_east_1.kms_key_arn,
     ]
   }
 
