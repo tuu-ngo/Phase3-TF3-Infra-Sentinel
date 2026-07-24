@@ -14,6 +14,12 @@ output "sns_topic_arn" {
   value = aws_sns_topic.audit_alerts.arn
 }
 
+# Topic alert mã hoá bằng key này, nên mọi publisher ngoài module (heartbeat M12)
+# phải được cấp quyền KMS trên nó — không thì publish bị deny.
+output "kms_key_arn" {
+  value = aws_kms_key.audit.arn
+}
+
 output "event_rule_names" {
   value = keys(var.event_rules)
 }
