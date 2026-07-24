@@ -1,28 +1,25 @@
 # Mandate #15 — Scenario 2, BƯỚC A: sự cố thật ở `payment`
 #
-# Scenario 2 ("KHÔNG BỊ CHE" / no masking) chạy bằng HAI file, apply CÁCH NHAU ~5 PHÚT:
-#   A (file này) — sự cố thật ở `payment`, 10 phút                   -> apply ở T+0
-#   B (scenario-2b-recommendation-noise.yaml) — nhiễu vô hại, 2 phút -> apply ở T+5
+# Scenario 2 ("KHÔNG BỊ CHE" / no masking) chạy bằng HAI file, APPLY CÙNG LÚC ở T+0:
+#   A (file này) — sự cố thật ở `payment`, 10 phút
+#   B (scenario-2b-recommendation-noise.yaml) — nhiễu vô hại, 5 phút
 #
-# VÌ SAO PHẢI TÁCH LÀM 2 (đừng gộp lại thành 1 file cho gọn):
-# Engine của AIO02 start cùng lúc bơm lỗi và cần ~5 phút warm-up mới bắt đầu phát hiện,
-# nên cửa sổ nó thực sự quan sát là T+5 → T+10. Nếu nhiễu bắn ở T+0 và chỉ sống 60 giây
-# thì tới lúc engine tỉnh, nhiễu đã tắt từ lâu — engine không bao giờ thấy nó, và bài
-# test "không bị che" tự động biến thành bản sao của Scenario 1 (chỉ còn mỗi payment).
-# Kết quả trông vẫn đẹp nhưng KHÔNG chứng minh được gì về khả năng chống masking.
+# Giữ 2 file thay vì gộp làm 1 để gỡ được riêng từng phần khi cần (ví dụ muốn tắt nhiễu
+# sớm mà giữ sự cố thật), chứ KHÔNG phải để apply lệch giờ.
 #
-# Cách khác đã cân nhắc và loại: kéo nhiễu dài 8-10 phút để nó chồng lên cửa sổ engine.
-# Làm vậy thì nhiễu không còn là "spike ngắn thoáng qua" như spec mô tả, và vì nó sống
-# gần bằng sự cố thật nên engine gom theo cửa sổ thời gian cũng ra kết quả y hệt gom
-# theo đồ thị phụ thuộc — mất sạch sức phân biệt của bài test.
-#
-# Dòng thời gian mong muốn:
-#   T+0 ........ apply file A. payment bắt đầu nghẽn.
-#   T+5 ........ engine warm-up xong, bắt đầu nhìn. Apply file B NGAY lúc này.
-#   T+5..T+7 ... CẢ HAI cùng sống -> đây là lúc chấm "tách được 2 cluster hay không".
-#   T+7..T+10 .. chỉ còn payment -> chứng minh engine không bỏ sót sự cố thật sau khi
-#                nhiễu tắt, và không dính kiểu "chỉ thấy payment nhờ nhiễu đã hết".
+# Dòng thời gian:
+#   T+0 ........ apply CẢ HAI file.
+#   T+0..T+5 ... cả hai cùng anomaly -> chấm "tách được 2 cluster hay không". Đây là tình
+#                huống khó nhất cho AlertCorrelator: gom theo cửa sổ thời gian thì 2 thứ
+#                này dính làm một, chỉ khi xét đồ thị phụ thuộc mới tách được.
+#   T+5..T+10 .. nhiễu tắt, chỉ còn payment -> chấm "không bỏ sót sự cố thật sau khi
+#                nhiễu tắt", và loại trừ kiểu "chỉ thấy payment nhờ nhiễu đã hết".
 #   T+10 ....... file A tự hết hạn, netem tự gỡ.
+#
+# GHI CHÚ LỊCH SỬ: bản trước bắt apply B trễ 5 phút, vì tưởng engine khởi động cùng lúc
+# bơm lỗi rồi mới warm-up. AIO02 xác nhận **engine chạy liên tục** nên luôn warm — không
+# còn giai đoạn mù lúc đầu, bỏ được việc canh hẹn giờ. Nhiễu nâng 2m -> 5m để chắc chắn
+# đủ tín hiệu dù "5 phút" của engine là warm-up hay là độ trễ phát hiện thường trực.
 #
 # `recommendation` và `payment` không có cạnh nào nối nhau trong đồ thị phụ thuộc (cả
 # hai chỉ chung ancestor `frontend`), nên tách được 2 cluster là bằng chứng engine thật
