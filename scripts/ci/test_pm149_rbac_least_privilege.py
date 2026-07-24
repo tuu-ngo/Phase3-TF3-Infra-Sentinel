@@ -300,3 +300,70 @@ def test_authoritative_render_has_namespaced_grafana_rbac_only():
         )
 
 
+def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
+    result = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "origin/main...HEAD",
+        ],
+        cwd=REPO,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    changed = {
+        line.strip().replace("\\", "/")
+        for line in result.stdout.splitlines()
+        if line.strip()
+    }
+    allowed = {
+        "phase3 - information/techx-corp-chart/values.yaml",
+        "phase3 - information/techx-corp-chart/values.schema.json",
+        "phase3 - information/techx-corp-chart/templates/serviceaccount.yaml",
+        "phase3 - information/techx-corp-chart/templates/_objects.tpl",
+        "scripts/ci/test_pm149_rbac_least_privilege.py",
+        "docs/evidence/mandate-17/pm-149-rbac-least-privilege.md",
+    }
+    # PM-149 content files (excluding the test itself and docs).
+    # Only enforce scope guard when the PR is actually a PM-149 content PR.
+    # Updating only the test file or CI infra does not constitute a PM-149 PR.
+    pm149_content = allowed - {
+        "scripts/ci/test_pm149_rbac_least_privilege.py",
+    }
+    if not (changed & pm149_content):
+        pytest.skip("No PM-149 content files changed; scope guard not applicable to this PR")
+    assert changed <= allowed
+    assert not any("flagd" in path.lower() for path in changed)
+    assert not any(
+        marker in "\n".join(changed)
+        for marker in ("terraform", "network-policy", "secrets/")
+    )
+
+
+def test_pm149_diff_preserves_existing_grafana_auth_markers():
+    result = subprocess.run(
+        [
+            "git",
+            "diff",
+            "origin/main...HEAD",
+            "--",
+            "phase3 - information/techx-corp-chart/values.yaml",
+            "phase3 - information/deploy/values-prod.yaml",
+        ],
+        cwd=REPO,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    # Skip if neither Grafana values file was touched by this PR.
+    if not result.stdout.strip():
+        pytest.skip("No changes to Grafana values files; auth marker guard not applicable")
+    deleted_lines = [
+        line[1:]
+        for line in result.stdout.splitlines()
+        if line.startswith("-") and not line.startswith("---")
+    ]
+    for marker in GRAFANA_AUTH_MARKERS:
+        assert not any(marker in line for line in deleted_lines)
