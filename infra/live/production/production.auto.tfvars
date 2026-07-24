@@ -26,6 +26,11 @@ cloudflare_allowed_emails = [
 # Đặt = true để state khớp hạ tầng thật; nếu để default false, plan sau sẽ đòi XOÁ 3 store.
 enable_managed_datastores = true
 
+# Mandate 13: PostgreSQL/Valkey in-cluster da retire o production, nodegroup
+# stateful hien khong con pod techx-tf3 nao. Tat han nodegroup nay de bo node
+# on-demand rong, tang spot ratio ma khong ep giam headroom observability.
+enable_stateful_node_group = false
+
 audit_detection_email_subscriptions = [
   "dophuc776@gmail.com",
   "huutai.ngo2409@gmail.com",

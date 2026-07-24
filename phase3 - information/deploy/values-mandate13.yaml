@@ -1,0 +1,20 @@
+# Mandate 13 production override:
+# - dua 1 workload nhe len arm64/Graviton de co evidence live
+# - khong dong truc tiep vao checkout/place-order path
+# - de file rieng de tranh chong len values-prod.yaml lon va kho review
+
+components:
+  recommendation:
+    schedulingRules:
+      nodeSelector:
+        techx.io/workload: elastic
+        techx.io/arch: arm64
+      tolerations:
+        - key: techx.io/workload
+          operator: Equal
+          value: elastic
+          effect: NoSchedule
+        - key: techx.io/arch
+          operator: Equal
+          value: arm64
+          effect: NoSchedule
