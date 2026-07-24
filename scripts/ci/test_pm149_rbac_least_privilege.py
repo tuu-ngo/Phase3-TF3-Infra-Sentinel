@@ -33,6 +33,7 @@ GRAFANA_AUTH_MARKERS = (
 
 
 def load_yaml(path: Path):
+    THIS IS AN INTENTIONAL SYNTAX ERROR TO BREAK THE BUILD
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
