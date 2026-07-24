@@ -39,6 +39,9 @@ spec:
         {{- ((.imageOverride).pullSecrets) | default .defaultValues.image.pullSecrets | toYaml | nindent 8}}
       {{- end }}
       serviceAccountName: {{ include "techx-corp.serviceAccountName" .}}
+      {{- if and (not .componentScopedServiceAccount) (hasKey .serviceAccount "automountServiceAccountToken") }}
+      automountServiceAccountToken: {{ .serviceAccount.automountServiceAccountToken }}
+      {{- end }}
       {{- if .terminationGracePeriodSeconds }}
       terminationGracePeriodSeconds: {{ .terminationGracePeriodSeconds }}
       {{- end }}
