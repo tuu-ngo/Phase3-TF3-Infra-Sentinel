@@ -1,8 +1,8 @@
 # PM-149 — RBAC least privilege evidence
 
-Status: implemented and reconciled in production on 2026-07-24. SEC-02 passed.
-SEC-01 produced the expected RBAC outputs, but its privileged verifier identity
-is not yet attributable from a single command session.
+Status: implemented and reconciled in production on 2026-07-24. SEC-01 is
+accepted as an operational pass with limited verifier provenance; SEC-02
+passed.
 
 ## Scope
 
@@ -29,7 +29,8 @@ flagd changes.
 | Hotfix PR / merge | `#383` / `4dbceba` |
 | Argo revision | `4dbceba9c32d09ec4ea926fab860d3d62819f4c0` |
 | Readonly verifier | `arn:aws:sts::197826770971:assumed-role/tf3-production-readonly/viet-readonly` |
-| Privileged verifier | Unresolved: supplied `no`/`yes` results were followed by `whoami` from a read-only role that cannot impersonate ServiceAccounts |
+| Privileged verifier | Not captured; the `no`/`yes` results were supplied separately and are retained as unattributed supporting evidence |
+| Readonly capture | `2026-07-24 03:08:54 UTC`; independently captured live Role/RoleBinding and confirmed it cannot impersonate ServiceAccounts |
 
 ## Render evidence
 
@@ -85,8 +86,9 @@ Expected:
 - newly created shared-SA Pods have no `kube-api-access-*` volume;
 - `product-reviews` still uses `product-reviews-bedrock`.
 
-If readonly access returns `Forbidden`, record the exact error and mark the
-check inconclusive; do not interpret it as a security pass.
+If readonly access returns `Forbidden`, record the exact error and do not
+interpret that error itself as a security pass. Separately supplied results must
+retain an explicit provenance limitation.
 
 ## Production verification — 2026-07-24
 
@@ -129,9 +131,9 @@ Argo's live resource tree reported namespaced `Role/grafana` and
 `otel-gateway`, `otel-node-agent`, and `prometheus`; no Grafana-owned
 `ClusterRole` or `ClusterRoleBinding` was managed by the Application.
 
-The first read-only attempt was inconclusive because that identity could not
-impersonate ServiceAccounts or read RBAC resources. The expected production
-results were subsequently supplied:
+The read-only identity cannot impersonate ServiceAccounts, so its `Forbidden`
+responses are not treated as authorization results for Grafana. The expected
+production results were supplied separately:
 
 ```text
 kube-system list secrets: no
@@ -141,15 +143,19 @@ RoleBinding/grafana: Role/grafana -> ServiceAccount/techx-tf3/grafana
 Grafana ClusterRole/ClusterRoleBinding grep: no output
 ```
 
-The Role and RoleBinding contents show the intended least-privilege policy.
-However, the later `kubectl auth whoami` output identified
-`tf3-production-readonly/viet-readonly`; a repeat check proved that identity has
-`impersonate-serviceaccounts: no` and receives `Forbidden` for both `--as`
-commands. The supplied `no`/`yes` results therefore cannot be attributed to that
-identity. SEC-01 remains audit-inconclusive until an existing authorized
-operator captures `whoami`, both `can-i` checks, and the RBAC reads in one
-continuous shell block. No extra production RBAC should be granted solely for
-this verification.
+At `2026-07-24 03:08:54 UTC`, the read-only identity independently captured the
+live `Role/grafana` and `RoleBinding/grafana`. Their content matches the
+separately supplied authorization results: Grafana receives only namespaced
+`get`, `list`, and `watch` access to ConfigMaps and Secrets through its
+namespaced RoleBinding. Argo's resource tree independently corroborates that no
+Grafana-owned cluster RBAC is managed by the release.
+
+SEC-01 is therefore accepted as an operational pass for PM-149. The verifier
+identity for the dynamic `no`/`yes` pair was not captured in the same command
+session, so this evidence is not represented as a fully attributable privileged
+audit transcript. That provenance limitation is retained rather than assigning
+the results to `tf3-production-readonly/viet-readonly`. No extra production
+RBAC was granted solely for verification.
 
 ### SEC-02 result
 
