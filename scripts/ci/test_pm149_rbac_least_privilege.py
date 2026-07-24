@@ -300,14 +300,7 @@ def test_authoritative_render_has_namespaced_grafana_rbac_only():
         )
 
 
-def _ensure_origin_main(repo: Path) -> None:
-    """Ensure origin/main is available with enough history for merge-base."""
-    subprocess.run(["git", "fetch", "--unshallow"], cwd=repo, capture_output=True)  # no-op if already full
-    subprocess.run(["git", "fetch", "origin", "main"], cwd=repo, capture_output=True, check=True)
-
-
 def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
-    _ensure_origin_main(REPO)
     result = subprocess.run(
         [
             "git",
@@ -325,7 +318,15 @@ def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
         for line in result.stdout.splitlines()
         if line.strip()
     }
-
+    allowed = {
+        "phase3 - information/techx-corp-chart/values.yaml",
+        "phase3 - information/techx-corp-chart/values.schema.json",
+        "phase3 - information/techx-corp-chart/templates/serviceaccount.yaml",
+        "phase3 - information/techx-corp-chart/templates/_objects.tpl",
+        "scripts/ci/test_pm149_rbac_least_privilege.py",
+        "docs/evidence/mandate-17/pm-149-rbac-least-privilege.md",
+    }
+    assert changed <= allowed
     assert not any("flagd" in path.lower() for path in changed)
     assert not any(
         marker in "\n".join(changed)
@@ -334,7 +335,6 @@ def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
 
 
 def test_pm149_diff_preserves_existing_grafana_auth_markers():
-    _ensure_origin_main(REPO)
     result = subprocess.run(
         [
             "git",
