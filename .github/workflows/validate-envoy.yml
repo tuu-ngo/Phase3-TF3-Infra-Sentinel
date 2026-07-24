@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Install envsubst (gettext)
         run: |
@@ -78,7 +78,7 @@ jobs:
 
       - name: Upload rendered config as artifact (debug)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: envoy-rendered-config
           path: /tmp/envoy-rendered.yaml
