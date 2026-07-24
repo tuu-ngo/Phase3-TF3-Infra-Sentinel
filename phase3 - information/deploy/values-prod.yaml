@@ -87,7 +87,7 @@ opensearch:
   resources:
     requests:
       cpu: 250m
-      memory: 750Mi
+      memory: 1280Mi
     limits:
       cpu: 750m
       memory: 1600Mi
@@ -97,7 +97,7 @@ prometheus:
     resources:
       requests:
         cpu: 150m
-        memory: 450Mi
+        memory: 900Mi
       limits:
         cpu: 800m
         memory: 1200Mi
@@ -1155,7 +1155,7 @@ components:
     resources:
       requests:
         cpu: 200m
-        memory: 1Gi
+        memory: 256Mi
       limits:
         cpu: "1"
         memory: 1500Mi
