@@ -1,8 +1,8 @@
 # PM-149 — RBAC least privilege evidence
 
-Status: implemented, reconciled, and verified in production on 2026-07-24.
-SEC-01 and SEC-02 acceptance checks passed; privileged verifier identity capture
-remains as an audit-metadata follow-up.
+Status: implemented and reconciled in production on 2026-07-24. SEC-02 passed.
+SEC-01 produced the expected RBAC outputs, but its privileged verifier identity
+is not yet attributable from a single command session.
 
 ## Scope
 
@@ -29,7 +29,7 @@ flagd changes.
 | Hotfix PR / merge | `#383` / `4dbceba` |
 | Argo revision | `4dbceba9c32d09ec4ea926fab860d3d62819f4c0` |
 | Readonly verifier | `arn:aws:sts::197826770971:assumed-role/tf3-production-readonly/viet-readonly` |
-| Privileged verifier | User-supplied authorized operator output; identity capture pending |
+| Privileged verifier | Unresolved: supplied `no`/`yes` results were followed by `whoami` from a read-only role that cannot impersonate ServiceAccounts |
 
 ## Render evidence
 
@@ -130,8 +130,8 @@ Argo's live resource tree reported namespaced `Role/grafana` and
 `ClusterRole` or `ClusterRoleBinding` was managed by the Application.
 
 The first read-only attempt was inconclusive because that identity could not
-impersonate ServiceAccounts or read RBAC resources. A subsequent authorized
-operator supplied the required production results:
+impersonate ServiceAccounts or read RBAC resources. The expected production
+results were subsequently supplied:
 
 ```text
 kube-system list secrets: no
@@ -141,11 +141,15 @@ RoleBinding/grafana: Role/grafana -> ServiceAccount/techx-tf3/grafana
 Grafana ClusterRole/ClusterRoleBinding grep: no output
 ```
 
-This proves that Grafana cannot read Secrets across namespace boundaries, can
-read the required objects only in `techx-tf3`, has no mutate verb, and is bound
-only through a namespaced Role. SEC-01 therefore passes. The operator should
-still attach `kubectl auth whoami` output to identify the verifier in the audit
-record; no extra production RBAC is required.
+The Role and RoleBinding contents show the intended least-privilege policy.
+However, the later `kubectl auth whoami` output identified
+`tf3-production-readonly/viet-readonly`; a repeat check proved that identity has
+`impersonate-serviceaccounts: no` and receives `Forbidden` for both `--as`
+commands. The supplied `no`/`yes` results therefore cannot be attributed to that
+identity. SEC-01 remains audit-inconclusive until an existing authorized
+operator captures `whoami`, both `can-i` checks, and the RBAC reads in one
+continuous shell block. No extra production RBAC should be granted solely for
+this verification.
 
 ### SEC-02 result
 
