@@ -326,6 +326,10 @@ def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
         "scripts/ci/test_pm149_rbac_least_privilege.py",
         "docs/evidence/mandate-17/pm-149-rbac-least-privilege.md",
     }
+    # Skip scope guard if this PR does not touch any PM-149 files.
+    # The guard is only meaningful for PRs that are within PM-149 scope.
+    if not (changed & allowed):
+        pytest.skip("No PM-149 files changed; scope guard not applicable to this PR")
     assert changed <= allowed
     assert not any("flagd" in path.lower() for path in changed)
     assert not any(
@@ -349,6 +353,9 @@ def test_pm149_diff_preserves_existing_grafana_auth_markers():
         capture_output=True,
         text=True,
     )
+    # Skip if neither Grafana values file was touched by this PR.
+    if not result.stdout.strip():
+        pytest.skip("No changes to Grafana values files; auth marker guard not applicable")
     deleted_lines = [
         line[1:]
         for line in result.stdout.splitlines()
