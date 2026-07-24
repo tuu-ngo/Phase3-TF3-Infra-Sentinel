@@ -4,9 +4,18 @@ data "aws_partition" "current" {}
 
 data "aws_region" "current" {}
 
+# Mandate 12: đóng gói ĐÚNG một file thay vì cả thư mục.
+#
+# source_dir zip mọi thứ trong lambda/, nên __pycache__ có sẵn trên máy chạy
+# terraform sẽ lọt vào artifact và làm CodeSha256 lệch baseline mà heartbeat
+# so — một FAIL giả, hoặc tệ hơn là che mất một thay đổi code thật. .gitignore
+# không giúp được vì archive_file đọc filesystem chứ không đọc git.
+#
+# Router chỉ import stdlib và boto3 (Lambda runtime có sẵn) nên một file là đủ.
+# Nếu sau này tách thêm module, đổi lại source_dir và bổ sung excludes.
 data "archive_file" "audit_alert_router" {
   type        = "zip"
-  source_dir  = "${path.module}/lambda"
+  source_file = "${path.module}/lambda/index.py"
   output_path = "${path.module}/audit-alert-router.zip"
 }
 
@@ -18,16 +27,158 @@ locals {
   lambda_name       = "${local.name_prefix}-router"
   sns_topic_name    = "${local.name_prefix}-alerts"
   trail_arn         = "arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:trail/${local.trail_name}"
+  sns_topic_arn     = "arn:${data.aws_partition.current.partition}:sns:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${local.sns_topic_name}"
+
+  # Từ vựng resource của audit plane, cố ý bỏ hậu tố region: một event ở
+  # ap-southeast-1 vẫn có thể nhắm vào resource của instance us-east-1.
+  # Trail, bucket, router, topic alert, DLQ và 8 rule đều mang một trong hai
+  # tiền tố này.
+  audit_plane_keywords = distinct(concat(
+    [
+      lower("${var.cluster_name}-audit-detection"),
+      lower("${var.cluster_name}-audit-trail"),
+    ],
+    [for keyword in var.additional_audit_plane_keywords : lower(keyword)],
+  ))
   detector_config = jsonencode({
-    deployment_label                 = var.deployment_label
-    allowed_principals               = var.allowed_automation_principal_arns
-    human_principals                 = var.human_principal_arns
-    secret_reader_principals         = var.secret_reader_principal_arns
-    sensitive_secret_names           = var.sensitive_secret_names
-    suppressions                     = var.suppressions
-    critical_group_numbers           = [1, 2, 4]
+    deployment_label         = var.deployment_label
+    allowed_principals       = var.allowed_automation_principal_arns
+    human_principals         = var.human_principal_arns
+    secret_reader_principals = var.secret_reader_principal_arns
+    sensitive_secret_names   = var.sensitive_secret_names
+    suppressions             = var.suppressions
+    # Mandate 12: nhóm critical KHÔNG bao giờ bị allowlist automation hoặc
+    # suppression làm im lặng. Gồm cả group 3 (leo thang quyền IAM), group 7
+    # (tamper alert plane) và group 8 (boundary/OIDC), vì kịch bản phải bắt được
+    # là kẻ tấn công dùng chính principal automation đã được tin cậy.
+    critical_group_numbers           = [1, 2, 3, 4, 7, 8]
     critical_group_6_target_keywords = ["cloudtrail", "kms", "secret", "rds", "elasticache", "s3"]
+    # Nhóm 7 khớp theo eventName trên 5 service và không lọc resource được ở
+    # tầng event pattern. Danh sách này là thứ phân biệt "đụng vào audit plane"
+    # với "deploy một Lambda bất kỳ": chỉ vế đầu mới alert và mới critical.
+    critical_group_7_target_keywords = local.audit_plane_keywords
   })
+}
+
+data "aws_iam_policy_document" "audit_kms" {
+  statement {
+    sid    = "EnableAccountRootPermissions"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowSnsEncryption"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["sns.amazonaws.com"]
+    }
+
+    # GenerateDataKey* chứ không phải GenerateDataKey: SNS có thể gọi biến thể
+    # WithoutPlaintext tuỳ đường mã hoá, ghim đúng một tên là rủi ro deny ngầm.
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = [local.sns_topic_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:EncryptionContext:aws:sns:topicArn"
+      values   = [local.sns_topic_arn]
+    }
+  }
+
+  # Mandate 12: alarm heartbeat publish vào chính topic này, mà topic mã hoá
+  # bằng CMK — CloudWatch phải gọi được KMS thì alarm action mới giao được.
+  # Chỉ chặn confused deputy bằng aws:SourceAccount: điều kiện hẹp hơn
+  # (aws:SourceArn, encryption context) chưa xác nhận được là CloudWatch có
+  # điền trong request tới KMS, mà đoán sai ở đây thì hỏng đúng theo kiểu im
+  # lặng. Xác nhận bằng set-alarm-state sau apply — xem §Phase 3 execution plan.
+  dynamic "statement" {
+    for_each = var.cloudwatch_alarm_publisher_enabled ? [1] : []
+
+    content {
+      sid    = "AllowCloudWatchAlarmPublish"
+      effect = "Allow"
+
+      principals {
+        type        = "Service"
+        identifiers = ["cloudwatch.amazonaws.com"]
+      }
+
+      actions = [
+        "kms:Decrypt",
+        "kms:GenerateDataKey*",
+      ]
+      resources = ["*"]
+
+      condition {
+        test     = "StringEquals"
+        variable = "aws:SourceAccount"
+        values   = [data.aws_caller_identity.current.account_id]
+      }
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.create_trail ? [1] : []
+
+    content {
+      sid    = "AllowCloudTrailEncryption"
+      effect = "Allow"
+
+      principals {
+        type        = "Service"
+        identifiers = ["cloudtrail.amazonaws.com"]
+      }
+
+      actions = [
+        "kms:DescribeKey",
+        "kms:GenerateDataKey*",
+      ]
+      resources = ["*"]
+
+      condition {
+        test     = "StringEquals"
+        variable = "aws:SourceArn"
+        values   = [local.trail_arn]
+      }
+
+      condition {
+        test     = "StringLike"
+        variable = "kms:EncryptionContext:aws:cloudtrail:arn"
+        values   = ["arn:${data.aws_partition.current.partition}:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"]
+      }
+    }
+  }
+}
+
+resource "aws_kms_key" "audit" {
+  description             = "Audit log and alert encryption for ${local.name_prefix}"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.audit_kms.json
+}
+
+resource "aws_kms_alias" "audit" {
+  name          = "alias/${local.name_prefix}-audit"
+  target_key_id = aws_kms_key.audit.key_id
 }
 
 resource "aws_s3_bucket" "trail_logs" {
@@ -35,6 +186,12 @@ resource "aws_s3_bucket" "trail_logs" {
 
   bucket              = local.trail_bucket_name
   object_lock_enabled = true
+
+  # Mandate 12: bucket này là nguồn bằng chứng. Guard chặn plan vô tình
+  # replace/delete; nó không thay Object Lock hay IAM boundary.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "trail_logs" {
@@ -63,10 +220,13 @@ resource "aws_s3_bucket_object_lock_configuration" "trail_logs" {
 
   bucket = aws_s3_bucket.trail_logs[0].id
 
+  # Mandate 12: default retention chỉ áp cho object ĐƯỢC GHI SAU khi apply.
+  # Object đã giao trước cutover giữ nguyên retention cũ; claim 365 ngày chỉ
+  # tính từ UTC cutover đã ghi trong evidence.
   rule {
     default_retention {
-      mode = "GOVERNANCE"
-      days = 14
+      mode = var.trail_object_lock_mode
+      days = var.trail_object_lock_days
     }
   }
 
@@ -80,7 +240,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "trail_logs" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      kms_master_key_id = aws_kms_key.audit.arn
+      sse_algorithm     = "aws:kms"
     }
   }
 }
@@ -112,6 +273,15 @@ resource "aws_s3_bucket_lifecycle_configuration" "trail_logs" {
 
     noncurrent_version_expiration {
       noncurrent_days = var.trail_s3_retention_days
+    }
+  }
+
+  # Mandate 12: lifecycle không được xoá object khi Object Lock còn hiệu lực.
+  # Nếu retention lifecycle <= Object Lock, S3 để rule fail âm thầm.
+  lifecycle {
+    precondition {
+      condition     = var.trail_s3_retention_days > var.trail_object_lock_days
+      error_message = "S3 lifecycle retention must be longer than Object Lock retention."
     }
   }
 }
@@ -186,6 +356,40 @@ data "aws_iam_policy_document" "trail_logs" {
       values   = ["false"]
     }
   }
+
+  # Mandate 12: chỉ CloudTrail service principal được ghi/sửa object archive.
+  # User/role kể cả admin bị chặn put, delete, đổi retention và bypass
+  # governance ở tầng resource policy, độc lập với IAM boundary.
+  statement {
+    sid    = "DenyNonCloudTrailObjectMutation"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions = [
+      "s3:AbortMultipartUpload",
+      "s3:BypassGovernanceRetention",
+      "s3:DeleteObject",
+      "s3:DeleteObjectTagging",
+      "s3:DeleteObjectVersion",
+      "s3:PutObject",
+      "s3:PutObjectAcl",
+      "s3:PutObjectLegalHold",
+      "s3:PutObjectRetention",
+      "s3:PutObjectTagging",
+      "s3:RestoreObject",
+    ]
+    resources = ["${aws_s3_bucket.trail_logs[0].arn}/*"]
+
+    condition {
+      test     = "StringNotEqualsIfExists"
+      variable = "aws:PrincipalServiceName"
+      values   = ["cloudtrail.amazonaws.com"]
+    }
+  }
 }
 
 resource "aws_s3_bucket_policy" "trail_logs" {
@@ -205,17 +409,72 @@ resource "aws_cloudtrail" "audit" {
   is_multi_region_trail         = var.is_multi_region_trail
   enable_logging                = true
   enable_log_file_validation    = true
+  kms_key_id                    = aws_kms_key.audit.arn
 
-  event_selector {
-    include_management_events = true
-    read_write_type           = "All"
+  # Mandate 12: advanced selectors THAY THẾ basic selector. Phải khai báo lại
+  # Management read/write, nếu không sẽ mất toàn bộ coverage của Mandate 11.
+  advanced_event_selector {
+    name = "ManagementReadWrite"
+
+    field_selector {
+      field  = "eventCategory"
+      equals = ["Management"]
+    }
+  }
+
+  # Chỉ bật S3 data events khi owner đã duyệt exact bucket/prefix.
+  dynamic "advanced_event_selector" {
+    for_each = length(var.s3_data_event_arns) > 0 ? [true] : []
+
+    content {
+      name = "ApprovedSensitiveS3Objects"
+
+      field_selector {
+        field  = "eventCategory"
+        equals = ["Data"]
+      }
+
+      field_selector {
+        field  = "resources.type"
+        equals = ["AWS::S3::Object"]
+      }
+
+      field_selector {
+        field       = "resources.ARN"
+        starts_with = var.s3_data_event_arns
+      }
+    }
+  }
+
+  lifecycle {
+    prevent_destroy = true
+
+    # Đưa chính audit archive vào data selector sẽ tạo vòng lặp logging:
+    # mỗi lần CloudTrail giao log lại sinh thêm một PutObject data event.
+    precondition {
+      condition = alltrue([
+        for arn in var.s3_data_event_arns :
+        !startswith(arn, "${aws_s3_bucket.trail_logs[0].arn}/")
+      ])
+      error_message = "s3_data_event_arns must not include the audit archive bucket or any of its prefixes."
+    }
+
+    # Selector data events chỉ được tạo khi danh sách khác rỗng. Nếu rỗng mà vẫn
+    # apply thì trail không ghi GetObject và Mandate 12 trượt đòn "làm hụt" —
+    # nhưng plan lại xanh, nên sai sót đó im lặng. Precondition biến nó thành
+    # lỗi plan thay vì một gate chỉ nằm trong tài liệu.
+    precondition {
+      condition     = !var.require_s3_data_event_coverage || length(var.s3_data_event_arns) > 0
+      error_message = "Mandate 12: audit_detection_s3_data_event_arns is empty. Fill the data-owner approved S3 ARNs (each ending with /) before planning production."
+    }
   }
 
   depends_on = [aws_s3_bucket_policy.trail_logs]
 }
 
 resource "aws_sns_topic" "audit_alerts" {
-  name = local.sns_topic_name
+  name              = local.sns_topic_name
+  kms_master_key_id = aws_kms_key.audit.arn
 }
 
 resource "aws_sns_topic_subscription" "email" {
@@ -281,6 +540,14 @@ resource "aws_iam_role" "audit_alert_router" {
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
 }
 
+# PM-126 exception metadata:
+# rule=AVD-AWS-0057
+# resource=data.aws_iam_policy_document.audit_alert_router
+# reason=CloudWatch Logs authorizes child log streams with the required log-group ARN suffix :*; the actions are limited to CreateLogStream and PutLogEvents.
+# owner=tuu-ngo
+# ticket=PM-126
+# review_date=2026-08-22
+#tfsec:ignore:aws-iam-no-policy-wildcards:exp:2026-08-22
 data "aws_iam_policy_document" "audit_alert_router" {
   statement {
     sid    = "WriteLambdaLogs"
@@ -299,6 +566,20 @@ data "aws_iam_policy_document" "audit_alert_router" {
       "sns:Publish",
     ]
     resources = [aws_sns_topic.audit_alerts.arn]
+  }
+
+  # Từ khi topic được mã hoá bằng CMK (PM-126, AVD-AWS-0095), riêng sns:Publish
+  # là KHÔNG đủ: publisher phải tự gọi KMS để lấy data key. Thiếu statement này
+  # SNS trả AuthorizationErrorException, publish_alert không bắt exception nên
+  # Lambda fail → retry → DLQ, và alert biến mất khỏi hộp thư trong im lặng.
+  statement {
+    sid    = "EncryptAlerts"
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+    ]
+    resources = [aws_kms_key.audit.arn]
   }
 
   statement {

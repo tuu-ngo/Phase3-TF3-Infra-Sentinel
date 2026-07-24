@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pm127-bad
+  namespace: techx-tf3
+spec:
+  initContainers:
+    - name: init
+      image: busybox:latest
+  containers:
+    - name: app
+      image: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp:mutable
+  ephemeralContainers:
+    - name: debug
+      image: quay.io/prometheus/prometheus:v3.11.3

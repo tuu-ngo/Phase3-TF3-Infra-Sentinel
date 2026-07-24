@@ -1,0 +1,9 @@
+# PARITY — POSTGRES CU (in-cluster, da dong bang tu luc cutover)
+# Thoi diem do: 2026-07-21T15:34:21Z UTC
+# Lenh: psql -U otelu -d otel  (checksum = md5 toan dong, doc lap thu tu)
+
+accounting.order|70478|3d4badcc4ae9ec82e3dde7fb160befe7
+accounting.orderitem|129131|b21e5a21279d9e06f6d50c575916d98a
+accounting.shipping|70478|937df8036f6d2face5a180ffae4a9891
+catalog.products|10|bd6d7f7301cd136f0c4dbf4112243dca
+reviews.productreviews|50|bc4d8d6832ba47f191fb16bae49c8647
