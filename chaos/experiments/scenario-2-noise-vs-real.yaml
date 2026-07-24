@@ -1,0 +1,76 @@
+# Mandate #15 — Scenario 2: "KHÔNG BỊ CHE" (no masking)
+#
+# Hai lỗi chạy ĐỒNG THỜI, engine phải tách thành 2 incident cluster riêng và không
+# để cái ồn ào che mất cái nghiêm trọng:
+#
+#   A. `recommendation` — spike CPU vài chục giây, KHÔNG gây lỗi  (nhiễu phụ)
+#   B. `payment`        — nghẽn 5s kéo dài 6 phút, gãy SLO thật   (sự cố thật)
+#
+# Vì sao KHÔNG dùng flag `recommendationCacheFailure` cho phần A: flag đó làm hỏng
+# cache thật, tức là gây lỗi — trong khi spec đòi nhiễu "không gây lỗi". Dùng nó là
+# tự phá bài test, vì engine gom cả 2 vào một cluster "đều là lỗi" cũng không sai.
+# StressChaos tạo đúng thứ spec cần: chỉ số tài nguyên nhảy, error rate vẫn 0.
+#
+# Thiết kế thời gian có chủ đích: nhiễu NGẮN (60s) nằm LỌT trong cửa sổ của sự cố
+# thật (6m), và bắt đầu cùng lúc. Đây là tình huống khó nhất cho AlertCorrelator —
+# nếu nó gom theo cửa sổ thời gian mà không xét đồ thị phụ thuộc, 2 thứ này sẽ dính
+# làm một. `recommendation` và `payment` không có cạnh nào nối nhau trong đồ thị
+# (cả hai chỉ chung ancestor `frontend`), nên tách được là bằng chứng nó thật sự
+# dùng topology chứ không chỉ dùng thời gian.
+#
+# ĐO GÌ:
+#   - Phải ra ĐÚNG 2 cluster, không phải 1 (bị gộp) và không phải 3+ (vỡ vụn)
+#   - Cluster `payment` phải được xếp mức nghiêm trọng cao hơn `recommendation`
+#   - KHÔNG được bỏ sót `payment` — đây là cái spec sợ nhất
+#
+# CHẠY:  kubectl apply -f chaos/experiments/scenario-2-noise-vs-real.yaml
+# GỠ:    kubectl delete -f chaos/experiments/scenario-2-noise-vs-real.yaml
+#
+# ⚠️ Cường độ phần A cần chỉnh sau lần chạy thử: `recommendation` chỉ có 1 replica
+# và có CPU limit, stress quá tay là nó bắt đầu timeout → hết "không gây lỗi" và
+# bài test mất ý nghĩa. Chạy nháp 1 lần, xem error rate của recommendation trên
+# Grafana phải giữ 0, chưa đạt thì hạ `load` xuống trước khi diễn thật.
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: m15-s2-recommendation-noise
+  namespace: techx-tf3
+spec:
+  mode: all
+  duration: 60s
+  selector:
+    namespaces:
+      - techx-tf3
+    labelSelectors:
+      app.kubernetes.io/name: recommendation
+  containerNames:
+    - recommendation
+  stressors:
+    cpu:
+      # 1 worker / load 80 = ăn ~80% của 1 core trong cgroup của container.
+      # Đủ để metric CPU nhảy rõ trên Grafana nhưng còn chừa CPU cho service phục vụ
+      # request — đó là ranh giới giữa "nhiễu" và "sự cố".
+      workers: 1
+      load: 80
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: m15-s2-payment-real-issue
+  namespace: techx-tf3
+spec:
+  action: delay
+  mode: all
+  # Dài hơn hẳn nhiễu (60s) để có giai đoạn chỉ còn mình nó — nếu engine chỉ báo
+  # payment sau khi nhiễu tắt thì tức là nó ĐÃ bị che, chỉ là che tạm thời.
+  duration: 6m
+  selector:
+    namespaces:
+      - techx-tf3
+    labelSelectors:
+      app.kubernetes.io/name: payment
+  delay:
+    latency: "5s"
+    jitter: "500ms"
+    correlation: "50"
