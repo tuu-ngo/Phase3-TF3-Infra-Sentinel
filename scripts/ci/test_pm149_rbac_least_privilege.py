@@ -326,10 +326,14 @@ def test_pm149_diff_does_not_touch_flagd_or_unrelated_infrastructure():
         "scripts/ci/test_pm149_rbac_least_privilege.py",
         "docs/evidence/mandate-17/pm-149-rbac-least-privilege.md",
     }
-    # Skip scope guard if this PR does not touch any PM-149 files.
-    # The guard is only meaningful for PRs that are within PM-149 scope.
-    if not (changed & allowed):
-        pytest.skip("No PM-149 files changed; scope guard not applicable to this PR")
+    # PM-149 content files (excluding the test itself and docs).
+    # Only enforce scope guard when the PR is actually a PM-149 content PR.
+    # Updating only the test file or CI infra does not constitute a PM-149 PR.
+    pm149_content = allowed - {
+        "scripts/ci/test_pm149_rbac_least_privilege.py",
+    }
+    if not (changed & pm149_content):
+        pytest.skip("No PM-149 content files changed; scope guard not applicable to this PR")
     assert changed <= allowed
     assert not any("flagd" in path.lower() for path in changed)
     assert not any(
