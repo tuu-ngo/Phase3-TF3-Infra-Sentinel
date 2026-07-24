@@ -19,6 +19,16 @@ on:
         options:
           - full
           - pm127-kyverno-ecr
+      allow_bastion_replacement:
+        description: Explicitly acknowledge a reviewed shared-bastion replacement
+        required: true
+        type: boolean
+        default: false
+      bastion_replacement_ticket:
+        description: Approved maintenance ticket/reference when allowing bastion replacement
+        required: false
+        type: string
+        default: ""
 
 permissions:
   id-token: write
@@ -98,8 +108,20 @@ jobs:
 
           terraform plan -no-color -input=false "${target_args[@]}" -out=tfplan
           terraform show -no-color tfplan
+          terraform show -json tfplan > tfplan.json
+          python3 ../../../scripts/ci/validate-bastion-replacement-plan.py \
+            --plan tfplan.json \
+            --allow-replacement "${{ inputs.allow_bastion_replacement }}" \
+            --ticket "${{ inputs.bastion_replacement_ticket }}"
           sha256sum tfplan > tfplan.sha256
 
+      # Zip Lambda do data.archive_file sinh ra lúc PLAN. Job apply chạy trên
+      # runner khác, và `terraform apply <saved plan>` KHÔNG đọc lại data source
+      # — nó dùng giá trị đã ghi trong plan. Nên artifact phải mang theo cả zip,
+      # nếu không apply chết giữa chừng với "reading ZIP file ... no such file".
+      #
+      # Mọi path đều nằm dưới infra/ nên gốc artifact là infra/; job apply
+      # download về đúng thư mục đó để cấu trúc khớp lại.
       - name: Upload saved plan
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -107,6 +129,8 @@ jobs:
           path: |
             ${{ env.TF_WORKING_DIR }}/tfplan
             ${{ env.TF_WORKING_DIR }}/tfplan.sha256
+            ${{ env.TF_WORKING_DIR }}/m12-audit-heartbeat.zip
+            infra/modules/audit-detection/audit-alert-router.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -154,10 +178,15 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: terraform-plan-${{ github.run_id }}-${{ github.sha }}
-          path: ${{ env.TF_WORKING_DIR }}
+          path: infra
 
       - name: Verify saved plan
-        run: sha256sum --check tfplan.sha256
+        run: |
+          set -euo pipefail
+          sha256sum --check tfplan.sha256
+          # Fail sớm với thông báo rõ ràng thay vì để Terraform chết giữa apply.
+          test -f m12-audit-heartbeat.zip
+          test -f ../../modules/audit-detection/audit-alert-router.zip
 
       - name: Apply saved plan
         run: terraform apply -input=false tfplan
