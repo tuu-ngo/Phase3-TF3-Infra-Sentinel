@@ -45,6 +45,18 @@ spec:
           # docker + /var/run/docker.sock -> chaos-daemon không vào được container.
           runtime: containerd
           socketPath: /run/containerd/containerd.sock
+          # chaos-daemon phải có mặt trên MỌI node, nếu không thì pod nằm trên node
+          # thiếu daemon sẽ không bơm lỗi được — và im lặng, không báo gì.
+          # Lần cài đầu (24/07) dính đúng bẫy này: chart để tolerations rỗng nên
+          # daemon chỉ lên 4/8 node, trong khi payment/checkout/frontend/product-catalog
+          # đều nằm trên 3 node Karpenter có taint `techx.io/workload=elastic`.
+          # Scenario 1 và 2 sẽ chạy mà không tạo ra lỗi nào.
+          # Dùng `operator: Exists` (dung thứ mọi taint) thay vì liệt kê từng taint:
+          # Karpenter sinh node động, liệt kê cứng là hỏng lại ngay lần sau CDO01
+          # thêm nodepool mới. Đây cũng là cách các agent DaemonSet khác (CNI,
+          # node-exporter) vẫn làm.
+          tolerations:
+            - operator: Exists
           resources:
             requests:
               cpu: 10m
