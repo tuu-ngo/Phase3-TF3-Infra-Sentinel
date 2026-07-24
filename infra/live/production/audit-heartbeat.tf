@@ -2,18 +2,15 @@
 #
 # Alert dựa-trên-sự-kiện chỉ kêu khi có event. Nếu kẻ tấn công phá đồng thời
 # trail và alert plane thì không còn event nào để kêu. Heartbeat giải quyết đúng
-# điểm đó: nó chạy 5 phút/lần, so trạng thái live với cấu hình đã duyệt, và
-# publish qua nhiều đường độc lập nên một SNS path hỏng không làm mất tín hiệu.
+# điểm đó: nó chạy 5 phút/lần và so trạng thái live với cấu hình đã duyệt.
+#
+# Alert đi qua đúng hai topic alert của M11 (primary + global). M12 KHÔNG tạo
+# topic riêng: trùng topic là trùng thứ phải cấu hình, phải confirm và phải canh.
+# Đánh đổi đã biết: alert plane giờ chỉ có một điểm phụ thuộc chung với M11.
 
 locals {
-  m12_heartbeat_name                = "${var.cluster_name}-m12-audit-heartbeat"
-  m12_heartbeat_schedule_name       = "${var.cluster_name}-m12-audit-heartbeat-schedule"
-  m12_heartbeat_fallback_topic_name = "${var.cluster_name}-m12-audit-heartbeat-fallback"
-
-  # Dựng ARN topic fallback từ thành phần đã biết. Key policy KMS phải khoá
-  # encryption context vào đúng topic này; tham chiếu attribute của chính
-  # aws_sns_topic ở đây sẽ tạo cycle topic → key → policy → topic.
-  m12_heartbeat_fallback_topic_arn = "arn:aws:sns:${var.region}:${data.aws_caller_identity.m12_current.account_id}:${local.m12_heartbeat_fallback_topic_name}"
+  m12_heartbeat_name          = "${var.cluster_name}-m12-audit-heartbeat"
+  m12_heartbeat_schedule_name = "${var.cluster_name}-m12-audit-heartbeat-schedule"
 
   m12_heartbeat_alarm_names = [
     "${var.cluster_name}-m12-audit-heartbeat-missing",
@@ -63,11 +60,11 @@ locals {
   m12_global_router_arn      = "arn:aws:lambda:us-east-1:${data.aws_caller_identity.m12_current.account_id}:function:${module.audit_detection_us_east_1.lambda_function_name}"
   m12_heartbeat_function_arn = "arn:aws:lambda:${var.region}:${data.aws_caller_identity.m12_current.account_id}:function:${local.m12_heartbeat_name}"
 
-  # Hai alarm publish vào cả topic M11 primary lẫn fallback cùng region, để một
-  # đường hỏng không làm mất tín hiệu. Heartbeat so danh sách này với AlarmActions thật.
+  # Tái dùng đúng topic alert M11 cùng region, không tạo topic riêng cho M12.
+  # Topic global không dùng làm alarm action vì CloudWatch alarm chỉ publish được
+  # tới SNS cùng region. Heartbeat so danh sách này với AlarmActions thật.
   m12_heartbeat_alarm_action_arns = [
     module.audit_detection_ap_southeast_1.sns_topic_arn,
-    aws_sns_topic.m12_heartbeat_fallback.arn,
   ]
 
   m12_heartbeat_alarm_source_arn_pattern = "arn:aws:cloudwatch:${var.region}:${data.aws_caller_identity.m12_current.account_id}:alarm:${var.cluster_name}-m12-audit-heartbeat-*"
@@ -111,166 +108,15 @@ locals {
 
 data "aws_caller_identity" "m12_current" {}
 
-# Topic fallback chở đúng nội dung nhạy cảm như hai topic M11 (chi tiết invariant
-# nào của audit plane đang hỏng), nên nó phải được mã hoá bằng CMK giống chúng —
-# để plaintext là hạ chuẩn một đường alert so với phần còn lại.
-#
-# Key riêng chứ không dùng lại key của module M11: key policy M11 khoá encryption
-# context đúng vào topic của nó, muốn dùng chung phải nới điều kiện đó trong
-# module dùng chung cho cả hai region.
-data "aws_iam_policy_document" "m12_heartbeat_fallback_kms" {
-  statement {
-    sid    = "EnableAccountRootPermissions"
-    effect = "Allow"
-
-    principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.m12_current.account_id}:root"]
-    }
-
-    actions   = ["kms:*"]
-    resources = ["*"]
-  }
-
-  statement {
-    sid    = "AllowSnsEncryption"
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["sns.amazonaws.com"]
-    }
-
-    actions = [
-      "kms:Decrypt",
-      "kms:GenerateDataKey",
-    ]
-    resources = ["*"]
-
-    condition {
-      test     = "ArnLike"
-      variable = "aws:SourceArn"
-      values   = [local.m12_heartbeat_fallback_topic_arn]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "kms:EncryptionContext:aws:sns:topicArn"
-      values   = [local.m12_heartbeat_fallback_topic_arn]
-    }
-  }
-
-  # CloudWatch tự gọi KMS khi alarm action publish vào topic mã hoá bằng CMK.
-  # Thiếu statement này alarm fail âm thầm — đúng loại hỏng mà heartbeat sinh ra
-  # để chặn. Điều kiện SourceAccount trùng với điều kiện đã dùng ở topic policy.
-  statement {
-    sid    = "AllowCloudWatchAlarmPublish"
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["cloudwatch.amazonaws.com"]
-    }
-
-    actions = [
-      "kms:Decrypt",
-      "kms:GenerateDataKey*",
-    ]
-    resources = ["*"]
-
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.m12_current.account_id]
-    }
-  }
-}
-
-resource "aws_kms_key" "m12_heartbeat_fallback" {
-  description             = "Alert encryption for ${local.m12_heartbeat_fallback_topic_name}"
-  deletion_window_in_days = 30
-  enable_key_rotation     = true
-  policy                  = data.aws_iam_policy_document.m12_heartbeat_fallback_kms.json
-}
-
-resource "aws_kms_alias" "m12_heartbeat_fallback" {
-  name          = "alias/${local.m12_heartbeat_fallback_topic_name}"
-  target_key_id = aws_kms_key.m12_heartbeat_fallback.key_id
-}
-
-# Fallback cùng region để alarm không phụ thuộc duy nhất vào topic M11 primary.
-# Topic global M11 được Lambda dùng trực tiếp, không dùng làm alarm action vì
-# CloudWatch alarm chỉ publish được tới SNS cùng region.
-resource "aws_sns_topic" "m12_heartbeat_fallback" {
-  name              = local.m12_heartbeat_fallback_topic_name
-  kms_master_key_id = aws_kms_key.m12_heartbeat_fallback.arn
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-data "aws_iam_policy_document" "m12_heartbeat_fallback" {
-  # Liệt kê tường minh thay vì "sns:*". Topic policy của SNS chỉ nhận các action
-  # phạm vi topic; "sns:*" nở ra cả action mức account (CreateTopic, ListTopics,
-  # Unsubscribe...) và SetTopicAttributes trả về
-  # "InvalidParameter: Policy statement action out of service scope".
-  # Đây đúng là danh sách trong default topic policy của AWS.
-  statement {
-    sid = "AllowAccountManagement"
-    actions = [
-      "sns:AddPermission",
-      "sns:DeleteTopic",
-      "sns:GetTopicAttributes",
-      "sns:ListSubscriptionsByTopic",
-      "sns:Publish",
-      "sns:RemovePermission",
-      "sns:SetTopicAttributes",
-      "sns:Subscribe",
-    ]
-    resources = [aws_sns_topic.m12_heartbeat_fallback.arn]
-
-    principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.m12_current.account_id}:root"]
-    }
-  }
-
-  statement {
-    sid       = "AllowCloudWatchAlarmPublish"
-    actions   = ["sns:Publish"]
-    resources = [aws_sns_topic.m12_heartbeat_fallback.arn]
-
-    principals {
-      type        = "Service"
-      identifiers = ["cloudwatch.amazonaws.com"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.m12_current.account_id]
-    }
-
-    condition {
-      test     = "ArnLike"
-      variable = "aws:SourceArn"
-      values   = [local.m12_heartbeat_alarm_source_arn_pattern]
-    }
-  }
-}
-
-resource "aws_sns_topic_policy" "m12_heartbeat_fallback" {
-  arn    = aws_sns_topic.m12_heartbeat_fallback.arn
-  policy = data.aws_iam_policy_document.m12_heartbeat_fallback.json
-}
-
 # Topic primary của M11 chưa có policy cho service principal CloudWatch. Thiếu
 # nó, alarm action sẽ fail âm thầm. Thêm ở production root vì đây là nơi sở hữu
 # alarm; module M11 giữ nguyên.
 data "aws_iam_policy_document" "m12_primary_alarm_topic" {
-  # Cùng lý do như topic fallback: "sns:*" bị SNS từ chối vì lọt action ngoài
-  # phạm vi topic.
+  # Liệt kê tường minh thay vì "sns:*". Topic policy của SNS chỉ nhận action
+  # phạm vi topic; "sns:*" nở ra cả action mức account (CreateTopic, ListTopics,
+  # Unsubscribe...) và SetTopicAttributes trả về
+  # "InvalidParameter: Policy statement action out of service scope".
+  # Đây đúng là danh sách trong default topic policy của AWS.
   statement {
     sid = "AllowAccountManagement"
     actions = [
@@ -318,14 +164,6 @@ data "aws_iam_policy_document" "m12_primary_alarm_topic" {
 resource "aws_sns_topic_policy" "m12_primary_alarm_topic" {
   arn    = module.audit_detection_ap_southeast_1.sns_topic_arn
   policy = data.aws_iam_policy_document.m12_primary_alarm_topic.json
-}
-
-resource "aws_sns_topic_subscription" "m12_heartbeat_fallback_email" {
-  for_each = toset(local.audit_detection_email_subscriptions)
-
-  topic_arn = aws_sns_topic.m12_heartbeat_fallback.arn
-  protocol  = "email"
-  endpoint  = each.value
 }
 
 # source_file (không phải source_dir) và thư mục lambda-heartbeat/ riêng: nếu
@@ -448,32 +286,34 @@ resource "aws_lambda_function" "m12_audit_heartbeat" {
 
   environment {
     variables = {
-      TRAIL_NAME                           = module.audit_detection_ap_southeast_1.trail_name
-      AUDIT_BUCKET_NAME                    = module.audit_detection_ap_southeast_1.trail_bucket_name
-      ALERT_TOPIC_ARN                      = module.audit_detection_ap_southeast_1.sns_topic_arn
-      FALLBACK_ALERT_TOPIC_ARN             = aws_sns_topic.m12_heartbeat_fallback.arn
-      GLOBAL_ALERT_TOPIC_ARN               = module.audit_detection_us_east_1.sns_topic_arn
-      PRIMARY_REGION                       = var.region
-      GLOBAL_REGION                        = "us-east-1"
-      PRIMARY_RULES_JSON                   = jsonencode(local.m12_primary_rules)
-      GLOBAL_RULES_JSON                    = jsonencode(local.m12_global_rules)
-      PRIMARY_ROUTER_ARN                   = local.m12_primary_router_arn
-      GLOBAL_ROUTER_ARN                    = local.m12_global_router_arn
-      ROUTER_EXPECTED_JSON                 = jsonencode(local.m12_router_expected)
-      BOUNDED_PRINCIPALS_JSON              = jsonencode(var.audit_detection_bounded_principals)
-      HEARTBEAT_SCHEDULE_RULE_NAME         = local.m12_heartbeat_schedule_name
-      HEARTBEAT_FUNCTION_ARN               = local.m12_heartbeat_function_arn
-      HEARTBEAT_ALARM_NAMES_JSON           = jsonencode(local.m12_heartbeat_alarm_names)
-      HEARTBEAT_ALARM_CONFIG_JSON          = jsonencode(local.m12_heartbeat_alarm_config)
-      HEARTBEAT_ALARM_ACTION_ARNS_JSON     = jsonencode(local.m12_heartbeat_alarm_action_arns)
-      HEARTBEAT_ALARM_SOURCE_ARN_PATTERN   = local.m12_heartbeat_alarm_source_arn_pattern
-      EXPECTED_SUBSCRIPTION_ENDPOINTS_JSON = jsonencode(local.audit_detection_email_subscriptions)
-      S3_DATA_EVENT_ARNS_JSON              = jsonencode(var.audit_detection_s3_data_event_arns)
-      MAX_LOG_DELIVERY_AGE_MINUTES         = "20"
-      MAX_DIGEST_DELIVERY_AGE_MINUTES      = "90"
-      REQUIRED_RETENTION_DAYS              = tostring(var.audit_detection_trail_object_lock_days)
-      REQUIRED_LIFECYCLE_DAYS              = tostring(var.audit_detection_trail_s3_retention_days)
-      EKS_CLUSTER_NAME                     = var.cluster_name
+      TRAIL_NAME             = module.audit_detection_ap_southeast_1.trail_name
+      AUDIT_BUCKET_NAME      = module.audit_detection_ap_southeast_1.trail_bucket_name
+      ALERT_TOPIC_ARN        = module.audit_detection_ap_southeast_1.sns_topic_arn
+      GLOBAL_ALERT_TOPIC_ARN = module.audit_detection_us_east_1.sns_topic_arn
+      # Lấy từ output đọc thẳng cấu hình mã hoá của bucket, KHÔNG lấy từ
+      # kms_key_arn (key của topic). Hôm nay hai giá trị bằng nhau vì module
+      # dùng chung một key; nếu sau này tách key thì biến này vẫn đúng.
+      REQUIRED_BUCKET_KMS_KEY_ARN        = module.audit_detection_ap_southeast_1.trail_bucket_kms_key_arn
+      PRIMARY_REGION                     = var.region
+      GLOBAL_REGION                      = "us-east-1"
+      PRIMARY_RULES_JSON                 = jsonencode(local.m12_primary_rules)
+      GLOBAL_RULES_JSON                  = jsonencode(local.m12_global_rules)
+      PRIMARY_ROUTER_ARN                 = local.m12_primary_router_arn
+      GLOBAL_ROUTER_ARN                  = local.m12_global_router_arn
+      ROUTER_EXPECTED_JSON               = jsonencode(local.m12_router_expected)
+      BOUNDED_PRINCIPALS_JSON            = jsonencode(var.audit_detection_bounded_principals)
+      HEARTBEAT_SCHEDULE_RULE_NAME       = local.m12_heartbeat_schedule_name
+      HEARTBEAT_FUNCTION_ARN             = local.m12_heartbeat_function_arn
+      HEARTBEAT_ALARM_NAMES_JSON         = jsonencode(local.m12_heartbeat_alarm_names)
+      HEARTBEAT_ALARM_CONFIG_JSON        = jsonencode(local.m12_heartbeat_alarm_config)
+      HEARTBEAT_ALARM_ACTION_ARNS_JSON   = jsonencode(local.m12_heartbeat_alarm_action_arns)
+      HEARTBEAT_ALARM_SOURCE_ARN_PATTERN = local.m12_heartbeat_alarm_source_arn_pattern
+      S3_DATA_EVENT_ARNS_JSON            = jsonencode(var.audit_detection_s3_data_event_arns)
+      MAX_LOG_DELIVERY_AGE_MINUTES       = "20"
+      MAX_DIGEST_DELIVERY_AGE_MINUTES    = "90"
+      REQUIRED_RETENTION_DAYS            = tostring(var.audit_detection_trail_object_lock_days)
+      REQUIRED_LIFECYCLE_DAYS            = tostring(var.audit_detection_trail_s3_retention_days)
+      EKS_CLUSTER_NAME                   = var.cluster_name
     }
   }
 
@@ -523,10 +363,7 @@ resource "aws_cloudwatch_metric_alarm" "m12_audit_heartbeat_missing" {
     FunctionName = aws_lambda_function.m12_audit_heartbeat.function_name
   }
 
-  depends_on = [
-    aws_sns_topic_policy.m12_primary_alarm_topic,
-    aws_sns_topic_policy.m12_heartbeat_fallback,
-  ]
+  depends_on = [aws_sns_topic_policy.m12_primary_alarm_topic]
 }
 
 resource "aws_cloudwatch_metric_alarm" "m12_audit_heartbeat_errors" {
@@ -546,10 +383,7 @@ resource "aws_cloudwatch_metric_alarm" "m12_audit_heartbeat_errors" {
     FunctionName = aws_lambda_function.m12_audit_heartbeat.function_name
   }
 
-  depends_on = [
-    aws_sns_topic_policy.m12_primary_alarm_topic,
-    aws_sns_topic_policy.m12_heartbeat_fallback,
-  ]
+  depends_on = [aws_sns_topic_policy.m12_primary_alarm_topic]
 }
 
 output "m12_audit_heartbeat_function_arn" {
@@ -565,8 +399,4 @@ output "m12_audit_heartbeat_alarm_arns" {
     aws_cloudwatch_metric_alarm.m12_audit_heartbeat_missing.arn,
     aws_cloudwatch_metric_alarm.m12_audit_heartbeat_errors.arn,
   ]
-}
-
-output "m12_heartbeat_fallback_topic_arn" {
-  value = aws_sns_topic.m12_heartbeat_fallback.arn
 }
