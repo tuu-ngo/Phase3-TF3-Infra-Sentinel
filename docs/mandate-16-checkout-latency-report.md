@@ -1,11 +1,12 @@
 # Mandate #16 — Báo cáo hoàn thành: Giảm tail latency checkout dưới tải bền, không tăng tài nguyên
 
-**Ngày thực hiện:** 21–22/07/2026
-**Người thực hiện:** CDO01 — Thuy Trang
+**Ngày thực hiện:** 21–22-23-24/07/2026
+**Người thực hiện:** CDO01
 **Trụ:** Performance Efficiency · chạm Cost Optimization · Reliability
 **Trạng thái:** ✅ PASS — nộp mentor review
 **ADR:** [`docs/adr/0011-mandate-16-checkout-latency-optimization.md`](adr/0011-mandate-16-checkout-latency-optimization.md)
 **Evidence chi tiết:** [`docs/docx_cdo01/mandate-16-parallelize-checkout-prep-order-items.md`](docx_cdo01/mandate-16-parallelize-checkout-prep-order-items.md)
+**Video demo so sánh before and after :**(https://drive.google.com/file/d/1-Pf63j_5VlJTLS4GRs8zKj-L5qeZ4Swc/view?usp=sharing)
 
 ---
 
