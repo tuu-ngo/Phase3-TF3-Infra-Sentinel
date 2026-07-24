@@ -129,7 +129,6 @@ jobs:
           path: |
             ${{ env.TF_WORKING_DIR }}/tfplan
             ${{ env.TF_WORKING_DIR }}/tfplan.sha256
-            ${{ env.TF_WORKING_DIR }}/m12-audit-heartbeat.zip
             infra/modules/audit-detection/audit-alert-router.zip
           if-no-files-found: error
           retention-days: 1
@@ -185,7 +184,6 @@ jobs:
           set -euo pipefail
           sha256sum --check tfplan.sha256
           # Fail sớm với thông báo rõ ràng thay vì để Terraform chết giữa apply.
-          test -f m12-audit-heartbeat.zip
           test -f ../../modules/audit-detection/audit-alert-router.zip
 
       - name: Apply saved plan
