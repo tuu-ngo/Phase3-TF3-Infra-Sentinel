@@ -1,0 +1,52 @@
+# Mandate #15 — Scenario 1: "BẮT ĐÚNG" (catch correctly)
+#
+# Mục tiêu: dựng đúng hiện tượng spec mô tả — P90 latency của `payment` vọt từ
+# ~0.1s lên >5s, kéo theo `checkout` rồi `frontend` (blast radius 3 tầng).
+#
+# Cơ chế: tc netem (qdisc delay) bơm vào network namespace của pod payment bởi
+# chaos-daemon. KHÔNG đụng flagd, KHÔNG sửa Deployment (nên ArgoCD selfHeal
+# không revert giữa chừng như cách `kubectl patch` resources).
+#
+# ĐO GÌ:
+#   - Lead-time  = t(engine ra alert) − t(apply file này)
+#   - Root cause = engine phải chỉ đúng `payment`, KHÔNG phải checkout/frontend
+#   - Blast radius = engine phải liệt kê checkout (+ frontend)
+#
+#   Mốc t0 lấy từ `.status.conditions[type=AllInjected].lastTransitionTime`, KHÔNG
+#   phải lúc bấm apply — chaos-daemon mất vài giây mới bơm xong. Lệch mốc là
+#   lead-time sai.
+#
+# ⚠️ CẢNH BÁO: `mode: all` = CẢ 2 replica payment đều chậm 5s → luồng thanh toán
+# gãy thật, SLO checkout vỡ thật. Chỉ chạy trong khung ít traffic và đã báo trước,
+# nếu không sẽ bị nhầm là sự cố BTC bơm.
+#
+# CHẠY:   kubectl apply -f chaos/experiments/scenario-1-payment-latency.yaml
+# GỠ:     kubectl delete -f chaos/experiments/scenario-1-payment-latency.yaml
+# TẠM DỪNG (giữ object để đọc status):
+#         kubectl -n techx-tf3 annotate networkchaos m15-s1-payment-latency \
+#           experiment.chaos-mesh.org/pause=true --overwrite
+#
+# `duration: 5m` là chốt an toàn: hết 5 phút Chaos Mesh tự gỡ netem kể cả khi
+# không ai nhớ delete. Đừng bỏ field này đi.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: m15-s1-payment-latency
+  namespace: techx-tf3
+spec:
+  action: delay
+  mode: all
+  duration: 5m
+  selector:
+    namespaces:
+      - techx-tf3
+    labelSelectors:
+      app.kubernetes.io/name: payment
+  delay:
+    # 5s để vượt hẳn ngưỡng spec (>5.0s) chứ không nằm sát mép — sát mép thì
+    # không phân biệt được engine bắt đúng hay chỉ ăn may nhiễu đo đạc.
+    latency: "5s"
+    # jitter + correlation để phân bố giống nghẽn thật, không phải một hằng số
+    # phẳng lì mà mô hình học được chỉ sau vài điểm.
+    jitter: "500ms"
+    correlation: "50"
