@@ -6,14 +6,13 @@ dữ liệu giả. Hạ tầng do CDO02 dựng; việc chạy và chấm là c�
 | Scenario | File | Cơ chế | Thời lượng |
 |---|---|---|---|
 | 1. Bắt đúng | [`scenario-1-payment-latency.yaml`](experiments/scenario-1-payment-latency.yaml) | NetworkChaos (tc netem) | 10m |
-| 2A. Không bị che — sự cố thật | [`scenario-2a-payment-real-issue.yaml`](experiments/scenario-2a-payment-real-issue.yaml) | NetworkChaos | 10m, apply ở **T+0** |
-| 2B. Không bị che — nhiễu | [`scenario-2b-recommendation-noise.yaml`](experiments/scenario-2b-recommendation-noise.yaml) | StressChaos | 2m, apply ở **T+5** |
+| 2A. Không bị che — sự cố thật | [`scenario-2a-payment-real-issue.yaml`](experiments/scenario-2a-payment-real-issue.yaml) | NetworkChaos | 10m |
+| 2B. Không bị che — nhiễu | [`scenario-2b-recommendation-noise.yaml`](experiments/scenario-2b-recommendation-noise.yaml) | StressChaos | 5m |
 | 3. Không kêu oan | [`scenario-3-flash-sale-load.md`](experiments/scenario-3-flash-sale-load.md) | Locust ramp (không phải CRD) | giữ tải 10m |
 
-> **Scenario 2 phải apply LÀM HAI BƯỚC cách nhau ~5 phút** — engine start cùng lúc bơm
-> lỗi và cần ~5 phút warm-up, nên cửa sổ nó quan sát là T+5→T+10. Apply nhiễu cùng lúc
-> với sự cố thật ở T+0 thì nhiễu tắt trước khi engine kịp nhìn, và bài test no-masking
-> tự động thoái hoá thành bản sao của Scenario 1. Chi tiết trong header file 2A.
+> **Scenario 2: apply CẢ HAI file cùng lúc ở T+0.** Nhiễu sống T+0→T+5 (chấm tách
+> cluster khi cả hai cùng anomaly), rồi T+5→T+10 chỉ còn payment (chấm không bỏ sót sau
+> khi nhiễu tắt). Engine chạy liên tục nên luôn warm — không cần canh lệch giờ.
 
 ## Vì sao không dùng flagd
 
