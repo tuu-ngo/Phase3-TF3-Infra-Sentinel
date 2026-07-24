@@ -5,6 +5,9 @@ metadata:
   namespace: techx-tf3
   annotations:
     mandate-17.techx.io/public-egress-exception: "Slack webhook HTTPS"
+    mandate-17.techx.io/promotion-blocked: "true"
+    mandate-17.techx.io/promotion-blocker: "verify Kubernetes API use and replace broad HTTPS egress"
+    mandate-17.techx.io/kubernetes-api-dependency: "unverified"
 spec:
   podSelector:
     matchLabels:

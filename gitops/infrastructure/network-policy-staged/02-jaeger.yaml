@@ -10,6 +10,12 @@ spec:
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: otel-gateway
+      ports:
+        - { protocol: TCP, port: 4317 }
+    - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: observability-system

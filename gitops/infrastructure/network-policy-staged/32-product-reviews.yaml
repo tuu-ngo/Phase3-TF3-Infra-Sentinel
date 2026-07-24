@@ -5,6 +5,8 @@ metadata:
   namespace: techx-tf3
   annotations:
     mandate-17.techx.io/public-egress-exception: "Bedrock HTTPS via IRSA"
+    mandate-17.techx.io/promotion-blocked: "true"
+    mandate-17.techx.io/promotion-blocker: "replace broad HTTPS egress with FQDN-aware Bedrock control"
 spec:
   podSelector:
     matchLabels:

@@ -3,6 +3,9 @@ kind: NetworkPolicy
 metadata:
   name: ad-business-policy
   namespace: techx-tf3
+  annotations:
+    mandate-17.techx.io/rollout-role: "first-canary"
+    mandate-17.techx.io/clusterip-proof: "required-before-wider-promotion"
 spec:
   podSelector:
     matchLabels:
