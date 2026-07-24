@@ -25,10 +25,11 @@ Mot phuong an truoc do dua `recommendation` len arm64 tren pool Spot rieng da bi
 Chon phuong an moi:
 
 1. tat nodegroup `stateful_1a` da rong o production
-2. ha baseline managed on-demand nodegroup tu `4 -> 2`
+2. ha baseline managed on-demand nodegroup tu `4 -> 3`
 3. bo freeze consolidation tren NodePool Spot hien co
 4. them NodePool `flash-sale-spot-arm64` cho Spot arm64
 5. chi opt-in `product-catalog` sang arm64
+6. right-size `load-generator` va nang memory request cho `prometheus`/`opensearch`
 
 ## Tai sao chon `product-catalog`
 
@@ -55,7 +56,8 @@ Voi `product-catalog` co 2 replica + PDB + spread theo node/zone, mat 1 Spot nod
 ## Danh doi duoc chap nhan
 
 - Khi mat 1 Spot node, `product-catalog` van song nho replica con lai, nhung replacement pod co the cho arm64 Spot moi len roi moi dat lai 2/2.
-- Giam baseline on-demand tu 4 xuong 2 tang ap luc len Spot/Karpenter hon truoc, nen rollout phai duoc verify sat sau merge.
+- Giam baseline on-demand tu 4 xuong 3 van tao ap luc cho Spot/Karpenter, nhung an toan hon muc 4 xuong 2 trong rollout dau tien.
+- Viec nang request cho `prometheus` va `opensearch` co the lam scheduler chat hon tren giay, nhung doi lai giam rui ro memory pressure/evict khi test that.
 - Muc tieu cua thay doi nay la dat dung huong mandate va tao cua so quay evidence, khong claim san la da pass toan bo.
 
 ## Bat buoc evidence sau rollout

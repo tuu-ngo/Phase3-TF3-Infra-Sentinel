@@ -83,6 +83,20 @@ Ly do chon:
 - image dang deploy la OCI image index, co the hien la multi-arch
 - failure cua no khong tao SPOF moi nhu phuong an `recommendation`
 
+### 3.4. Right-size request truoc khi cat sau node
+
+PR dong thoi dieu chinh request cho mot so workload de tranh tinh trang node "khong vua tren giay" du tai that con thap, hoac nguoc lai scheduler xep duoc nhung runtime lai bi memory pressure:
+
+- `load-generator`: ha memory request tu `1Gi -> 256Mi`
+- `prometheus`: nang memory request tu `450Mi -> 900Mi`
+- `opensearch`: nang memory request tu `750Mi -> 1280Mi`
+
+Ly do:
+
+- `load-generator` dang giu request cao hon usage rat nhieu, lam ton headroom scheduler khong can thiet
+- `prometheus` va `opensearch` la nhom observability de nhay cam, request thieu de tao false-fit va memory pressure khi hạ baseline node
+- right-size truoc giup bai test Mandate 13 sat hon voi yeu cau `request vua du`, khong chi don thuan cat node
+
 ## 4. Tai sao khong sua manh tay hon
 
 Khong chon cac huong sau:
@@ -130,7 +144,7 @@ Da kiem tra:
 Neu rollout thanh cong:
 
 - `stateful_1a` bi go bo
-- baseline default on-demand giam tu `4 -> 2`
+- baseline default on-demand giam tu `4 -> 3`
 - Karpenter co the tao toi da `2` arm64 spot node cho `product-catalog`
 - production co arm64 live de claim Graviton
 - co cua so thuc te de do lai spot share va node-hours thay vi chi dem node
@@ -141,7 +155,7 @@ Van con 4 nhom rui ro can theo doi sau merge:
 
 1. `product-catalog` co the image multi-arch nhung runtime van gap issue rieng tren arm64
 2. Karpenter co the chua tao du `2` arm64 spot node neu scheduler chua canh tranh du de dat pod moi
-3. Ha baseline on-demand tu `4 -> 2` la thay doi ha tang that, can theo doi sat observability headroom
+3. Ha baseline on-demand tu `4 -> 3` van la thay doi ha tang that, can theo doi sat observability headroom
 4. Go `stateful_1a` can xac nhan lai khong con phu thuoc an danh nao ngoai `techx-tf3`
 
 ## 8. Cach verify sau merge
