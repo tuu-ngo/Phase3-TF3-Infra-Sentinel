@@ -52,11 +52,24 @@ spec:
   action: delay
   mode: all
   duration: 10m
+  # BÊN BỊ BƠM: checkout (nguồn phát traffic) — KHÔNG phải payment.
+  # Xem giải thích đầy đủ trong scenario-1-payment-latency.yaml: bơm thẳng vào payment
+  # làm probe kubelet (timeout 2s/3s) fail vì delay 5s, pod bị loại khỏi endpoint và
+  # restart liên tục -> sự cố trượt từ "chậm" thành "chết", sai chữ ký spec cần.
   selector:
     namespaces:
       - techx-tf3
     labelSelectors:
-      app.kubernetes.io/name: payment
+      app.kubernetes.io/name: checkout
+  # Chỉ traffic đi TỚI payment bị chậm; probe kubelet -> payment không đụng.
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - techx-tf3
+      labelSelectors:
+        app.kubernetes.io/name: payment
   delay:
     latency: "5s"
     jitter: "500ms"
