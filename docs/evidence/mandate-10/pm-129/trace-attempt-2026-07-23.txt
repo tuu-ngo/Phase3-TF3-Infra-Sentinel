@@ -1,0 +1,21 @@
+PM-129 trace attempt (read-only; no Terraform Apply or cluster write)
+Date: 2026-07-23 (Asia/Ho_Chi_Minh)
+Command:
+  scripts/ci/trace-provenance.sh --pod image-provider-demo --namespace techx-tf3 \
+    --output /tmp/pm-129-trace-attempt.json
+
+Exit: 1
+Result:
+  {
+    "schemaVersion": 1,
+    "overallResult": "FAIL",
+    "pod": "image-provider-demo",
+    "namespace": "techx-tf3",
+    "failedStep": "preflight",
+    "error": "required command is unavailable: gh"
+  }
+
+Interpretation: live provenance proof is intentionally not marked PASS. The
+current operator environment has no usable GitHub CLI in PATH (and prior PM
+validation also reported invalid GitHub/AWS credentials). Re-authenticate
+`gh`/AWS and rerun against a real pod; this failure made no external writes.

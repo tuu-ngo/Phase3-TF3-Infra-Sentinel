@@ -100,7 +100,37 @@ kubectl auth can-i create rolebindings.rbac.authorization.k8s.io -n techx-tf3
 kubectl auth can-i patch applications.argoproj.io -n argocd
 ```
 
-Every command above must return `no`. The reader must be able to list non-secret operational resources, read logs/metrics, and port-forward, while all mutation, Secret/ConfigMap read, exec, and other-namespace access return `no`. Prefer authorization checks; do not mutate a production object merely to prove access.
+Every command above must return `no`.
+
+The reader is a CDO cluster observer. It receives the built-in `view`
+ClusterRole across the cluster, plus read-only access to the Argo CD,
+Karpenter, AWS VPC CNI policy endpoint, and Metrics API resources used during
+operations. Port-forward remains limited to `techx-tf3` and `argocd`; it is not
+granted cluster-wide.
+
+Verify the reader's positive access:
+
+```bash
+kubectl auth can-i list deployments.apps --all-namespaces
+kubectl auth can-i get nodes
+kubectl auth can-i get applications.argoproj.io -n argocd
+kubectl auth can-i list policyendpoints.networking.k8s.aws -n techx-tf3
+kubectl auth can-i create pods --subresource=portforward -n techx-tf3
+kubectl auth can-i create pods --subresource=portforward -n argocd
+```
+
+Verify its security boundaries:
+
+```bash
+kubectl auth can-i get secrets --all-namespaces
+kubectl auth can-i create pods --subresource=exec -n techx-tf3
+kubectl auth can-i patch deployments.apps -n techx-tf3
+kubectl auth can-i create pods --subresource=portforward -n kube-system
+kubectl auth can-i create rolebindings.rbac.authorization.k8s.io -n techx-tf3
+```
+
+Every boundary check must return `no`. Prefer authorization checks; do not
+mutate a production object merely to prove access.
 
 ## Phase 6: Customer and control-plane verification
 

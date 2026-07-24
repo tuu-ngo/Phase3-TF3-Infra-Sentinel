@@ -158,6 +158,14 @@ resource "aws_cloudfront_vpc_origin" "frontend" {
   }
 }
 
+# PM-126 exception metadata:
+# rule=AVD-AWS-0013
+# resource=aws_cloudfront_distribution.staging
+# reason=The staging distribution intentionally uses the cloudfront.net hostname and CloudFront default certificate; Aqua documents that CloudFront only permits TLSv1 in this certificate mode and a stronger configured value creates a perpetual Terraform diff. HTTPS redirect remains enforced.
+# owner=tuu-ngo
+# ticket=PM-126
+# review_date=2026-08-22
+#tfsec:ignore:aws-cloudfront-use-secure-tls-policy:exp:2026-08-22
 resource "aws_cloudfront_distribution" "staging" {
   count = local.staging_resources_enabled ? 1 : 0
 
@@ -225,6 +233,14 @@ resource "aws_cloudfront_continuous_deployment_policy" "frontend" {
   }
 }
 
+# PM-126 exception metadata:
+# rule=AVD-AWS-0013
+# resource=aws_cloudfront_distribution.frontend
+# reason=The production distribution intentionally uses the cloudfront.net hostname and CloudFront default certificate; Aqua documents that CloudFront only permits TLSv1 in this certificate mode and a stronger configured value creates a perpetual Terraform diff. HTTPS redirect remains enforced.
+# owner=tuu-ngo
+# ticket=PM-126
+# review_date=2026-08-22
+#tfsec:ignore:aws-cloudfront-use-secure-tls-policy:exp:2026-08-22
 resource "aws_cloudfront_distribution" "frontend" {
   enabled                         = true
   comment                         = "${var.cluster_name} - frontend-proxy"

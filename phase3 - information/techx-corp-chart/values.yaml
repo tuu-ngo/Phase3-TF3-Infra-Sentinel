@@ -64,6 +64,8 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
+  # Workloads using the shared ServiceAccount do not need Kubernetes API credentials.
+  automountServiceAccountToken: false
 
 components:
   ## Demo Components are named objects (services) with several properties
@@ -1259,6 +1261,7 @@ opentelemetry-collector:
             insecure: true
 
     processors:
+      batch: {}
       memory_limiter:
         check_interval: 5s
         limit_percentage: 80
@@ -1337,7 +1340,7 @@ otelGateway:
   replicas: 2
   minReadySeconds: 15
   revisionHistoryLimit: 5
-  serviceAccountName: otel-collector
+  serviceAccountName: otel-gateway
   terminationGracePeriodSeconds: 45
   image:
     repository: "otel/opentelemetry-collector-contrib"
@@ -1380,7 +1383,11 @@ otel-node-agent:
     name: otel-node-agent
     automountServiceAccountToken: true
   clusterRole:
-    create: false
+    # PR1 (mandate05 otel parity): create:true de chart tu sinh du RBAC theo
+    # preset dang bat (clusterMetrics can quyen doc rong + Lease de leader-elect,
+    # giong het otel-collector-agent cu - xem gitops evidence
+    # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md).
+    create: true
     name: otel-node-agent
     clusterRoleBinding:
       name: otel-node-agent
@@ -1411,11 +1418,24 @@ otel-node-agent:
       enabled: true
     kubernetesAttributes:
       enabled: true
+    # PR1 (mandate05 otel parity): bat k8s_cluster receiver + k8s_leader_elector,
+    # dung dung preset co san cua chart (khong tu viet raw OTel config) - copy
+    # nguyen cach otel-collector-agent cu da lam. Leader election dam bao chi 1/7
+    # pod thuc su bao cao metric cluster-wide (k8s_deployment_available,
+    # k8s_namespace_phase...), khong bi 7 pod bao trung.
     clusterMetrics:
-      enabled: false
+      enabled: true
+    # PR2 (mandate05 otel parity): bat receiver_creator/metrics + extension
+    # k8s_observer, dung preset co san - copy nguyen cach otel-collector-agent
+    # cu da lam. Phuc vu dung 3 pod dang phu thuoc annotation
+    # prometheus.io/scrape=true de tu-phat-hien: aws-load-balancer-controller
+    # (2 replica, kube-system) va jaeger (techx-tf3) - da xac nhan bang
+    # `kubectl get pods -A -o json` loc annotation nay, xem
+    # docs/docx_cdo01/mandate05/karpenter-elastic-batch2-batch3-20260722.md.
+    # Chi bat metrics, KHONG bat logs (agent nay khong lam logs pipeline).
     annotationDiscovery:
       metrics:
-        enabled: false
+        enabled: true
       logs:
         enabled: false
     logsCollection:
@@ -1488,8 +1508,13 @@ jaeger:
         value: "25000"
       - name: PROMETHEUS_ADDR
         value: prometheus:9090
+      # PR3 (mandate05 otel parity): jaeger khong nam trong `components:` nen
+      # khong tu dong doi theo default.env.OTEL_COLLECTOR_NAME nhu 18 service
+      # khac (PR #301) - day la ly do duy nhat jaeger van tu gui trace/metric
+      # ve otel-collector-agent cu (da xac nhan qua Prometheus, service_name=
+      # jaeger). Doi tay sang otel-gateway de dong bo voi kien truc moi.
       - name: OTEL_COLLECTOR_HOST
-        value: otel-collector
+        value: otel-gateway
       - name: OTEL_COLLECTOR_PORT_HTTP
         value: "4318"
       - name: JAEGER_HOST
@@ -1648,6 +1673,9 @@ prometheus:
 grafana:
   enabled: true
   fullnameOverride: grafana
+  rbac:
+    create: true
+    namespaced: true
   testFramework:
     enabled: false
   grafana.ini:
