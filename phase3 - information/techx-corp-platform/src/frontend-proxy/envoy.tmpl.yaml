@@ -61,6 +61,18 @@ static_resources:
                         - match: { prefix: "/api/cart" }
                           name: cart_protected
                           route: { cluster: frontend }
+                        # PM-154 (load-shedding): /api/products/<id> protected — product
+                        # detail là bước đầu của checkout journey:
+                        #   locustfile.py add_to_cart():
+                        #     GET /api/products/<id>  ← bước này
+                        #     POST /api/cart           ← cart_protected
+                        #     POST /api/checkout       ← checkout_protected
+                        # Prefix "/api/products/" (có trailing slash) CHỈ match detail
+                        # pages, KHÔNG match GET /api/products (list) — list là browse.
+                        # Nếu detail bị shed → add_to_cart fail → checkout funnel vỡ.
+                        - match: { prefix: "/api/products/" }
+                          name: product_detail_protected
+                          route: { cluster: frontend }
                         # PM-154 (load-shedding): browse/homepage catch-all — SHADOW MODE.
                         # filter_enabled=100%: Envoy đếm request qua token bucket và ghi
                         # stat browse_rate_limiter.rate_limited nhưng CHƯĄ reject
@@ -82,11 +94,15 @@ static_resources:
                               "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
                               stat_prefix: browse_rate_limiter
                               token_bucket:
-                                # PLACEHOLDER — điền floor(0.70×breakpoint_RPS/proxy_ready)
-                                # từ PM-153 evidence. Shadow mode: giá trị này chưa có tác dụng
-                                # reject thực tế vì filter_enforced=0% bên dưới.
-                                max_tokens: 999999
-                                tokens_per_fill: 999999
+                                # Shadow threshold: 100 token/s/pod.
+                                # Cơ sở tính: Mandate-02 baseline 200 users → ước tính
+                                # ~150 browse RPS tổng / 2 proxy pod min ≈ 75 RPS/pod.
+                                # Ở 1.5× overload test (~112 RPS/pod) counter SẼ tick.
+                                # filter_enforced=0% → không reject thực tế.
+                                # THAY THẾ bằng floor(0.70×breakpoint_RPS/proxy_ready)
+                                # từ PM-153 evidence trước khi tạo enforce PR (PM-154b).
+                                max_tokens: 100
+                                tokens_per_fill: 100
                                 fill_interval: 1s
                               filter_enabled:
                                 runtime_key: browse_rate_limit_enabled

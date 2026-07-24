@@ -40,7 +40,11 @@ Tách catch-all `/` thành 3 class ưu tiên rõ ràng:
 |---|---|---|---|
 | `/api/checkout` | `checkout_protected` | Tối cao | Không (global bucket 10 000/s — không bao giờ trigger) |
 | `/api/cart` | `cart_protected` | Cao | Không (cùng global bucket) |
+| `/api/products/<id>` | `product_detail_protected` | Cao | Không (cùng global bucket) |
 | `/` (catch-all) | `browse_shedable` | Thấp | Token bucket per-pod (xem § 2) |
+
+**Tại sao `/api/products/<id>` được bảo vệ:**
+Locustfile `add_to_cart()` gọi `GET /api/products/<id>` trước `POST /api/cart`. Nếu product detail bị shed (429) → Locust cart add fail → checkout journey gãy. Prefix `/api/products/` (có trailing slash) chỉ match detail pages; `GET /api/products` (list, không có slash) vẫn rơi vào `browse_shedable`.
 
 **Tại sao `/api/cart` được bảo vệ:**
 Cart write operations (add/update/delete item) là bước ngay trước checkout trong user journey. Nếu cart bị shed trong khi checkout được phép, người dùng không thể hoàn thành đơn hàng → checkout protection bị vô nghĩa. Bảo vệ cả hai tạo ra "checkout funnel shield".
@@ -73,7 +77,9 @@ breakpoint 400 RPS, 3 Ready pods:
 max_tokens = floor(0.70 × 400 / 3) = 93 token/s/pod
 ```
 
-**Hiện tại trong config: `max_tokens: 999999`** — shadow mode, không reject thực tế.
+**Hiện tại trong config: `max_tokens: 100`** — shadow threshold calibrated từ Mandate-02
+baseline (200 users → ~150 browse RPS tổng / 2 proxy pod min ≈ 75 RPS/pod; counter tick
+ở 1.5× overload test). filter_enforced=0% → không reject thực tế.
 
 ### 3. Deploy theo 2 giai đoạn — Shadow → Enforce
 
@@ -160,7 +166,7 @@ Header `x-techx-load-shed: browse` được thêm vào response khi request bị
 ## Tham chiếu
 
 - PM-153 (HPA + circuit_breakers): `feat/pm-153` branch
-- [Mandate-02 load test report](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/docs/mandate-02-load-test-report.md)
-- [Mandate-16 checkout latency](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/docs/mandate-16-checkout-latency-optimization.md)
-- [envoy.tmpl.yaml](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/phase3%20-%20information/techx-corp-platform/src/frontend-proxy/envoy.tmpl.yaml)
-- [hpa-hotpath.yaml](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/gitops/infrastructure/hpa-hotpath.yaml)
+- [Mandate-02 load test report](../mandate-02-load-test-report.md)
+- [Mandate-16 checkout latency](../mandate-16-checkout-latency-optimization.md)
+- [envoy.tmpl.yaml](../../phase3%20-%20information/techx-corp-platform/src/frontend-proxy/envoy.tmpl.yaml)
+- [hpa-hotpath.yaml](../../gitops/infrastructure/hpa-hotpath.yaml)

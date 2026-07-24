@@ -76,6 +76,7 @@ kubectl -n techx-tf3 top pod --sort-by=cpu
 |---|---|---|
 | `/api/checkout` | `checkout_protected` | Luôn forward — không shed |
 | `/api/cart` | `cart_protected` | Luôn forward — không shed |
+| `/api/products/<id>` | `product_detail_protected` | Luôn forward — không shed (checkout journey step 1) |
 | `/` (catch-all) | `browse_shedable` | Token bucket — shed khi vượt ngưỡng |
 
 Tại sao `/api/cart` protected: cart write là bước ngay trước checkout trong funnel. Shed cart = vô hiệu checkout protection gián tiếp.
@@ -86,8 +87,9 @@ Tại sao `/api/cart` protected: cart write là bước ngay trước checkout t
 filter_enabled:  numerator: 100   # Đếm — stat tích lũy
 filter_enforced: numerator: 0     # SHADOW: không reject, pass-through
 token_bucket:
-  max_tokens: 999999              # Placeholder — thay bằng PM-153 evidence
-  tokens_per_fill: 999999
+  max_tokens: 100           # Calibrated: 200users×2.5RPS/2pods=250/pod×0.70=~175
+  tokens_per_fill: 100      # Counter tick ở 1.5× overload test (~112 RPS/pod)
+                            # THAY bằng PM-153 evidence trước PM-154b enforce PR
 ```
 
 - Mục đích shadow: quan sát `browse_rate_limiter.rate_limited` tăng tự nhiên trước khi flip enforce
@@ -107,13 +109,23 @@ Lấy `browse_breakpoint_RPS` và `frontend-proxy-Ready-count` từ PM-153 evide
 > **Bắt buộc trước khi deploy PM-154 lên production:**
 
 ```bash
-# 1. Validate Envoy config (chạy local hoặc trong CI)
-docker run --rm -v "$(pwd)/phase3 - information/techx-corp-platform/src/frontend-proxy:/etc/envoy" \
-  envoyproxy/envoy:v1.32-latest \
-  envoy --mode validate -c /etc/envoy/envoy.tmpl.yaml 2>&1
-# → phải thấy "configuration '/etc/envoy/envoy.tmpl.yaml' OK"
-# Lưu ý: envoy.tmpl.yaml dùng ${VAR} placeholder — cần substitute hoặc dùng
-# envoy config dump từ pod đang chạy để validate thật.
+# 0. Envoy config validation (CI tự động qua .github/workflows/validate-envoy.yml)
+# PR không thể merge nếu validate-envoy job fail. Kiểm tra status check trước merge.
+
+# 1. Validate Envoy config (chạy local để debug nếu CI fail)
+docker run --rm \
+  -e ENVOY_ADDR=0.0.0.0 -e ENVOY_PORT=8080 -e ENVOY_ADMIN_PORT=9901 \
+  -e OTEL_SERVICE_NAME=frontend-proxy \
+  -e OTEL_COLLECTOR_HOST=otel -e OTEL_COLLECTOR_PORT_GRPC=4317 -e OTEL_COLLECTOR_PORT_HTTP=4318 \
+  -e FRONTEND_HOST=frontend -e FRONTEND_PORT=8080 \
+  -e IMAGE_PROVIDER_HOST=image-provider -e IMAGE_PROVIDER_PORT=8081 \
+  -e FLAGD_HOST=flagd -e FLAGD_PORT=8013 -e FLAGD_UI_HOST=flagd-ui -e FLAGD_UI_PORT=4000 \
+  -e LOCUST_WEB_HOST=loadgen -e LOCUST_WEB_PORT=8089 \
+  -e GRAFANA_HOST=grafana -e GRAFANA_PORT=3000 \
+  -e JAEGER_HOST=jaeger -e JAEGER_UI_PORT=16686 \
+  --entrypoint /bin/sh envoyproxy/envoy:v1.32-latest \
+  -c 'envsubst < /etc/envoy/envoy.yaml > /tmp/envoy-rendered.yaml && envoy --mode validate -c /tmp/envoy-rendered.yaml'
+# → phải thấy "configuration ... OK"
 
 # 2. Build + push frontend-proxy image (CI)
 # Trigger workflow build-push-ecr.yml cho frontend-proxy sau khi merge PR
@@ -219,7 +231,8 @@ kubectl -n techx-tf3 rollout undo deployment/frontend-proxy
 
 ## Tham chiếu
 
-- [ADR 0011](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/docs/adr/0011-mandate-19-throughput-ceiling-load-shedding.md)
-- [envoy.tmpl.yaml](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/phase3%20-%20information/techx-corp-platform/src/frontend-proxy/envoy.tmpl.yaml)
-- [hpa-hotpath.yaml](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/gitops/infrastructure/hpa-hotpath.yaml)
-- [Mandate-02 load test report](file:///d:/Phase3_01/Phase3-TF3-Infra-Sentinel/docs/mandate-02-load-test-report.md)
+- [ADR 0011](adr/0011-mandate-19-throughput-ceiling-load-shedding.md)
+- [envoy.tmpl.yaml](../phase3%20-%20information/techx-corp-platform/src/frontend-proxy/envoy.tmpl.yaml)
+- [hpa-hotpath.yaml](../gitops/infrastructure/hpa-hotpath.yaml)
+- [validate-envoy.yml](../.github/workflows/validate-envoy.yml)
+- [Mandate-02 load test report](mandate-02-load-test-report.md)
